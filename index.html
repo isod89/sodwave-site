@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SLOOP — a live groovebox firmware for the M-VAVE FM-1</title>
+<meta name="description" content="SLOOP turns the M-VAVE FM-1 into a four-track live groovebox: twelve synth engines, 153 sounds, 37 drum kits, 27 punch-in effects, a 64-step sequencer and a web editor. Free and open source.">
+<meta name="theme-color" content="#000000">
+<link rel="canonical" href="https://www.sodwave.com/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SLOOP by Sodwave">
+<meta property="og:title" content="SLOOP — a live groovebox firmware for the M-VAVE FM-1">
+<meta property="og:description" content="Four tracks, twelve engines, 153 sounds, 37 drum kits, 27 punch-in effects. Free and open source, installed from your browser.">
+<meta property="og:url" content="https://www.sodwave.com/">
+<meta property="og:image" content="https://www.sodwave.com/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="assets/fonts/terminus.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+<script>document.documentElement.classList.add("js");</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "SLOOP", "applicationCategory": "MultimediaApplication",
+ "operatingSystem": "M-VAVE FM-1 firmware", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+ "license": "https://www.gnu.org/licenses/gpl-3.0.html", "url": "https://www.sodwave.com/",
+ "downloadUrl": "https://isod89.github.io/sloop-fm1/", "codeRepository": "https://github.com/isod89/sloop-fm1",
+ "author": {"@type": "Organization", "name": "Sodwave"}}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="SLOOP, home">
+      <img src="assets/img/sloop-logo-t.svg" alt="SLOOP" width="100" height="34">
+      <span class="by">by Sodwave</span>
+    </a>
+    <button class="menu-btn" aria-expanded="false" aria-controls="nav" aria-label="Menu">☰</button>
+    <nav class="nav" id="nav" aria-label="Main">
+      <a href="#live">Play live</a>
+      <a href="#sounds">Sounds</a>
+      <a href="#sequencer">Sequencer</a>
+      <a href="#editor">Editor</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn pri sm" href="https://isod89.github.io/sloop-fm1/">Install SLOOP</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">Firmware for the M-VAVE FM-1</span>
+      <h1>Your FM-1, reborn as a <span>live groovebox.</span></h1>
+      <p class="lead">SLOOP is a free, open-source firmware that turns the pocket FM-1 into a four-track instrument you play with your hands: three synths and a drum machine, twelve synthesis engines, 153 sounds, 37 drum kits and a sequencer that records as you play. No patterns to load. Everything you hear, you play.</p>
+      <div class="btns">
+        <a class="btn pri" href="https://isod89.github.io/sloop-fm1/">Install from your browser</a>
+        <a class="btn sec" href="https://isod89.github.io/sloop-fm1/webapp/editor/">Open the web editor</a>
+      </div>
+      <div class="meta">
+        <span><i class="dot" aria-hidden="true"></i>Latest <b data-version>2.6</b><span data-date></span></span>
+        <span>Free · GPL-3.0</span>
+        <span>Same hardware, new instrument</span>
+      </div>
+    </div>
+    <div class="stack" aria-hidden="true">
+      <figure class="screen s2"><img src="assets/img/screens/punch.png" alt="" width="480" height="480"></figure>
+      <figure class="screen s1"><img src="assets/img/screens/tracks.png" alt="" width="480" height="480" fetchpriority="high"></figure>
+      <figure class="screen s3"><img src="assets/img/screens/drum-grid.png" alt="" width="480" height="480"></figure>
+    </div>
+  </div>
+</section>
+
+<!-- NUMBERS -->
+<div class="stats">
+  <div class="wrap">
+    <ul>
+      <li style="--c:var(--t1)"><b>4</b><span>tracks: 3 synths + drums</span></li>
+      <li style="--c:var(--t2)"><b>12</b><span>synthesis engines</span></li>
+      <li style="--c:var(--t3)"><b>153</b><span>level-matched sounds</span></li>
+      <li style="--c:var(--t4)"><b>37</b><span>drum kits</span></li>
+      <li style="--c:var(--t1)"><b>27</b><span>punch-in effects</span></li>
+      <li style="--c:var(--t2)"><b>64</b><span>steps per track</span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- PLAY LIVE -->
+<section class="block" id="live">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t4)">Play it live</span>
+      <h2>Hold a button. Touch a key.</h2>
+      <p class="lead">Every function button is a layer: hold it and the 16 white keys and the four knobs change job, while the screen shows exactly what they do. Let go and you are back to playing. Hold a layer and tap HOME to lock it open, both hands free.</p>
+    </div>
+    <div class="layers rv">
+      <div class="tabs" role="tablist" aria-label="Layers">
+        <button class="tab" role="tab" id="t-fx" aria-controls="p-fx" aria-selected="true" style="--c:var(--t4)"><span class="k">FX</span><span class="t">Punch-in effects</span><span class="d">27 effects on the whole mix</span></button>
+        <button class="tab" role="tab" id="t-seq" aria-controls="p-seq" aria-selected="false" tabindex="-1" style="--c:var(--t1)"><span class="k">SEQ</span><span class="t">Steps</span><span class="d">Program, lock, nudge</span></button>
+        <button class="tab" role="tab" id="t-edit" aria-controls="p-edit" aria-selected="false" tabindex="-1" style="--c:var(--red)"><span class="k">EDIT</span><span class="t">Erase and mute</span><span class="d">MPC-style, as it plays</span></button>
+        <button class="tab" role="tab" id="t-arp" aria-controls="p-arp" aria-selected="false" tabindex="-1" style="--c:var(--t3)"><span class="k">ARP</span><span class="t">Note repeat</span><span class="d">Rolls on the grid</span></button>
+        <button class="tab" role="tab" id="t-sel" aria-controls="p-sel" aria-selected="false" tabindex="-1" style="--c:var(--t2)"><span class="k">SEL</span><span class="t">Key and chords</span><span class="d">One finger, one chord</span></button>
+        <button class="tab" role="tab" id="t-glo" aria-controls="p-glo" aria-selected="false" tabindex="-1" style="--c:var(--t3)"><span class="k">GLO</span><span class="t">Mix</span><span class="d">Mute, solo, fills, tap tempo</span></button>
+        <button class="tab" role="tab" id="t-save" aria-controls="p-save" aria-selected="false" tabindex="-1" style="--c:var(--t2)"><span class="k">SAVE</span><span class="t">Song</span><span class="d">Sections A–D, live</span></button>
+      </div>
+      <div>
+        <div class="panel" role="tabpanel" id="p-fx" aria-labelledby="t-fx">
+          <figure class="screen" style="--glow:var(--t4)"><img src="assets/img/screens/punch.png" alt="The FX layer: 27 punch-in effects laid out on the keys" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>27 punch-in effects</h3>
+            <p>Hold <span class="kbd">FX</span> and press a key: the effect takes the whole mix for as long as you hold it, locked to the tempo. Loops from 1/4 to 1/32, stutter, reverse, tape stop, half speed, filter sweeps, bit crush, gate, echo and tape wobble on the white keys; DJ kills, rewind, octave up, flanger, auto-pan, freeze and fade out on the black keys.</p>
+            <p>The knobs are a master filter, DUST (an old sampler and a record), DUCK (the kick pumps the synths) and the selected track's own filter. <span class="kbd">FX</span> + <span class="kbd">OCT−</span> / <span class="kbd">OCT+</span> throws the reverb or the echo.</p>
+          </div>
+        </div>
+        <div class="panel" role="tabpanel" id="p-seq" aria-labelledby="t-seq" hidden>
+          <figure class="screen"><img src="assets/img/screens/steps.png" alt="The SEQ layer: the 16 steps of the page" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>Steps under your fingers</h3>
+            <p>Hold <span class="kbd">SEQ</span>: the white keys are the 16 steps of the page. Tap to set or clear them, and the knobs set the sound or note, the division, the swing and the length (up to 64 steps).</p>
+            <p>Hold a step to give it a level, a ratchet, a nudge off the grid, its own value of any sound parameter (parameter locks) or a fill condition.</p>
+          </div>
+        </div>
+        <div class="panel" role="tabpanel" id="p-edit" aria-labelledby="t-edit" hidden>
+          <figure class="screen" style="--glow:var(--red)"><img src="assets/img/screens/erase.png" alt="The EDIT layer: erase sounds as the loop plays" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>Erase as it plays, mute live</h3>
+            <p>Hold <span class="kbd">EDIT</span> and hold a key: that sound or note disappears from every step the playhead passes, the way an MPC erases. Stopped, it goes from the whole pattern.</p>
+            <p>On the drum track, a black key switches the keys to live mutes: drop the hats, bring them back, nothing erased. <span class="kbd">EDIT</span> + <span class="kbd">OCT−</span> / <span class="kbd">OCT+</span> is undo and redo, and the knobs shift, double or halve and transpose the pattern.</p>
+          </div>
+        </div>
+        <div class="panel" role="tabpanel" id="p-arp" aria-labelledby="t-arp" hidden>
+          <figure class="screen" style="--glow:var(--t3)"><img src="assets/img/screens/roll.png" alt="The ARP layer: note repeat" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>Rolls on the grid</h3>
+            <p>Hold <span class="kbd">ARP</span> and hold a key: it repeats on the grid at the rate you pick, from 1/8 to 1/64, locked to the tempo and the swing. Recording, a roll becomes ratchets on the steps.</p>
+            <p>Tap <span class="kbd">ARP</span> instead for a full arpeggiator: modes, rate, octaves, gate, swing, probability and latch.</p>
+          </div>
+        </div>
+        <div class="panel" role="tabpanel" id="p-sel" aria-labelledby="t-sel" hidden>
+          <figure class="screen" style="--glow:var(--t2)"><img src="assets/img/screens/key.png" alt="The SEL layer: the key of the song" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>The key of the song, chords on one finger</h3>
+            <p>Hold <span class="kbd">SEL</span> and press a key: that is the key of the song for all three synths. The knobs pick a chord type (triad, 7th, 9th, sus4, power), one of 16 scales, how the keys follow the scale, and a transpose.</p>
+            <p>With a chord on, every white key plays a chord of the key, and the black keys change it as you hold them.</p>
+          </div>
+        </div>
+        <div class="panel" role="tabpanel" id="p-glo" aria-labelledby="t-glo" hidden>
+          <figure class="screen" style="--glow:var(--t3)"><img src="assets/img/screens/mix.png" alt="The GLO layer: mute, solo, fill and tap tempo" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>The mix in one hand</h3>
+            <p>Hold <span class="kbd">GLO</span>: keys 1–4 mute the tracks, 5–8 solo them, 9 plays a fill while you hold it, 10 fills the next bar, 16 taps the tempo. The four knobs are the levels of the four tracks.</p>
+          </div>
+        </div>
+        <div class="panel" role="tabpanel" id="p-save" aria-labelledby="t-save" hidden>
+          <figure class="screen" style="--glow:var(--t2)"><img src="assets/img/screens/song.png" alt="The SAVE layer: song sections A to D" width="480" height="480" loading="lazy"></figure>
+          <div>
+            <h3>A song you play with your hands</h3>
+            <p>Hold <span class="kbd">SAVE</span>: keys 5–8 save the loop into sections A–D, keys 1–4 play them on the next bar. Tap several to chain them, and record the song as you perform it. The SONG screen edits it by hand afterwards.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOUNDS -->
+<section class="block alt" id="sounds">
+  <div class="wrap split">
+    <div class="rv">
+      <span class="eyebrow" style="--c:var(--t2)">Sounds</span>
+      <h2>Twelve engines. 153 sounds. Every one level-matched.</h2>
+      <p class="lead">From sliding 808s and acid basses to a real Steinway grand, Rhodes, organs, string machines, granular clouds, plucked guitars and sitar, all browsed by kind with the PRESETS knob.</p>
+      <div class="chips">
+        <span class="chip" style="--c:var(--t1)"><i>■</i> Analog</span>
+        <span class="chip" style="--c:var(--t2)"><i>■</i> 4-op FM</span>
+        <span class="chip" style="--c:var(--t3)"><i>■</i> 6-op FM · DX7</span>
+        <span class="chip" style="--c:var(--t4)"><i>■</i> Phase distortion</span>
+        <span class="chip" style="--c:var(--t1)"><i>■</i> 3-oscillator</span>
+        <span class="chip" style="--c:var(--t2)"><i>■</i> Tonewheel organ</span>
+        <span class="chip" style="--c:var(--t3)"><i>■</i> Formant voice</span>
+        <span class="chip" style="--c:var(--t4)"><i>■</i> Granular</span>
+        <span class="chip" style="--c:var(--t1)"><i>■</i> Lo-fi chip</span>
+        <span class="chip" style="--c:var(--t2)"><i>■</i> Sampler</span>
+        <span class="chip" style="--c:var(--t3)"><i>■</i> Physical models</span>
+        <span class="chip" style="--c:var(--t4)"><i>■</i> Noise</span>
+      </div>
+      <ul class="list">
+        <li style="--c:var(--t1)"><b>Shape every sound:</b> envelopes and an LFO (both can follow the tempo), glide and voice modes (poly, mono, legato, unison), drive, an insert effect per track and a slicer.</li>
+        <li style="--c:var(--t2)"><b>DX7 patches:</b> the six-operator engine imports SysEx voices and whole cartridges from the web editor.</li>
+        <li style="--c:var(--t3)"><b>Your own presets:</b> 32 slots, and four slots for your own samples.</li>
+        <li style="--c:var(--t4)"><b>Sends:</b> a stereo chorus, a tempo delay and a stereo reverb.</li>
+      </ul>
+    </div>
+    <div class="row r2 rv">
+      <figure class="screen" style="--glow:var(--t2)"><img src="assets/img/screens/edit.png" alt="An engine page: the sound's parameters" width="480" height="480" loading="lazy"></figure>
+      <figure class="screen" style="--glow:var(--t1)"><img src="assets/img/screens/env.png" alt="The envelope page with its curve" width="480" height="480" loading="lazy"></figure>
+      <figure class="screen" style="--glow:var(--t3)"><img src="assets/img/screens/fx.png" alt="The effects page" width="480" height="480" loading="lazy"></figure>
+      <figure class="screen" style="--glow:var(--t4)"><img src="assets/img/screens/texture.png" alt="TEXTURE: a looping bed under the mix" width="480" height="480" loading="lazy"></figure>
+    </div>
+  </div>
+</section>
+
+<!-- DRUMS -->
+<section class="block" id="drums">
+  <div class="wrap split rev">
+    <div class="rv">
+      <span class="eyebrow" style="--c:var(--t4)">Drums</span>
+      <h2>A drum machine on the white keys.</h2>
+      <p class="lead">Sixteen sounds, kick to cowbell, one per white key. Hold OCT− for ghost notes and OCT+ for hard hits: every hit keeps its level and its ratchet.</p>
+      <ul class="list">
+        <li style="--c:var(--t4)"><b>37 kits:</b> a sampled acoustic kit in five treatments and 32 synthesised kits: 808, 909, 606, trap, drill, boom bap, lo-fi, house, techno, jungle, amapiano, afrobeat, synthwave, chiptune and more.</li>
+        <li style="--c:var(--t3)"><b>Your own kits:</b> drop your samples on 16 pads in the editor, or design kits with the drum synth.</li>
+        <li style="--c:var(--t1)"><b>Grid and kit pages</b> on the FM-1 itself, and a 16-lane grid in the editor.</li>
+      </ul>
+    </div>
+    <div class="row r2 rv">
+      <figure class="screen" style="--glow:var(--t4)"><img src="assets/img/screens/drum-grid.png" alt="The drum grid on the FM-1" width="480" height="480" loading="lazy"></figure>
+      <figure class="screen" style="--glow:var(--t2)"><img src="assets/img/screens/drum-kit.png" alt="The drum kit page" width="480" height="480" loading="lazy"></figure>
+    </div>
+  </div>
+</section>
+
+<!-- SEQUENCER -->
+<section class="block alt" id="sequencer">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t1)">Record and sequence</span>
+      <h2>It records as you play.</h2>
+      <p class="lead">While it plays, REC records at once and every pass is layered on top. Notes land where you heard them: the delay of the keys is taken back. On an empty project, just play: press REC on the one after your last bar and the loop's length sets the tempo.</p>
+    </div>
+    <div class="cards rv">
+      <div class="card" style="--c:var(--t1)"><h3>64 steps per track</h3><p>Each track with its own length and division, from 1/32 to two bars. Polymeters stay in phase on one sample-accurate clock: no drift at any tempo.</p></div>
+      <div class="card" style="--c:var(--t2)"><h3>Locks, nudges, fills</h3><p>Give a step its own value of any sound parameter, nudge it off the grid, or make it play only (or never) during a fill.</p></div>
+      <div class="card" style="--c:var(--t3)"><h3>Chords and swing</h3><p>Up to four notes a step with ties and slides, a level and ratchet per note, and MPC swing from straight to heavy.</p></div>
+      <div class="card" style="--c:var(--t4)"><h3>Songs</h3><p>Four sections A–D played live on the next bar, chained, and recorded as you perform them.</p></div>
+      <div class="card" style="--c:var(--red)"><h3>Undo, redo, autosave</h3><p>Hold REC to clear a track, undo brings it back. Stop for a moment and your work is saved: SLOOP comes back exactly as you left it.</p></div>
+      <div class="card" style="--c:var(--t1)"><h3>A visual metronome</h3><p>The PLAY light flashes on every beat; an audible click is one setting away and is never recorded.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- VISUALISERS -->
+<section class="block" id="screen">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t3)">The screen</span>
+      <h2>Every pixel tells you something.</h2>
+      <p class="lead">White is what you are touching, red is recording, and every track has its colour. A bold, readable font on the FM-1's small screen, and twelve visualisers when you just want to watch the music.</p>
+    </div>
+    <div class="row r4 rv">
+      <figure class="cap"><div class="screen" style="--glow:var(--t1)"><img src="assets/img/screens/vis-spectrum.png" alt="Spectrum visualiser" width="480" height="480" loading="lazy"></div><figcaption>Spectrum</figcaption></figure>
+      <figure class="cap"><div class="screen" style="--glow:var(--t4)"><img src="assets/img/screens/vis-tape.png" alt="Tape visualiser" width="480" height="480" loading="lazy"></div><figcaption>Tape</figcaption></figure>
+      <figure class="cap"><div class="screen" style="--glow:var(--t2)"><img src="assets/img/screens/vis-orbit.png" alt="Orbit visualiser" width="480" height="480" loading="lazy"></div><figcaption>Orbit</figcaption></figure>
+      <figure class="cap"><div class="screen" style="--glow:var(--t3)"><img src="assets/img/screens/vis-sloop.png" alt="SLOOP visualiser" width="480" height="480" loading="lazy"></div><figcaption>SLOOP</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- EDITOR -->
+<section class="block alt" id="editor">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t1)">The web editor</span>
+      <h2>Every parameter, on a big screen.</h2>
+      <p class="lead">Connect the FM-1 by USB and the editor follows it live: turn a knob on the FM-1 and the editor moves. Edit sounds, steps and kits, chop your samples, import DX7 patches, back up everything. It runs in Chrome or Edge, and installs as an app that works without internet, on Android too.</p>
+      <div class="btns"><a class="btn pri" href="https://isod89.github.io/sloop-fm1/webapp/editor/">Open the editor</a></div>
+    </div>
+    <div class="shots rv">
+      <figure class="shot tall"><img src="assets/img/editor/sound.webp" alt="The editor's sound page: FX, envelope and LFO" width="1104" height="979" loading="lazy"><figcaption>Every sound parameter, live</figcaption></figure>
+      <figure class="shot"><img src="assets/img/editor/pianoroll.webp" alt="The editor's piano roll" width="1100" height="681" loading="lazy"><figcaption>Piano roll and MIDI files in and out</figcaption></figure>
+      <figure class="shot"><img src="assets/img/editor/chop.webp" alt="CHOP: a recording cut into a sample slot" width="1000" height="480" loading="lazy"><figcaption>CHOP: any recording, cut onto the keys</figcaption></figure>
+    </div>
+    <div class="cards rv" style="margin-top:20px">
+      <div class="card" style="--c:var(--t2)"><h3>Your samples</h3><p>Four slots of about 7 seconds, up to 16 files each, every one on its own key. Match levels with one click.</p></div>
+      <div class="card" style="--c:var(--t3)"><h3>Drum kits and drum synth</h3><p>Sixteen pads of your own sounds, or kits designed from scratch with the drum synth.</p></div>
+      <div class="card" style="--c:var(--t4)"><h3>Backup and restore</h3><p>Projects, presets, samples, kits, patches and settings in one file, onto this FM-1 or another.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- CONNECT -->
+<section class="block" id="connect">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t2)">Connect</span>
+      <h2>MIDI and USB audio, no driver.</h2>
+    </div>
+    <div class="cards rv">
+      <div class="card" style="--c:var(--t1)"><h3>USB MIDI</h3><p>Class compliant, in and out. Each track on its own channel, the sequencer to MIDI out, CCs, sustain, pitch bend, Program Change and MIDI LEARN.</p></div>
+      <div class="card" style="--c:var(--t2)"><h3>MIDI in on the jack</h3><p>The 3.5 mm TRS input takes a keyboard or a pad controller through a TRS-to-DIN adapter, type A or B.</p></div>
+      <div class="card" style="--c:var(--t3)"><h3>MIDI clock</h3><p>Follow a master over USB or the jack: tempo, start, continue and stop.</p></div>
+      <div class="card" style="--c:var(--t4)"><h3>USB audio</h3><p>The FM-1 is a USB audio input at 44.1 or 48 kHz: record it in your DAW or on your phone over the same cable.</p></div>
+      <div class="card" style="--c:var(--red)"><h3>Lights</h3><p>The buttons glow so their labels read on a black FM-1, the keys can light up, and the notes playing light their keys.</p></div>
+      <div class="card" style="--c:var(--t1)"><h3>Safe updates</h3><p>Every install is checked twice before it runs, an interrupted install finishes when you press Install again, and a USB rescue is always there.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="block alt" id="install">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t3)">Install</span>
+      <h2>Three steps, from your browser.</h2>
+      <p class="lead">Nothing to download, nothing to compile. Your projects, presets, samples and settings are kept when you update.</p>
+    </div>
+    <ol class="steps rv">
+      <li style="--c:var(--t1)"><h3>Open the installer</h3><p>In <b>Chrome or Edge</b> on a computer (Windows, macOS or Linux).</p></li>
+      <li style="--c:var(--t2)"><h3>Plug in the FM-1</h3><p>With a USB <b>data</b> cable, straight into the computer, no hub.</p></li>
+      <li style="--c:var(--t4)"><h3>Press INSTALL</h3><p>Allow MIDI access and wait for <i>Done</i>. The FM-1 restarts on the SLOOP logo.</p></li>
+    </ol>
+    <div class="btns rv" style="margin-bottom:56px">
+      <a class="btn pri" href="https://isod89.github.io/sloop-fm1/">Open the installer</a>
+      <a class="btn sec" href="https://github.com/isod89/sloop-fm1/releases">All releases</a>
+    </div>
+    <div class="split rv" style="align-items:start">
+      <div>
+        <h3>Compatibility</h3>
+        <div class="tablebox">
+          <table class="spec">
+            <tr><th>Device</th><td>M-VAVE FM-1. The official firmware can be put back at any time.</td></tr>
+            <tr><th>Installer and editor</th><td>Chrome or Edge on Windows, macOS or Linux (Web MIDI with SysEx). The editor app also runs on Android.</td></tr>
+            <tr><th>Cable</th><td>A USB data cable, plugged directly.</td></tr>
+            <tr><th>USB audio</th><td>Any computer or phone that takes a class-compliant USB audio input.</td></tr>
+            <tr><th>MIDI IN jack</th><td>3.5 mm TRS, through a TRS-to-DIN MIDI adapter (type A or B).</td></tr>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Changed your mind?</h3>
+        <p>The installer page puts the official M-VAVE firmware back: save a backup with the editor, download FM-1 V15 from m-vave.com and select its file. Install SLOOP again whenever you like and restore your backup.</p>
+        <p class="note">Custom firmware is installed at your own risk, without warranty. SLOOP keeps a USB rescue for that reason: hold <span class="kbd">OCT−</span> while switching the FM-1 on and install again.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="block" id="faq">
+  <div class="wrap">
+    <div class="head rv">
+      <span class="eyebrow" style="--c:var(--t2)">FAQ</span>
+      <h2>Questions people ask.</h2>
+    </div>
+    <div class="faq rv">
+      <details><summary>Is SLOOP really free?</summary><p>Yes. SLOOP is free and open source under the GPL-3.0 licence. The source code, every release and the issue tracker are on <a href="https://github.com/isod89/sloop-fm1">GitHub</a>.</p></details>
+      <details><summary>Is SLOOP made by M-VAVE?</summary><p>No. SLOOP is an independent community project. It is not affiliated with, endorsed by or supported by M-VAVE. It runs on the FM-1 you already own and changes only its software: the hardware, the keys and the knobs stay exactly as they are.</p></details>
+      <details><summary>Can I go back to the official firmware?</summary><p>Yes, at any time, from the same installer page (or with M-VAVE's own updater). Save a backup with the editor first, and restore it when you come back to SLOOP.</p></details>
+      <details><summary>Will I lose my work when I update SLOOP?</summary><p>No. Projects, user presets, samples, kits and settings are kept across updates. A full backup from the editor is still a good habit before any update.</p></details>
+      <details><summary>Which browser do I need?</summary><p>Chrome or Edge on a computer, for the installer and the editor (they use Web MIDI). The editor also installs as an app that works without internet, on Android too.</p></details>
+      <details><summary>Something does not work. Where do I report it?</summary><p>Open an issue on <a href="https://github.com/isod89/sloop-fm1/issues">GitHub</a> with your SLOOP version, what you did and what happened. The complete guide has a troubleshooting section too.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- OPEN SOURCE -->
+<section class="block alt" id="open-source">
+  <div class="wrap split">
+    <div class="rv">
+      <span class="eyebrow" style="--c:var(--t4)">Open source</span>
+      <h2>Built in the open, with the community.</h2>
+      <p class="lead">SLOOP is based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments, and grows with every comment, test and pull request from people who play it.</p>
+      <div class="btns">
+        <a class="btn sec" href="https://github.com/isod89/sloop-fm1">Source on GitHub</a>
+        <a class="btn sec" href="https://github.com/isod89/sloop-fm1/blob/main/GUIDE.md">The complete guide</a>
+      </div>
+    </div>
+    <div class="rv">
+      <div class="tablebox">
+        <table class="spec">
+          <tr><th>Tracks</th><td>3 synth parts (8 voices shared) and drums (16 sounds)</td></tr>
+          <tr><th>Sequencer</th><td>64 steps per track, own length and division, locks, nudges, fills, swing</td></tr>
+          <tr><th>Audio</th><td>44.1 kHz fixed-point DSP, USB audio input at 44.1 or 48 kHz</td></tr>
+          <tr><th>Memory</th><td>Autosave, undo / redo, 4 projects, 32 user presets, full backup</td></tr>
+          <tr><th>Licence</th><td>GPL-3.0</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="wrap rv">
+    <img class="logo" src="assets/img/sloop-logo-t.svg" alt="SLOOP" width="760" height="260" loading="lazy">
+    <h2>Ready when you are.</h2>
+    <p class="lead" style="margin:0 auto 28px">Plug in your FM-1 and install SLOOP in a minute.</p>
+    <div class="btns">
+      <a class="btn pri" href="https://isod89.github.io/sloop-fm1/">Install SLOOP</a>
+      <a class="btn sec" href="https://isod89.github.io/sloop-fm1/webapp/editor/">Open the editor</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <img src="assets/img/sloop-logo-t.svg" alt="SLOOP" width="120" height="41" style="margin-bottom:14px">
+        <p>A live groovebox firmware for the M-VAVE FM-1. Free and open source.</p>
+      </div>
+      <div><h4>SLOOP</h4><ul>
+        <li><a href="https://isod89.github.io/sloop-fm1/">Installer</a></li>
+        <li><a href="https://isod89.github.io/sloop-fm1/webapp/editor/">Web editor</a></li>
+        <li><a href="https://github.com/isod89/sloop-fm1/releases">Releases</a></li>
+      </ul></div>
+      <div><h4>Learn</h4><ul>
+        <li><a href="https://github.com/isod89/sloop-fm1/blob/main/GUIDE.md">Complete guide</a></li>
+        <li><a href="https://github.com/isod89/sloop-fm1/blob/main/DEMARRAGE-RAPIDE-FR.md">Guide en français</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul></div>
+      <div><h4>Community</h4><ul>
+        <li><a href="https://github.com/isod89/sloop-fm1">GitHub</a></li>
+        <li><a href="https://github.com/isod89/sloop-fm1/issues">Report a bug</a></li>
+        <li><a href="legal.html">Legal and privacy</a></li>
+      </ul></div>
+    </div>
+    <div class="legal">
+      <p>SLOOP is an independent, community-made firmware by Sodwave, based on Felucca by Leo Kuroshita / Hügelton Instruments. It is not affiliated with, endorsed by or supported by M-VAVE. M-VAVE and FM-1 are trademarks of their respective owners, used here only to name the device SLOOP runs on. Screens shown are SLOOP's own interface. Installing custom firmware is at your own risk. © <span data-year>2026</span> Sodwave · SLOOP is licensed under the GPL-3.0.</p>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>
