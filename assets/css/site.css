@@ -161,6 +161,7 @@ figure.cap figcaption { margin-top: 12px; font-family: var(--pix); text-transfor
 
 /* cards */
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.cards.c2 { grid-template-columns: repeat(2, 1fr); }
 .card { background: var(--s2); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; }
 .card h3 { display: flex; align-items: center; gap: 10px; }
 .card h3::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c, var(--t1)); flex: none; }
@@ -261,6 +262,7 @@ footer .legal { border-top: 1px solid var(--line); padding-top: 24px; line-heigh
   .stats li:nth-child(4) { border-left: 1px solid var(--line); }
   .stats li:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .cards { grid-template-columns: 1fr; }
+  .cards.c2 { grid-template-columns: 1fr; }
   .row { gap: 14px; }
   .screen { padding: 8px; border-radius: 12px; box-shadow: 0 0 0 4px #0c0c0f, 0 20px 50px -24px color-mix(in srgb, var(--glow) 55%, transparent); }
   footer .cols { grid-template-columns: 1fr; }

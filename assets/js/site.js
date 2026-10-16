@@ -35,7 +35,7 @@
     });
   });
 
-  /* the latest release (GitHub), kept for an hour in this browser; the page says 2.6 without it */
+  /* the latest release (GitHub), kept for an hour in this browser; the page says 2.7 without it */
   const show = (r) => {
     $$("[data-version]").forEach((el) => { el.textContent = r.v; });
     if (r.d) $$("[data-date]").forEach((el) => { el.textContent = " · " + r.d; });
