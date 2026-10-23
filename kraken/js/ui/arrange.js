@@ -4,7 +4,8 @@ import { h, fitCanvas, dragPointer } from './kit.js';
 import { newClip, uid } from '../project.js';
 import { DEVICES } from '../fx.js';
 
-const RULER_LOOP = 11;                     // the ruler's top band: the loop region
+// the ruler, top to bottom: the LOOP band, the PUNCH band, the bar numbers (click: playhead)
+const BAND = 12, LOOP_Y = 0, PUNCH_Y = 13, NUM_Y = 26, GRIP = 7;
 const EDGE = 7;                            // px from a clip's end that resizes it
 
 export function autoTargets(app, t) {
@@ -134,63 +135,98 @@ export class Arrange {
 
   // --------------------------------------------------------------- ruler ---
   drawRuler(c, w, hh) {
-    const p = this.p, v = this.app.view;
+    const p = this.p, v = this.app.view, hot = this.rulerHot;
     c.fillStyle = '#0b0c0d'; c.fillRect(0, 0, w, hh);
-    c.fillStyle = '#131517'; c.fillRect(0, 0, w, RULER_LOOP);
-    const la = this.x(p.loop.a), lb = this.x(p.loop.b);
-    c.fillStyle = p.loop.on ? '#ff5b14' : '#3a3f45';
-    c.fillRect(la, 2, lb - la, RULER_LOOP - 4);
-    if (p.punch?.on) {                                       // punch in / out: the red band under the loop
-      c.fillStyle = '#ff2f2f'; c.fillRect(this.x(p.punch.a), RULER_LOOP - 3, (p.punch.b - p.punch.a) * this.app.view.zoom, 3);
-    }
+    c.fillStyle = '#131517'; c.fillRect(0, LOOP_Y, w, BAND); c.fillRect(0, PUNCH_Y, w, BAND);
+    c.font = '700 8px "IBM Plex Mono", monospace'; c.textBaseline = 'middle'; c.textAlign = 'right';
+    c.fillStyle = '#3d4248'; c.fillText('LOOP', w - 6, LOOP_Y + BAND / 2 + 0.5); c.fillText('PUNCH', w - 6, PUNCH_Y + BAND / 2 + 0.5);
+    c.textAlign = 'left';
+    const bars = (b) => +(b / p.sig + 1).toFixed(2);
+    this.drawRegion(c, p.loop, LOOP_Y, p.loop.on ? '#ff5b14' : '#4a5057', p.loop.on ? 'LOOP' : 'LOOP OFF', hot?.key === 'loop' ? hot.mode : null, true);
+    this.drawRegion(c, p.punch, PUNCH_Y, '#ff2f2f', p.punch.on ? `PUNCH IN ${bars(p.punch.a)} · OUT ${bars(p.punch.b)}` : 'PUNCH OFF · click to arm', hot?.key === 'punch' ? hot.mode : null, p.punch.on);
     const bar = p.sig, every = v.zoom * bar < 34 ? (v.zoom * bar < 14 ? 8 : 4) : 1;
-    c.font = '500 10px "IBM Plex Mono", monospace'; c.textBaseline = 'middle';
+    c.font = '500 10px "IBM Plex Mono", monospace';
     const b0 = Math.floor(this.beat(0) / bar), b1 = Math.ceil(this.beat(w) / bar);
     for (let b = Math.max(0, b0); b <= b1; b++) {
       const x = Math.round(this.x(b * bar)) + 0.5;
       const major = b % every === 0;
       c.strokeStyle = major ? '#5b6168' : '#2f343a';
-      c.beginPath(); c.moveTo(x, major ? RULER_LOOP : hh - 6); c.lineTo(x, hh); c.stroke();
-      if (major) { c.fillStyle = '#9aa0a6'; c.fillText(String(b + 1), x + 4, RULER_LOOP + (hh - RULER_LOOP) / 2); }
+      c.beginPath(); c.moveTo(x, major ? NUM_Y : hh - 6); c.lineTo(x, hh); c.stroke();
+      if (major) { c.fillStyle = '#9aa0a6'; c.fillText(String(b + 1), x + 4, NUM_Y + (hh - NUM_Y) / 2); }
     }
     const px = this.x(this.app.pos);
     c.fillStyle = '#ff5b14';
     c.beginPath(); c.moveTo(px - 5, hh - 7); c.lineTo(px + 5, hh - 7); c.lineTo(px, hh); c.fill();
   }
+  // a region of the ruler (loop or punch) as a block with a handle at each end, like a clip
+  drawRegion(c, R, y, col, label, hot, on) {
+    const xa = this.x(R.a), xb = this.x(R.b), wd = xb - xa, top = y + 1, ht = BAND - 2;
+    if (on) { c.fillStyle = col; c.globalAlpha = hot === 'move' ? 1 : 0.88; c.fillRect(xa, top, wd, ht); c.globalAlpha = 1; }
+    else {
+      c.fillStyle = col + '22'; c.fillRect(xa, top, wd, ht);
+      c.strokeStyle = col + '99'; c.setLineDash([3, 2]); c.strokeRect(xa + 0.5, top + 0.5, wd - 1, ht - 1); c.setLineDash([]);
+    }
+    for (const [x, m] of [[xa, 'a'], [xb - 5, 'b']]) {                         // the grips
+      c.fillStyle = hot === m ? '#ffffff' : on ? '#ffe2d6' : col + 'aa'; c.fillRect(x, top, 5, ht);
+    }
+    c.font = '700 8px "IBM Plex Mono", monospace';
+    const tw = c.measureText(label).width;
+    if (wd > tw + 16) { c.fillStyle = on ? '#0b0c0d' : col; c.fillText(label, xa + 8, y + BAND / 2 + 0.5); }
+  }
+  rulerHit(x, y) {
+    const key = y < PUNCH_Y ? 'loop' : y < NUM_Y ? 'punch' : null;
+    if (!key) return null;
+    const R = this.p[key], xa = this.x(R.a), xb = this.x(R.b);
+    const da = Math.abs(x - xa), db = Math.abs(x - xb);
+    let mode = 'new';
+    if (Math.min(da, db) <= GRIP) mode = da <= db ? 'a' : 'b';
+    else if (x > xa && x < xb) mode = 'move';
+    return { key, mode };
+  }
   bindRuler() {
-    const cv = document.getElementById('ruler');
+    const cv = document.getElementById('ruler'), app = this.app;
+    const TIPS = {
+      loop: 'LOOP: drag its ends to resize it, its middle to move it; click it to turn the loop on / off; drag on the empty band to draw a new one',
+      punch: 'PUNCH IN / OUT: when on, recording only keeps what is played inside the red zone. Drag its ends to resize it, its middle to move it; click it to turn it on / off',
+    };
+    cv.addEventListener('pointermove', (e) => {
+      if (e.buttons) return;
+      const r = cv.getBoundingClientRect(), hit = this.rulerHit(e.clientX - r.left, e.clientY - r.top);
+      cv.style.cursor = !hit ? '' : hit.mode === 'move' ? 'grab' : hit.mode === 'new' ? 'crosshair' : 'ew-resize';
+      cv.title = hit ? TIPS[hit.key] : 'Click or drag: move the playhead';
+      const was = this.rulerHot;
+      if (hit?.key !== was?.key || hit?.mode !== was?.mode) { this.rulerHot = hit; this.ruler.redraw(); }
+    });
+    cv.addEventListener('pointerleave', () => { if (this.rulerHot) { this.rulerHot = null; this.ruler.redraw(); } });
     cv.addEventListener('pointerdown', (e) => {
-      const r = cv.getBoundingClientRect(), y = e.clientY - r.top;
+      const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       const at = (m) => Math.max(0, this.beat(m.clientX - r.left));
-      if (y < RULER_LOOP + 2 && e.shiftKey) {                // Shift-drag: the punch region
-        const s = Math.max(1, this.app.view.snap || 1), start = at(e);
-        const set = (m) => { const cur = at(m), lo = Math.min(start, cur), hi = Math.max(start, cur);
-          this.app.store.change((pp) => { pp.punch = { on: true, a: Math.floor(lo / s) * s, b: Math.max(Math.floor(lo / s) * s + s, Math.ceil(hi / s) * s) }; }, 'punch'); };
-        set(e); dragPointer(e, set, () => this.app.store.endGesture());
+      const hit = this.rulerHit(x, y);
+      if (!hit) {
+        app.seek(this.snap(at(e)));
+        dragPointer(e, (m) => app.seek(this.snap(at(m))));
         return;
       }
-      if (y < RULER_LOOP + 2) {
-        const p = this.p, b = at(e), s = Math.max(1, this.app.view.snap || 1);
-        const inside = b > p.loop.a && b < p.loop.b;
-        const a0 = p.loop.a, b0 = p.loop.b, start = b;
-        dragPointer(e, (m) => {
-          const cur = at(m);
-          this.app.store.change((pp) => {
-            if (inside && Math.abs(cur - start) > 0) {
-              const d = Math.round((cur - start) / s) * s, len = b0 - a0;
-              pp.loop.a = Math.max(0, a0 + d); pp.loop.b = pp.loop.a + len;
-            } else {
-              const lo = Math.min(start, cur), hi = Math.max(start, cur);
-              pp.loop.a = Math.floor(lo / s) * s; pp.loop.b = Math.max(pp.loop.a + s, Math.ceil(hi / s) * s);
-            }
-            pp.loop.on = true;
-          }, 'loop');
-        }, () => this.app.store.endGesture());
-        if (!inside) this.app.store.change((pp) => { pp.loop.a = Math.floor(b / s) * s; pp.loop.b = pp.loop.a + this.p.sig * 4; pp.loop.on = true; }, 'loop');
-      } else {
-        this.app.seek(this.snap(at(e)));
-        dragPointer(e, (m) => this.app.seek(this.snap(at(m))));
-      }
+      const { key, mode } = hit, sig = this.p.sig, s = Math.max(1, app.view.snap || 1), start = at(e);
+      const R0 = { ...this.p[key] }, tag = key + Math.random();
+      let moved = false;
+      const set = (a, b) => app.store.change((pp) => { pp[key] = { ...pp[key], a, b, on: true }; }, tag);
+      if (mode === 'new') { const a = Math.floor(start / sig) * sig; set(a, a + sig * 4); }
+      cv.style.cursor = mode === 'move' ? 'grabbing' : cv.style.cursor;
+      dragPointer(e, (m) => {
+        if (!moved && Math.abs(m.clientX - e.clientX) < 3) return;
+        moved = true;
+        const cur = at(m), q = (b) => Math.round(b / s) * s;
+        if (mode === 'a') set(Math.max(0, Math.min(q(cur), R0.b - s)), R0.b);
+        else if (mode === 'b') set(R0.a, Math.max(q(cur), R0.a + s));
+        else if (mode === 'move') { const a = Math.max(0, R0.a + q(cur - start)); set(a, a + R0.b - R0.a); }
+        else { const lo = Math.min(start, cur), hi = Math.max(start, cur), a = Math.floor(lo / s) * s; set(a, Math.max(a + s, Math.ceil(hi / s) * s)); }
+      }, () => {
+        if (!moved && mode !== 'new') {                          // a click: on / off
+          if (key === 'punch') app.togglePunch(); else app.store.change((pp) => { pp.loop.on = !pp.loop.on; }, tag);
+        } else if (key === 'punch' && !R0.on) app.punchHint();
+        app.store.endGesture(); cv.style.cursor = '';
+      });
     });
     cv.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
   }
@@ -201,6 +237,10 @@ export class Arrange {
     c.fillStyle = '#0b0c0d'; c.fillRect(0, 0, w, hh);
     // loop shade
     if (p.loop.on) { c.fillStyle = 'rgba(255,91,20,0.045)'; c.fillRect(this.x(p.loop.a), 0, this.x(p.loop.b) - this.x(p.loop.a), hh); }
+    if (p.punch?.on) {                                       // punch: a red zone with its in / out lines
+      const a = this.x(p.punch.a), b = this.x(p.punch.b);
+      c.fillStyle = 'rgba(255,47,47,0.07)'; c.fillRect(a, 0, b - a, hh);
+    }
     // grid
     const bar = p.sig;
     const b0 = Math.max(0, Math.floor(this.beat(0))), b1 = Math.ceil(this.beat(w));
@@ -226,6 +266,10 @@ export class Arrange {
     if (this.total - v.sy < hh) {
       c.fillStyle = '#5b616866'; c.font = '600 10px Archivo, sans-serif';
       c.fillText(p.tracks.length ? 'Double-click or drag on a lane to add a clip · + TRACK in the sound library adds a track' : 'Add a track with + SYNTH or + DRUMS, or pick a sound in the library', 12, this.total - v.sy + 22);
+    }
+    if (p.punch?.on) {                                       // the punch in / out lines, over the clips
+      c.fillStyle = 'rgba(255,47,47,0.8)';
+      c.fillRect(Math.round(this.x(p.punch.a)), 0, 1, hh); c.fillRect(Math.round(this.x(p.punch.b)) - 1, 0, 1, hh);
     }
     const px = Math.round(this.x(this.app.pos)) + 0.5;
     c.strokeStyle = '#ff5b14'; c.beginPath(); c.moveTo(px, 0); c.lineTo(px, hh); c.stroke();

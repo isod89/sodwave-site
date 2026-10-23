@@ -2,7 +2,7 @@
 // The clip editor: a piano roll for instrument clips, a step grid for drum clips.
 import { h, fitCanvas, dragPointer, noteName } from './kit.js';
 
-const KEYW = 46, VELH = 46, BLACK = [1, 3, 6, 8, 10];
+const KEYW = 46, VELH = 46, CRUL = 26, BLACK = [1, 3, 6, 8, 10];
 
 export class Editor {
   constructor(app, root) {
@@ -36,12 +36,12 @@ export class Editor {
     const c = this.ctx;
     if (!c) return;
     const [w] = this.canvas.size();
-    const loop = c.clip.loop || c.clip.len;
-    this.pr.zoom = Math.max(16, Math.min(160, (w - KEYW - 20) / loop));
+    const span = Math.max(c.clip.loop || c.clip.len, c.clip.len);            // both handles in view, room to drag
+    this.pr.zoom = Math.max(12, Math.min(160, (w - KEYW - 48) / span));
     this.pr.sx = 0;
     if (c.t.kind === 'synth' && c.clip.notes.length) {
       const avg = c.clip.notes.reduce((a, n) => a + n.n, 0) / c.clip.notes.length;
-      const [, hh] = this.canvas.size(), rows = Math.floor((hh - VELH) / this.pr.rowH);
+      const [, hh] = this.canvas.size(), rows = Math.floor((hh - CRUL - VELH) / this.pr.rowH);
       this.pr.top = Math.min(127, Math.round(avg + rows / 2));
     }
   }
@@ -154,7 +154,7 @@ export class Editor {
 
   // ----------------------------------------------------------- geometry ---
   geom() {
-    const [w, hh] = this.canvas.size(), drum = this.ctx?.t.kind === 'drum';
+    const [w, h0] = this.canvas.size(), drum = this.ctx?.t.kind === 'drum', hh = h0 - CRUL;   // below the length strip
     const lanes = this.app.lib.sloop.lanes;
     return drum ? { w, hh, gx: 70, gh: hh, rowH: Math.max(10, Math.min(22, hh / lanes.length)), drum }
       : { w, hh, gx: KEYW, gh: hh - VELH, rowH: this.pr.rowH, drum };
@@ -172,8 +172,72 @@ export class Editor {
     if (!cx) return;
     const g = (this.geomCache = this.geom());
     if (!this.pr.zoom) this.fit();
-    if (cx.t.kind === 'audio') this.drawAudio(c, cx, w, hh);
-    else if (g.drum) this.drawDrums(c, cx, g); else this.drawRoll(c, cx, g);
+    if (cx.t.kind === 'audio') { this.drawAudio(c, cx, w, hh); return; }
+    c.save(); c.translate(0, CRUL); c.beginPath(); c.rect(0, 0, w, g.hh); c.clip();
+    if (g.drum) this.drawDrums(c, cx, g); else this.drawRoll(c, cx, g);
+    c.restore();
+    this.drawStrip(c, cx, g);
+  }
+  // the length strip, above the grid: the clip as a block with two handles to drag, like the arrangement's clips.
+  // Orange, on top: the LOOP (the notes repeat every…). White, below: the clip's LENGTH.
+  drawStrip(c, { t, clip }, g) {
+    const sig = this.app.store.p.sig, loop = clip.loop || clip.len, len = clip.len;
+    const x0 = this.tx(0), lx = this.tx(loop), ex = this.tx(len), hot = this.stripHot;
+    const bars = (v) => { const b = +(v / sig).toFixed(2); return `${b} BAR${b === 1 ? '' : 'S'}`; };
+    c.fillStyle = '#131517'; c.fillRect(0, 0, g.w, CRUL);
+    c.fillStyle = '#2a2e33'; c.fillRect(0, CRUL - 1, g.w, 1);
+    c.font = '700 8px "IBM Plex Mono", monospace'; c.textBaseline = 'middle';
+    c.fillStyle = '#ff5b14'; c.fillText('LOOP', 5, 6);
+    c.fillStyle = '#c9ccc9'; c.fillText('LENGTH', 5, 18);
+    c.save(); c.beginPath(); c.rect(g.gx, 0, g.w - g.gx, CRUL); c.clip();
+    // the clip block, its bars numbered
+    c.globalAlpha = 0.32; c.fillStyle = t.color; c.fillRect(x0, 13, ex - x0, CRUL - 15); c.globalAlpha = 1;
+    c.font = '500 9px "IBM Plex Mono", monospace';
+    for (let b = 0; b * sig < len; b++) {
+      const x = this.tx(b * sig); if (x > g.w) break;
+      c.fillStyle = '#4a5057'; c.fillRect(Math.round(x), 13, 1, CRUL - 15);
+      c.fillStyle = '#c9ccc9'; c.fillText(String(b + 1), x + 3, 19);
+    }
+    // the loop brace
+    c.fillStyle = hot === 'loop' ? '#ff8a52' : '#ff5b14'; c.fillRect(x0, 1, lx - x0, 10);
+    c.fillStyle = '#0b0c0d'; c.font = '700 8px "IBM Plex Mono", monospace';
+    if (lx - x0 > 70) c.fillText(`LOOP ${bars(loop)}`, x0 + 4, 6.5);
+    c.fillStyle = '#ffd9c4'; c.fillRect(lx - 6, 1, 6, 10);                   // its handle
+    c.fillStyle = '#0b0c0d'; c.fillRect(lx - 4, 3, 1, 6); c.fillRect(lx - 2, 3, 1, 6);
+    // the length handle
+    c.fillStyle = hot === 'len' ? '#ffffff' : '#d6d7d4'; c.fillRect(ex - 6, 12, 6, CRUL - 13);
+    c.fillStyle = '#0b0c0d'; c.fillRect(ex - 4, 15, 1, CRUL - 19); c.fillRect(ex - 2, 15, 1, CRUL - 19);
+    const lab = `${bars(len)}`, lw = c.measureText(lab).width + 8;
+    if (ex - x0 > lw + 30) { c.fillStyle = '#0b0c0d'; c.fillRect(ex - 8 - lw, 13, lw, CRUL - 15); c.fillStyle = '#fff'; c.fillText(lab, ex - 4 - lw, 19); }
+    if (this.stripDrag) { c.fillStyle = '#fff'; c.font = '700 9px "IBM Plex Mono", monospace'; const x = this.stripDrag === 'loop' ? lx : ex; c.fillText(this.stripDrag === 'loop' ? `LOOP ${bars(loop)}` : `LENGTH ${bars(len)}`, Math.min(x + 6, g.w - 110), this.stripDrag === 'loop' ? 6.5 : 19); }
+    c.restore();
+  }
+  stripHit(clip, x, y) {
+    const lx = this.tx(clip.loop || clip.len), ex = this.tx(clip.len), R = 9;
+    const nearL = x > lx - R && x < lx + R - 3, nearE = x > ex - R && x < ex + R - 3;
+    if (nearL && (y < 12 || !nearE)) return 'loop';
+    if (nearE) return 'len';
+    return null;
+  }
+  // drag a handle: snaps to beats (Shift: 1/16). The loop follows the length while they are equal.
+  stripDown(e, { clip }, g, x, y, local) {
+    const what = this.stripHit(clip, x, y);
+    if (!what) return;
+    const linked = Math.abs((clip.loop || clip.len) - clip.len) < 1e-9, tag = 'cliplen' + Math.random();
+    this.stripDrag = what;
+    dragPointer(e, (m) => {
+      const [mx] = local(m), step = m.shiftKey ? 0.25 : 1;
+      const v = Math.max(step, Math.round(this.xt(mx) / step) * step);
+      this.change((cl) => {
+        if (what === 'len') { cl.len = v; if (linked || (cl.loop || 0) > v) cl.loop = v; }
+        else { cl.loop = v; if (cl.len < v) cl.len = v; }
+      }, tag);
+    }, () => {
+      this.stripDrag = null; this.app.store.endGesture();
+      const cx = this.ctx, [w] = this.canvas.size();
+      if (cx && (this.tx(Math.max(cx.clip.len, cx.clip.loop || 0)) > w - 24 || this.tx(Math.max(cx.clip.len, cx.clip.loop || 0)) < w * 0.5)) this.fit();
+      this.canvas.redraw(); this.renderBar();
+    });
   }
   gridLines(c, g, loop, len, top, bottom) {
     const sig = this.app.store.p.sig, step = this.pr.zoom >= 60 ? 0.25 : this.pr.zoom >= 24 ? 0.5 : 1;
@@ -294,7 +358,7 @@ export class Editor {
   drawDrums(c, { t, clip }, g) {
     const lib = this.app.lib.sloop, loop = clip.loop || clip.len, rh = g.rowH;
     const steps = Math.round(loop * 4);
-    this.pr.zoom = Math.max(14, (g.w - g.gx - 10) / Math.max(4, Math.min(steps / 4, 16)));
+    this.pr.zoom = Math.max(14, (g.w - g.gx - 40) / Math.max(4, Math.min(Math.max(loop, clip.len), 32)));
     for (let l = 0; l < lib.lanes.length; l++) {
       const y = l * rh;
       c.fillStyle = l % 2 ? '#111315' : '#14171a'; c.fillRect(0, y, g.w, rh);
@@ -328,12 +392,15 @@ export class Editor {
   // -------------------------------------------------------------- input ---
   bind() {
     const cv = this.cv;
-    const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const raw = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const local = (e) => { const [x, y] = raw(e); return [x, y - CRUL]; };      // grid coordinates, under the length strip
     cv.addEventListener('pointerdown', (e) => {
       const cx = this.ctx; if (!cx || e.button !== 0) return;
       cv.focus();
-      const [x, y] = local(e), g = (this.geomCache = this.geom());
+      const g = (this.geomCache = this.geom());
       if (cx.t.kind === 'audio') return;
+      const [x, y] = local(e);
+      if (y < 0) return this.stripDown(e, cx, g, x, y + CRUL, local);
       if (g.drum) return this.drumDown(e, cx, g, x, y, local);
       if (x < KEYW && y < g.gh) { this.audition(this.yn(y), e); return; }
       if (y >= g.gh) return this.velDown(e, cx, local);
@@ -353,10 +420,15 @@ export class Editor {
     cv.addEventListener('pointermove', (e) => {
       const cx = this.ctx; if (!cx || e.buttons) return;
       const [x, y] = local(e), g = this.geomCache || this.geom();
+      const hot = cx.t.kind !== 'audio' && y < 0 ? this.stripHit(cx.clip, x, y + CRUL) : null;
+      if (hot !== (this.stripHot || null)) { this.stripHot = hot; this.canvas.redraw(); }
+      cv.title = y < 0 && cx.t.kind !== 'audio' ? 'Drag the white handle to change the clip length, the orange one to change the loop (Shift: finer)' : '';
+      if (y < 0 && cx.t.kind !== 'audio') { cv.style.cursor = hot ? 'ew-resize' : 'default'; return; }
       if (cx.t.kind === 'audio' || g.drum || y >= g.gh || x < KEYW) { cv.style.cursor = g.drum ? 'pointer' : 'default'; return; }
       const hit = this.hitNote(cx.clip, x, y);
       cv.style.cursor = hit ? (hit.edge ? 'ew-resize' : 'move') : 'crosshair';
     });
+    cv.addEventListener('pointerleave', () => { if (this.stripHot) { this.stripHot = null; this.canvas.redraw(); } });
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
       const cx = this.ctx; if (!cx) return;

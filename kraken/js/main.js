@@ -432,6 +432,24 @@ Object.assign(app, {
   launch(trackId, slot) { app.audio.send({ t: 'launch', track: trackId, slot }); if (!app.playing && slot >= 0) { app.playing = true; $('play').classList.add('on'); } },
   launchScene(i) { app.audio.send({ t: 'scene', slot: i }); if (!app.playing) { app.playing = true; $('play').classList.add('on'); } },
   stopAll() { app.audio.send({ t: 'stopAll' }); },
+  // PUNCH: on, the zone is brought into view (the loop, or 4 bars from the playhead) and explained
+  togglePunch() {
+    const p = app.store.p, sig = p.sig, on = !p.punch.on;
+    let { a, b } = p.punch;
+    if (on) {
+      const ar = app.arrange, [w] = ar.ruler.size(), v0 = ar.beat(0), v1 = ar.beat(w);
+      if (!(b > v0 && a < v1) || b <= a) {
+        if (p.loop.on && p.loop.a >= v0 && p.loop.b <= v1 && p.loop.b - p.loop.a < v1 - v0) ({ a, b } = p.loop);   // a loop in view
+        else { a = Math.floor(app.pos / sig) * sig; b = a + 4 * sig; }
+      }
+    }
+    app.store.change((pp) => { pp.punch = { on, a, b }; });
+    if (on) app.punchHint(); else toast('PUNCH OFF: recording keeps everything you play.');
+  },
+  punchHint() {
+    const p = app.store.p, bar = (x) => +(x / p.sig + 1).toFixed(2);
+    toast(`PUNCH ON, bar ${bar(p.punch.a)} to bar ${bar(p.punch.b)}: press REC and play, only what falls inside the red zone is recorded. Drag the zone's ends in the ruler to move them.`);
+  },
   async setRecord(on) {
     const target = app.playTarget();
     if (on && target?.kind === 'audio') {
@@ -599,7 +617,7 @@ function bindTop() {
   $('add-return').onclick = () => app.addReturn();
   $('add-tempo').onclick = () => { app.view.tempoLane = true; if (!app.store.p.tempo.length) app.store.change((p) => { p.tempo = [{ t: 0, v: p.bpm }]; }); app.arrange.renderHeads(); app.arrange.redraw(); app.setMode('arrange'); };
   $('countin').onclick = () => app.store.change((p) => { p.countIn = !p.countIn; });
-  $('punch').onclick = () => app.store.change((p) => { p.punch.on = !p.punch.on; });
+  $('punch').onclick = () => app.togglePunch();
   $('swing').onchange = (e) => app.store.change((p) => { p.swing = +e.target.value; });
   $('add-synth').onclick = () => app.addTrack('synth');
   $('add-audio').onclick = () => app.addTrack('audio', { sends: [0, 0] });
@@ -741,7 +759,9 @@ function help() {
     ['Controllers tab', 'Devices, Mackie Control, MIDI clock out, mappings, actions, channel routing'],
     ['Drop a .mid', 'Import a MIDI file as tracks · drop audio files to make audio tracks'],
     ['Ctrl K', 'Command palette: every action, track, sound, kit and effect'],
-    ['Tab', 'Arrangement / session · Shift-drag the loop band: punch region'],
+    ['Tab', 'Arrangement / session'],
+    ['Ruler', 'Top band: the LOOP · middle band: PUNCH in / out · bottom: the playhead. Drag a zone\'s ends to resize it, its middle to move it, click it to turn it on / off'],
+    ['Clip editor', 'The strip above the notes: drag the white handle for the clip length, the orange one for the loop'],
   ];
   modal('Keys & mouse', [h('div', { style: { display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', font: '500 11px/1.4 var(--f-ui)' } },
     rows.flatMap(([k, v]) => [h('span', { style: { font: '500 10px/1.4 var(--f-mono)', color: 'var(--accent)' }, text: k }), h('span', { text: v })]))], [['Close', null, true]]);
@@ -749,7 +769,7 @@ function help() {
 let toastTimer = 0;
 function toast(text) {
   const t = $('toast'); t.textContent = text; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, Math.max(3200, text.length * 60));
 }
 app.toast = toast;
 

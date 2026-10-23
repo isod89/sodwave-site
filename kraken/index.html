@@ -114,7 +114,7 @@ canvas { display: block; }
 /* ------------------------------------------------------------ arrangement */
 .panel { background: var(--screen); border-radius: 10px; color: var(--text); min-width: 0; min-height: 0; overflow: hidden;
   box-shadow: 0 0 0 1px #0007, 0 1px 0 #fff9; position: relative; }
-#arr { grid-area: arr; display: grid; grid-template-columns: 228px minmax(0, 1fr); grid-template-rows: 30px minmax(0, 1fr); }
+#arr { grid-area: arr; display: grid; grid-template-columns: 228px minmax(0, 1fr); grid-template-rows: 40px minmax(0, 1fr); }
 #arr-corner { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); display: flex; align-items: center; gap: 3px; padding: 0 5px; overflow: hidden; }
 #arr-corner .add { padding: 0 5px; }
 .add {
@@ -458,7 +458,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <button class="key" id="loop" title="Loop (L)" data-learn="act:loop">LOOP</button>
       <button class="key" id="click" title="Metronome (M)" data-learn="act:click">CLICK</button>
       <button class="key" id="countin" title="Count-in: one bar of click before recording" data-learn="act:countIn">COUNT</button>
-      <button class="key" id="punch" title="Punch in/out: record only inside the red band of the ruler (Shift-drag it there)" data-learn="act:punch">PUNCH</button>
+      <button class="key" id="punch" title="Punch in / out: when on, recording only keeps what is played inside the red zone of the ruler (its middle band: drag its ends to move them)" data-learn="act:punch">PUNCH</button>
     </div>
     <div class="lcd">
       <span class="big" id="pos">001.1.1</span>
