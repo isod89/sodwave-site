@@ -18,14 +18,17 @@ export class Input {
     window.addEventListener('blur', () => { for (const [, [t, n]] of this.down) app.noteOff(t, n); this.down.clear(); });
     this.show();
   }
-  show() { document.getElementById('oct').textContent = `OCT ${this.octave} · V${this.vel}`; }
+  show(tell = false) {
+    document.getElementById('oct').textContent = `OCT ${this.octave} · V${this.vel}`;
+    if (tell) this.app.toast?.(`Keys: octave ${this.octave} (C${this.octave}), velocity ${this.vel}`);
+  }
   key(e, on) {
     if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
     if (on && this.app.control?.key(e)) { e.stopImmediatePropagation(); return; }
-    if (on && e.code === 'KeyZ') { this.octave = Math.max(0, this.octave - 1); this.show(); return; }
-    if (on && e.code === 'KeyX') { this.octave = Math.min(8, this.octave + 1); this.show(); return; }
-    if (on && e.code === 'KeyC') { this.vel = Math.max(10, this.vel - 15); this.show(); return; }
-    if (on && e.code === 'KeyV') { this.vel = Math.min(127, this.vel + 15); this.show(); return; }
+    if (on && e.code === 'KeyZ') { this.octave = Math.max(0, this.octave - 1); this.show(true); return; }
+    if (on && e.code === 'KeyX') { this.octave = Math.min(8, this.octave + 1); this.show(true); return; }
+    if (on && e.code === 'KeyC') { this.vel = Math.max(10, this.vel - 15); this.show(true); return; }
+    if (on && e.code === 'KeyV') { this.vel = Math.min(127, this.vel + 15); this.show(true); return; }
     const off = PIANO[e.code];
     if (off == null) return;
     e.preventDefault();

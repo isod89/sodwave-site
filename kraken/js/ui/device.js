@@ -5,6 +5,8 @@ import { h, knob, fmt } from './kit.js';
 import { DEVICES, DEVICE_ORDER, defaults, fmtParam, toNorm, fromNorm } from '../fx.js';
 import { uid } from '../project.js';
 import { synthExtras, freezeModule, buildSampler, buildExternal, buildGroup } from './instruments.js';
+import { noteFxModules, refreshNoteKnobs } from './notes.js';
+import { modModules, refreshModKnobs, modMeters } from './mods.js';
 
 // the knobs of a sound, grouped; the two firmwares share ids 0..44 and 49..52 (core.h), Clipper adds its macros,
 // a second envelope / LFO, a modulation matrix and moves the INSERT
@@ -49,19 +51,30 @@ export class Device {
   owner() {
     const app = this.app, b = app.view.selBus, p = app.store.p;
     if (b === 'master') return { id: 'master', name: 'MASTER', fx: p.master.fx, edit: (fn) => app.store.change((pp) => fn(pp.master.fx), 'fxm') };
-    if (b === 'ret0' || b === 'ret1') { const i = +b[3]; return { id: b, name: `${p.returns[i].name} RETURN`, fx: p.returns[i].fx, edit: (fn) => app.store.change((pp) => fn(pp.returns[i].fx), 'fxr' + i) }; }
+    if (/^ret\d+$/.test(b || '') && p.returns[+b.slice(3)]) { const i = +b.slice(3); return { id: b, name: `${p.returns[i].name} RETURN`, fx: p.returns[i].fx, edit: (fn) => app.store.change((pp) => fn(pp.returns[i].fx), 'fxr' + i) }; }
     const t = app.store.track(app.view.selTrack);
     return t ? { id: t.id, name: t.name, fx: t.fx, t, edit: (fn, tag) => app.store.change((pp) => fn(pp.tracks.find((x) => x.id === t.id).fx), tag) } : null;
   }
   refresh(force = false) {
     const t = this.app.store.track(this.app.view.selTrack), o = this.owner();
     const fxSig = o ? o.fx.map((d) => d.id + d.type + (d.on !== false) + (d.p.sc || '')).join(',') : '';
-    const extra = t ? JSON.stringify([t.sample, t.ext, t.frozen, t.mpe, t.dx7?.name, t.kind === 'group' ? this.app.store.p.tracks.filter((x) => x.out === t.id).length : 0, Object.keys(this.app.store.p.assets || {}).length]) : '';
+    const extra = t ? JSON.stringify([t.sample && [t.sample.src, t.sample.mode, t.sample.slices, t.sample.name, t.sample.loop], t.ext, t.frozen, t.mpe, t.dx7?.name, (t.nfx || []).map((d) => d.id + d.type + (d.on !== false)),
+      (t.mods || []).map((m) => [m.id, m.type, m.on !== false, m.src, Math.round(m.p.sy ?? 1), (m.to || []).map((x) => x.key)]), (t.fx || []).length, t.kind === 'group' ? this.app.store.p.tracks.filter((x) => x.out === t.id).length : 0, Object.keys(this.app.store.p.assets || {}).length]) : '';
     const sig = this.app.view.selBus ? `bus:${this.app.view.selBus}:${fxSig}:${this.app.store.p.tracks.length}`
       : t ? `${t.id}:${t.kind}:${t.bank}:${t.engine}:${t.preset}:${t.kit}:${this.app.params.has(t.id)}:${t.kind === 'audio' ? t.clips.length : ''}:${fxSig}:${this.app.store.p.tracks.length}:${extra}` : '';
     if (sig !== this.sig || force) { this.sig = sig; this.build(t); return; }
-    if (t && !this.app.view.selBus) for (const [id, k] of this.knobs) k.setValue(this.value(t, id));
+    if (t && !this.app.view.selBus) { for (const [id, k] of this.knobs) k.setValue(this.value(t, id)); refreshNoteKnobs(this, t); refreshModKnobs(this, t); }
     if (o) for (const d of o.fx) for (const p of DEVICES[d.type].params) this.fxKnobs.get(`${d.id}:${p.k}`)?.setValue(Math.round(toNorm(p, d.p[p.k] ?? p.def) * 1000));
+  }
+  mods(values) { const t = this.app.store.track(this.app.view.selTrack); if (t && !this.app.view.selBus) modMeters(this, values?.[t.id], t); }
+  // the knobs a modulator moves wear a mark
+  markModded(t) {
+    const keys = new Set((t.mods || []).filter((m) => m.on !== false).flatMap((m) => (m.to || []).map((x) => x.key)));
+    for (const el of this.wrap.querySelectorAll('[data-learn]')) {
+      const id = el.dataset.learn, parts = id.split(':');
+      const key = parts[0] === 'sel' && parts[1] === 'p' ? `p${parts[2]}` : (parts[0] === 'fx' || parts[0] === 'nfx') && parts[1] === t.id ? `${parts[0]}:${parts[2]}:${parts[3]}` : null;
+      el.classList.toggle('modded', !!key && keys.has(key));
+    }
   }
   gr(map) {                                                   // gain reduction readouts, from the engine's ticks
     for (const [id, el] of this.grEls || []) { const v = map?.[id] || 0; el.textContent = `GR ${v > 0.05 ? '-' + v.toFixed(1) : '0.0'} dB`; el.style.setProperty('--v', Math.min(1, v / 24).toFixed(3)); }
@@ -94,7 +107,14 @@ export class Device {
           h('button', { class: 'tb' + (d.on !== false ? ' fxon' : ''), title: 'On / off', 'data-learn': `fxon:${o.id}:${d.id}`, onclick: () => o.edit((fx) => { const x = fx.find((y) => y.id === d.id); x.on = x.on === false; }) }, '⏻'),
           h('button', { class: 'tb', title: 'Move left', onclick: () => move(-1), disabled: i === 0 ? true : null }, '◀'),
           h('button', { class: 'tb', title: 'Move right', onclick: () => move(1), disabled: i === o.fx.length - 1 ? true : null }, '▶'),
-          h('button', { class: 'tb', title: 'Remove', onclick: () => o.edit((fx) => { const j = fx.findIndex((y) => y.id === d.id); fx.splice(j, 1); }) }, '×'))),
+          h('button', { class: 'tb', title: 'Remove', onclick: () => {
+            if (o.t) app.store.change((pp) => {                       // a track's effect: its modulations go with it
+              const tr = pp.tracks.find((x) => x.id === o.t.id);
+              tr.fx = tr.fx.filter((y) => y.id !== d.id);
+              for (const m of tr.mods || []) m.to = (m.to || []).filter((tg) => !tg.key.startsWith(`fx:${d.id}:`));
+            });
+            else o.edit((fx) => { const j = fx.findIndex((y) => y.id === d.id); fx.splice(j, 1); });
+          } }, '×'))),
         h('div', { class: 'knobs', '--cols': spec.params.length > 8 ? 6 : 4 }, knobs), ...extra);
     });
     const add = h('div', { class: 'module fx-add' }, h('h4', {}, 'ADD EFFECT', h('em', { text: o.name })),
@@ -108,6 +128,19 @@ export class Device {
     this.app.store.change((p) => { p.tracks.find((x) => x.id === t.id).params[id] = v; }, `knob${t.id}${id}`);
   }
   build(t) {
+    // the view keeps its place; a module just added is brought into view
+    const sx = this.wrap.scrollLeft, sy = this.wrap.scrollTop;
+    const count = (sel) => this.wrap.querySelectorAll(sel).length, before = { fx: count('.module.fx:not(.nfx):not(.modm)'), nfx: count('.module.nfx'), mod: count('.module.modm') };
+    const same = this.lastBuilt === (this.app.view.selBus || t?.id);
+    this.lastBuilt = this.app.view.selBus || t?.id;
+    requestAnimationFrame(() => {
+      if (!same) return;
+      this.wrap.scrollLeft = sx; this.wrap.scrollTop = sy;
+      for (const [k, sel] of [['fx', '.module.fx:not(.nfx):not(.modm)'], ['nfx', '.module.nfx'], ['mod', '.module.modm']]) {
+        const all = this.wrap.querySelectorAll(sel);
+        if (all.length > before[k]) all[all.length - 1].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      }
+    });
     this.knobs.clear();
     this.fxKnobs.clear();
     const o = this.owner();
@@ -120,6 +153,12 @@ export class Device {
       return;
     }
     this.buildTrack(t);
+    if (t) {
+      const notes = noteFxModules(this, t);                        // notes > note effects > the instrument > modulators > effects
+      if (notes.length && this.wrap.firstChild) this.wrap.firstChild.after(...notes);
+      this.wrap.append(...modModules(this, t));
+      this.markModded(t);
+    }
     if (o) this.wrap.append(...this.rackModules(o));
   }
   buildTrack(t) {

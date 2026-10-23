@@ -5,6 +5,7 @@
 // clock out to sync hardware (an FM-1 running SLOOP); notes, bend, pressure and CCs to the instruments,
 // routed by channel; controller moves recorded as automation.
 import { dbToPos, posToDb } from './ui/mixer.js';
+import { NOTE_FX } from './notefx.js';
 import { DEVICES, toNorm, fromNorm } from './fx.js';
 
 const STORE = 'kraken.control.v1';
@@ -24,7 +25,7 @@ export const ACTIONS = [
   ['toggleView', 'Arrangement / session'], ['stopAll', 'Stop all clips'], ['countIn', 'Count-in on / off'], ['punch', 'Punch in / out on / off'],
   ['scene1', 'Launch scene 1'], ['scene2', 'Launch scene 2'], ['scene3', 'Launch scene 3'], ['scene4', 'Launch scene 4'],
   ['scene5', 'Launch scene 5'], ['scene6', 'Launch scene 6'], ['scene7', 'Launch scene 7'], ['scene8', 'Launch scene 8'],
-  ['palette', 'Command palette'],
+  ['palette', 'Command palette'], ['addMarker', 'Marker at the playhead'], ['prevMarker', 'Previous marker'], ['nextMarker', 'Next marker'],
   ['newSynth', 'New synth track'], ['newDrums', 'New drum track'], ['dupTrack', 'Duplicate selected track'], ['delTrack', 'Delete selected track (asks first)'],
 ];
 const ENC = { abs: 'ABSOLUTE', rel2c: 'RELATIVE (2s compl.)', relbin: 'RELATIVE (64 = 0)', relsign: 'RELATIVE (sign bit)', toggle: 'TOGGLE', momentary: 'MOMENTARY' };
@@ -302,7 +303,7 @@ export class Control {
     if (id === 'bpm') return { label: 'Tempo', kind: 'cont', get: () => (store.p.bpm - 40) / 200, set: (v) => store.change((p) => { p.bpm = Math.round(40 + v * 200); }, 'midibpm') };
     if (parts[0] === 'fx' || parts[0] === 'fxon') {        // an effect's knob, or its on / off: fx:<owner>:<fxId>:<param>
       const [, owner, fxId, pk] = parts;
-      const list = (p) => (owner === 'master' ? p.master.fx : owner.startsWith('ret') ? p.returns[+owner[3]].fx : p.tracks.find((x) => x.id === owner)?.fx) || [];
+      const list = (p) => (owner === 'master' ? p.master.fx : owner.startsWith('ret') ? p.returns[+owner.slice(3)]?.fx : p.tracks.find((x) => x.id === owner)?.fx) || [];
       const dev = () => list(store.p).find((d) => d.id === fxId);
       const d0 = dev(); if (!d0) return null;
       const edit = (fn, tag) => store.change((p) => { const d = list(p).find((x) => x.id === fxId); if (d) fn(d); }, tag);
@@ -311,6 +312,17 @@ export class Control {
       if (!spec) return null;
       return { label: `${DEVICES[d0.type].name} ${spec.l}`, kind: 'cont', get: () => toNorm(spec, dev()?.p[pk] ?? spec.def), set: (v) => edit((d) => { d.p[pk] = fromNorm(spec, v); }, 'midifx' + fxId + pk),
         autoKey: owner.startsWith('t') && !owner.startsWith('ret') ? () => [owner, `fx:${fxId}:${pk}`] : null, raw: () => dev()?.p[pk] };
+    }
+    if (parts[0] === 'nfx') {                              // a note effect's knob: nfx:<track>:<fxId>:<param>
+      const [, tid, fxId, pk] = parts;
+      const dev = () => store.track(tid)?.nfx?.find((d) => d.id === fxId);
+      const d0 = dev(); if (!d0) return null;
+      const spec = NOTE_FX[d0.type].params.find((x) => x.k === pk);
+      if (!spec) return null;
+      const norm = (v) => (v - spec.min) / (spec.max - spec.min), denorm = (v) => { const x = spec.min + v * (spec.max - spec.min); return spec.names || spec.unit !== '%' && Number.isInteger(spec.min + spec.max) ? Math.round(x) : x; };
+      return { label: `${NOTE_FX[d0.type].name} ${spec.l}`, kind: 'cont', get: () => norm(dev()?.p[pk] ?? spec.def),
+        set: (v) => store.change((p) => { const d = p.tracks.find((x) => x.id === tid)?.nfx?.find((x) => x.id === fxId); if (d) d.p[pk] = denorm(v); }, 'midinfx' + fxId + pk),
+        autoKey: () => [tid, `nfx:${fxId}:${pk}`], raw: () => dev()?.p[pk] };
     }
     if (id === 'master:vol') return this.volTarget('Master volume', () => store.p.master, (fn) => store.change((p) => fn(p.master), 'midimv'));
     if (parts[0] === 'ret') {
@@ -405,6 +417,9 @@ export class Control {
       case 'stopAll': app.stopAll(); break;
       case 'countIn': $('countin').click(); break;
       case 'punch': $('punch').click(); break;
+      case 'addMarker': app.addMarker(); break;
+      case 'prevMarker': app.gotoMarker(-1); break;
+      case 'nextMarker': app.gotoMarker(1); break;
       case 'palette': app.palette?.open(); break;
       case 'dupTrack': if (t) app.duplicateTrack(t.id); break;
       case 'delTrack': if (t) app.deleteTrack(t.id); break;

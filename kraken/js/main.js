@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken: a free DAW in the browser, with the SLOOP and Clipper engines of the M-VAVE FM-1 firmwares.
 import { loadEngines, Audio } from './audio.js';
-import { Store, demoProject, newProject, newTrack, newClip, newAudioClip, newReturn, validate, uid, COLORS } from './project.js';
+import { Store, demoProject, newProject, newTrack, newClip, newAudioClip, newReturn, validate, uid, COLORS, cutRange } from './project.js';
 import { peaks, decode, storeAsset, loadAsset, detectBpm, stretch, saveProject, loadProject } from './assets.js';
 import { encodeWav } from './wav.js';
+import { encodeFlac } from './flac.js';
+import { encodeOpus, opusSupported } from './opus.js';
+import { isFolder, addTake, renderFolder, setComp } from './comp.js';
 import { saveFile, zip, unzip, exportMidi, parseMidi } from './io.js';
+import { importSloopSong, presetDefaults } from './sloopsong.js';
 import { RATE } from './engine-core.js';
 import { h } from './ui/kit.js';
 import { Arrange } from './ui/arrange.js';
@@ -86,8 +90,9 @@ async function start() {
   bindResize();
   app.store.emit('load');
   $('boot').hidden = true;
-  if (window.innerWidth > 860) $('app').classList.remove('no-lib');
-  toast(project ? 'Your last session is back. PROJECT > Open demo song for the demo.' : 'Demo song loaded: press Space to play.');
+  if (window.innerWidth > 1180) $('app').classList.remove('no-lib');     // the library open where there is room for it
+  const touch = matchMedia('(pointer: coarse)').matches;
+  toast(project ? `Your last session is back. ${touch ? '☰' : 'PROJECT'} > Open demo song for the demo.` : touch ? 'Demo song loaded: tap ▶ to play. Hold a clip or a track for its menu.' : 'Demo song loaded: press Space to play.');
   if (app.pendingFiles?.length) openPending();
 }
 
@@ -97,7 +102,7 @@ function onChange(p, why) {
   const v = app.view;
   if (!p.tracks.some((t) => t.id === v.selTrack)) v.selTrack = p.tracks[0]?.id ?? null;
   const t = app.store.track(v.selTrack);
-  if (v.selClip && !p.tracks.some((tr) => tr.clips.some((c) => c.id === v.selClip))) v.selClip = null;
+  if (v.selClip && !p.tracks.some((tr) => tr.clips.some((c) => c.id === v.selClip) || tr.slots?.some((c) => c?.id === v.selClip))) v.selClip = null;
   if (why === 'load') syncFull = true;
   if (!syncQueued) {
     syncQueued = true;
@@ -111,6 +116,7 @@ function onChange(p, why) {
   if ($('pname') !== document.activeElement) $('pname').value = p.name;
   if (p.bpm !== onChange.bpm) { onChange.bpm = p.bpm; if (why === 'change') restretchSoon(); }
   if ($('bpm') !== document.activeElement) $('bpm').value = String(+p.bpm.toFixed(2));
+  $('bpm').previousElementSibling.textContent = p.tempo?.length ? 'BPM · MAP' : 'BPM';
   $('loop').classList.toggle('on', p.loop.on);
   $('countin').classList.toggle('on', !!p.countIn); $('punch').classList.toggle('on', !!p.punch?.on);
   if ($('swing') !== document.activeElement) $('swing').value = String(p.swing || 0);
@@ -140,13 +146,14 @@ app.restartAudio = () => { app.audio.restart(); resyncAll(); app.playing = false
 
 function onAudio(m) {
   if (m.t === 'tick') {
+    if ((m.seq ?? 0) < (app.seekSeq || 0) && performance.now() - app.seekAt < 500) return;   // sent before our last seek reached the engine
     app.pos = m.pos;
     if (app.playing !== m.playing) { app.playing = m.playing; $('play').classList.toggle('on', m.playing); app.control.feedbackSoon(); }
     if (app.playing && app.view.follow) app.arrange.follow(m.pos);
     showPos();
     app.arrange.redraw();
     app.arrange.meters(m.tracks);
-    if (app.view.tab === 'device') app.device.gr(m.gr);
+    if (app.view.tab === 'device') { app.device.gr(m.gr); app.device.mods(m.mods); }
     if (app.view.tab === 'edit') app.editor.canvas.redraw();
     if (app.view.tab === 'mixer') app.mixer.meters(m);
     app.session.update(m.sess);
@@ -216,7 +223,7 @@ function closeSessionTake(trackId, end) {
     const tr = p.tracks.find((x) => x.id === trackId), src = tr?.slots[open.slot];
     if (!src) return;
     const c = { ...structuredClone(src), id: uid('c'), start: open.at, len: end - open.at, loop: src.loop || src.len };
-    tr.clips = tr.clips.filter((x) => x.start >= end || x.start + x.len <= open.at);    // the take replaces what was there
+    tr.clips = cutRange(tr.clips, open.at, end, p.bpm);         // the take replaces what was there, only there
     tr.clips.push(c);
   }, 'sessrec');
 }
@@ -263,7 +270,7 @@ function usedAssets(p) {
   const out = {};
   const use = (id) => { const a = id && app.assets.get(id); if (a) out[id] = { L: a.L, R: a.R }; };
   for (const t of p.tracks) {
-    for (const c of t.clips) use(c.src);
+    for (const c of t.clips) { use(c.src); for (const k of c.takes || []) use(k.src); }
     for (const c of t.slots || []) use(c?.src);
     use(t.sample?.src); use(t.frozen?.src);
   }
@@ -321,6 +328,25 @@ async function importMidiFile(file, beat = 0) {
   });
   toast(`${m.tracks.length} MIDI track${m.tracks.length > 1 ? 's' : ''} imported${fresh ? ` at ${m.bpm} BPM` : ''}.`);
 }
+
+// a SLOOP song (.sloopsong, from SLOOP's web editor: Song & sections > Export this song): a project of its own, its
+// sections in the arrangement (in the song's order) and as session scenes. The current project: one Ctrl+Z away
+async function openSloopSong(file, json = null) {
+  let res;
+  try {
+    json ??= JSON.parse(await file.text());
+    res = importSloopSong(json, app.lib.sloop, (app.sloopDefaults ||= presetDefaults(app.modules.sloop)));
+  } catch (e) { toast(e instanceof SyntaxError ? 'This file is not a SLOOP song.' : e.message); return; }
+  const { project: p, warnings } = res;
+  const go = () => {
+    load(validate(p));
+    const secs = p.markers.length ? [...new Set(p.markers.map((m) => m.name.replace('SECTION ', '')))].join(' ') : '';
+    toast(`${p.name}: ${p.tracks.length} tracks${secs ? `, sections ${secs} in the song and as session scenes` : ''}.${warnings.length ? ' ' + warnings.join(' ') : ''}`);
+  };
+  if (app.store.p.tracks.some((t) => t.clips.length || t.slots?.some(Boolean))) confirmBox('Open the SLOOP song', `Open "${p.name}" in place of the current project? Ctrl+Z (or ↶) brings yours back.`, 'Open the song', go);
+  else go();
+}
+const isSloopSong = (f) => /\.sloopsong$/i.test(f.name);
 
 // ------------------------------------------------------------------ warp ---
 const findClip = (p, trackId, clipId) => { const t = p.tracks.find((x) => x.id === trackId); return t?.clips.find((c) => c.id === clipId) || t?.slots?.find((c) => c && c.id === clipId); };
@@ -383,11 +409,40 @@ function finishTake(start) {
   const p = app.store.p, spb = 60 / p.bpm;
   let begin = start - app.audio.roundTrip() / spb, offset = 0;
   if (begin < 0) { offset = -begin * spb; begin = 0; }
-  const id = uid('a'), name = `${t.name} take ${t.clips.length + 1}`;
+  const len = n / RATE / spb - offset / spb, id = uid('a'), name = `${t.name} take ${t.clips.length + 1}`;
   addAsset(id, { L, R, name });
-  const clip = newAudioClip(begin, n / RATE / spb - offset / spb, id, `TAKE ${t.clips.length + 1}`);
-  clip.offset = offset;
-  app.store.change((pp) => { pp.assets[id] = { name, frames: n }; pp.tracks.find((x) => x.id === t.id).clips.push(clip); });
+  app.store.change((pp) => {
+    pp.assets[id] = { name, frames: n };
+    const tr = pp.tracks.find((x) => x.id === t.id);
+    // recorded over audio already there (a loop pass, a punch, a second try): one more take in its folder
+    const over = tr.clips.filter((c) => c.src && (!c.warp || c.warp === 'off') && c.start < begin + len - 0.01 && c.start + c.len > begin + 0.01)
+      .sort((a, b) => (Math.min(b.start + b.len, begin + len) - Math.max(b.start, begin)) - (Math.min(a.start + a.len, begin + len) - Math.max(a.start, begin)));
+    if (over.length) {
+      const c = over[0], k = addTake(c, { src: id, offset, name: `TAKE ${(c.takes?.length || 1) + 1}` }, begin, len);
+      c.name = `TAKES ${k + 1}`.slice(0, 18);
+      app.view.takesOpen ??= new Set(); app.view.takesOpen.add(t.id);
+      app.view.selClip = c.id;
+    } else {
+      const clip = newAudioClip(begin, len, id, `TAKE ${tr.clips.length + 1}`);
+      clip.offset = offset;
+      tr.clips.push(clip);
+    }
+  });
+}
+// the comp of a take folder rendered into one plain clip
+function flattenComp(trackId, clipId) {
+  const t = app.store.track(trackId), c = t?.clips.find((x) => x.id === clipId);
+  if (!isFolder(c)) return;
+  const { L, R } = renderFolder(c, app.assets, app.store.p.bpm, RATE);
+  const id = uid('a'), name = `${t.name} comp`;
+  addAsset(id, { L, R, name });
+  app.store.change((p) => {
+    p.assets[id] = { name, frames: L.length };
+    const x = p.tracks.find((q) => q.id === trackId).clips.find((q) => q.id === clipId);
+    delete x.takes; delete x.comp;
+    Object.assign(x, { src: id, offset: 0, name: 'COMP', fadeIn: 0.002, fadeOut: 0.002 });
+  });
+  toast('Comp flattened into one clip. Undo brings the takes back.');
 }
 
 // ------------------------------------------------------------- actions ---
@@ -413,7 +468,7 @@ Object.assign(app, {
     if (name === 'device') app.device.refresh(true);
     if (name === 'edit') app.editor.refresh();
   },
-  seek(beat) { app.pos = beat; app.audio.send({ t: 'seek', beat }); showPos(); app.arrange.redraw(); app.editor.canvas.redraw(); },
+  seek(beat) { app.pos = beat; app.seekSeq = (app.seekSeq || 0) + 1; app.seekAt = performance.now(); app.audio.send({ t: 'seek', beat, seq: app.seekSeq }); showPos(); app.arrange.redraw(); app.editor.canvas.redraw(); },
   play(on = !app.playing, countIn = false) {
     if (app.audio.ctx.state !== 'running') app.audio.ctx.resume();
     if (!on) closeAllSessionTakes();
@@ -446,6 +501,29 @@ Object.assign(app, {
     app.store.change((pp) => { pp.punch = { on, a, b }; });
     if (on) app.punchHint(); else toast('PUNCH OFF: recording keeps everything you play.');
   },
+  // markers: N adds one at the playhead, , and . jump to the previous / next
+  addMarker(at = Math.floor(app.pos + 1e-6)) {
+    const p = app.store.p, names = ['INTRO', 'VERSE', 'CHORUS', 'BRIDGE', 'DROP', 'BREAK', 'OUTRO'];
+    const used = new Set((p.markers || []).map((m) => m.name));
+    const name = names.find((n) => !used.has(n)) || `MARKER ${(p.markers || []).length + 1}`;
+    if ((p.markers || []).some((m) => Math.abs(m.t - at) < 1e-6)) return;
+    app.store.change((pp) => { pp.markers ||= []; pp.markers.push({ id: uid('k'), t: at, name }); pp.markers.sort((a, b) => a.t - b.t); });
+    toast(`Marker ${name} at bar ${+(at / p.sig + 1).toFixed(2)}. ${matchMedia('(pointer: coarse)').matches ? 'Double-tap' : 'Double-click'} it to rename it.`);
+  },
+  renameMarker(id) {
+    const m = app.store.p.markers.find((x) => x.id === id);
+    if (!m) return;
+    const inp = h('input', { value: m.name, maxlength: 24, style: { width: '100%' }, 'aria-label': 'Marker name' });
+    const ok = () => { const v = inp.value.trim().toUpperCase().slice(0, 24); if (v) app.store.change((pp) => { const x = pp.markers.find((q) => q.id === id); if (x) x.name = v; }); };
+    modal('Rename marker', [inp], [['Delete', () => app.store.change((pp) => { pp.markers = pp.markers.filter((q) => q.id !== id); })], ['Cancel', null], ['Rename', ok, true]]);
+    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { ok(); document.querySelector('.modal-bg')?.remove(); } });
+    setTimeout(() => { inp.focus(); inp.select(); }, 30);
+  },
+  gotoMarker(dir) {
+    const ms = [...(app.store.p.markers || [])].sort((a, b) => a.t - b.t), pos = app.pos;
+    const m = dir > 0 ? ms.find((x) => x.t > pos + 0.01) : ms.reverse().find((x) => x.t < pos - (app.playing ? 0.5 : 0.01));
+    if (m) { app.seek(m.t); toast(m.name); }
+  },
   punchHint() {
     const p = app.store.p, bar = (x) => +(x / p.sig + 1).toFixed(2);
     toast(`PUNCH ON, bar ${bar(p.punch.a)} to bar ${bar(p.punch.b)}: press REC and play, only what falls inside the red zone is recorded. Drag the zone's ends in the ruler to move them.`);
@@ -469,8 +547,9 @@ Object.assign(app, {
     const p = app.store.p;
     return p.tracks.find((t) => t.arm) || app.store.track(app.view.selTrack) || null;
   },
-  noteOn(trackId, n, v = 100) { const t = app.store.track(trackId); if (t?.kind === 'external') app.control.externalLive(t, true, n, v); app.audio.send({ t: 'note', track: trackId, n, v, on: true, silent: t?.kind === 'external' }); },
-  noteOff(trackId, n) { const t = app.store.track(trackId); if (t?.kind === 'external') app.control.externalLive(t, false, n, 0); app.audio.send({ t: 'note', track: trackId, n, v: 0, on: false, silent: t?.kind === 'external' }); },
+  // an external track sends its live notes straight out (lowest latency), unless note effects must shape them first
+  noteOn(trackId, n, v = 100) { const t = app.store.track(trackId), direct = t?.kind === 'external' && !t.nfx?.some((d) => d.on !== false); if (direct) app.control.externalLive(t, true, n, v); app.audio.send({ t: 'note', track: trackId, n, v, on: true, silent: direct }); },
+  noteOff(trackId, n) { const t = app.store.track(trackId), direct = t?.kind === 'external' && !t.nfx?.some((d) => d.on !== false); if (direct) app.control.externalLive(t, false, n, 0); app.audio.send({ t: 'note', track: trackId, n, v: 0, on: false, silent: direct }); },
   audition(trackId, notes, ms = 450) {
     setTimeout(() => {                                         // after the new sound reaches the engine
       for (const n of notes) app.noteOn(trackId, n, 96);
@@ -514,25 +593,28 @@ Object.assign(app, {
   setKit(trackId, kit) { app.store.change((p) => { p.tracks.find((x) => x.id === trackId).kit = kit; }); },
   addTrack(kind, opts = {}) {
     const p = app.store.p;
-    const t = newTrack(kind, p.tracks.length, { ...opts, scenes: p.scenes.length, color: COLORS[p.tracks.length % COLORS.length] });
+    const used = (c) => p.tracks.filter((x) => x.color === c).length;          // the least used colour
+    const color = opts.color || [...COLORS].sort((a, b) => used(a) - used(b))[0];
+    const t = newTrack(kind, p.tracks.length, { ...opts, scenes: p.scenes.length, color });
+    t.name = uniqueName(p, opts.name ? opts.name.slice(0, 16) : t.name);
     if (kind === 'synth' && opts.bank == null) {
       const cat = app.lib.clipper, e = cat.engines.findIndex((x) => x.name === 'HYBRID');
       Object.assign(t, { bank: 'clipper', engine: Math.max(0, e), preset: 0 });
     }
-    if (opts.name) t.name = opts.name.slice(0, 16);
     app.store.change((pp) => pp.tracks.push(t));
     app.view.selTrack = t.id; app.view.selClip = null;
     app.store.emit('select');
+    app.arrange.reveal(t.id);
     if (kind === 'drum') app.audition(t.id, [36, 42]); else if (kind === 'synth') app.audition(t.id, [60, 64, 67]);
     toast({ audio: `${t.name}: drop audio files on its lane, or arm it and press R to record.`, sampler: `${t.name}: load a sample in INSTRUMENT, then play it.`,
       external: `${t.name}: choose the MIDI device and channel in INSTRUMENT. Its clips play that device.`, group: `${t.name}: route tracks to it from the mixer (OUT).` }[kind]
-      || `${t.name}: new track. Double-click its lane to write a clip.`);
+      || `${t.name}: new track. ${matchMedia('(pointer: coarse)').matches ? 'Double-tap' : 'Double-click'} its lane to write a clip.`);
     return t;
   },
   // a group (bus) above the selected track, which it now feeds
   addGroup() {
     const p = app.store.p, sel = app.store.track(app.view.selTrack);
-    const g = newTrack('group', p.tracks.length, { scenes: p.scenes.length, color: '#9aa0a6', name: 'GROUP' });
+    const g = newTrack('group', p.tracks.length, { scenes: p.scenes.length, color: '#9aa0a6', name: uniqueName(p, 'GROUP') });
     app.store.change((pp) => {
       const i = sel ? pp.tracks.findIndex((x) => x.id === sel.id) : pp.tracks.length;
       pp.tracks.splice(Math.max(0, i), 0, g);
@@ -542,11 +624,28 @@ Object.assign(app, {
     toast(sel ? `${sel.name} now plays through ${g.name}. Route more tracks to it with OUT in the mixer.` : `${g.name}: route tracks to it with OUT in the mixer.`);
   },
   addReturn() {
-    const add = (type, name) => { app.store.change((p) => { p.returns.push(newReturn(type, `${name} ${p.returns.length + 1}`)); }); app.showTab('mixer'); toast(`${name} return added: every track has a send to it in the mixer.`); };
+    const add = (type, name) => { let k = app.store.p.returns.length + 1; while (app.store.p.returns.some((r) => r.name === `${name} ${k}`)) k++; const n = `${name} ${k}`; app.store.change((p) => { p.returns.push(newReturn(type, n)); }); app.showTab('mixer'); toast(`${n} added: every track has a send to it in the mixer.`); };
     modal('New return track', [h('p', { text: 'A return gets the tracks\' sends. Start it with an effect, or empty for your own rack.' })],
       [['Reverb', () => add('reverb', 'REVERB'), true], ['Delay', () => add('delay', 'DELAY')], ['Empty (rack only)', () => add('none', 'RETURN')], ['Cancel']]);
   },
-  importAudio, pickAudio, importMidiFile, warpClip, detectClipBpm, clipToSampler,
+  importAudio, pickAudio, importMidiFile, openSloopSong, warpClip, detectClipBpm, clipToSampler, flattenComp,
+  // comping: take k plays from a to b (beats in the clip); the whole clip when a and b are left out
+  compTake(trackId, clipId, k, a = null, b = null, tag) {
+    app.store.change((p) => {
+      const c = p.tracks.find((x) => x.id === trackId)?.clips.find((x) => x.id === clipId);
+      if (!isFolder(c) || !c.takes[k]) return;
+      c.comp = setComp(c.comp, a ?? 0, b ?? c.len, k);
+    }, tag);
+  },
+  // a clip onto a track: what it lands on is cut away (it replaces it, as in a recording)
+  placeClip(trackId, c) {
+    app.store.change((p) => { const tr = p.tracks.find((x) => x.id === trackId); tr.clips = cutRange(tr.clips, c.start, c.start + c.len, p.bpm); tr.clips.push(c); });
+  },
+  toggleTakes(trackId) {
+    const v = app.view; v.takesOpen ??= new Set();
+    v.takesOpen.has(trackId) ? v.takesOpen.delete(trackId) : v.takesOpen.add(trackId);
+    app.arrange.renderHeads(); app.arrange.redraw(); app.arrange.reveal(trackId, true);
+  },
   // delete a track, after asking: its clips, automation and effects go with it (Ctrl+Z brings it back)
   deleteTrack(id, ask = true) {
     const t = app.store.track(id);
@@ -558,20 +657,27 @@ Object.assign(app, {
       const next = app.store.p.tracks[Math.min(i, app.store.p.tracks.length - 1)];
       app.view.selTrack = next?.id ?? null; app.view.selClip = null; app.view.autoOpen.delete(id);
       app.store.emit('select');
-      toast(`${t.name} deleted. Ctrl+Z brings it back.`);
+      toast(`${t.name} deleted. Undo (↶ or Ctrl+Z) brings it back.`);
     };
     if (!ask) return go();
     const n = t.clips.length, fx = t.fx?.length || 0;
     const what = [n ? `${n} clip${n > 1 ? 's' : ''}` : null, Object.keys(t.auto || {}).length ? 'its automation' : null, fx ? `${fx} effect${fx > 1 ? 's' : ''}` : null].filter(Boolean);
-    confirmBox(`Delete ${t.name}?`, `${what.length ? `Its ${what.join(', ')} will be deleted with it. ` : ''}You can still undo it with Ctrl+Z.`, 'Delete track', go, true);
+    confirmBox(`Delete ${t.name}?`, `${what.length ? `Its ${what.join(', ')} will be deleted with it. ` : ''}Undo (↶ or Ctrl+Z) brings it back.`, 'Delete track', go, true);
   },
   duplicateTrack(id) {
     const t = app.store.track(id);
     if (!t) return;
     const c = structuredClone(t);
-    c.id = uid('t'); c.name = `${t.name} 2`.slice(0, 16); c.arm = false; c.solo = false;
-    for (const cl of c.clips) cl.id = uid('c');
-    for (const f of c.fx || []) f.id = uid('f');
+    c.id = uid('t'); c.name = uniqueName(app.store.p, t.name); c.arm = false; c.solo = false;
+    for (const cl of [...c.clips, ...(c.slots || []).filter(Boolean)]) cl.id = uid('c');
+    // new ids for its effects, note effects and modulators, and every reference to them follows
+    const ren = new Map();
+    for (const f of [...(c.fx || []), ...(c.nfx || [])]) { const n = uid(f.id[0]); ren.set(f.id, n); f.id = n; }
+    for (const m of c.mods || []) { m.id = uid('m'); if (m.src === t.id) m.src = c.id; }
+    const rekey = (k) => k.replace(/^(n?fx):([^:]+):/, (all, kind, fid) => (ren.has(fid) ? `${kind}:${ren.get(fid)}:` : all));
+    c.auto = Object.fromEntries(Object.entries(c.auto || {}).map(([k, v]) => [rekey(k), v]));
+    for (const m of c.mods || []) for (const tg of m.to || []) tg.key = rekey(tg.key);
+    for (const f of c.fx || []) if (f.p?.sc === t.id) f.p.sc = '';
     app.store.change((p) => { const i = p.tracks.findIndex((x) => x.id === id); p.tracks.splice(i + 1, 0, c); });
     app.selectTrack(c.id);
     toast(`${c.name}: a copy of ${t.name}.`);
@@ -579,7 +685,7 @@ Object.assign(app, {
 });
 
 // ------------------------------------------------------------- the phone ---
-const phone = () => window.matchMedia('(max-width: 860px)').matches;
+const phone = () => window.matchMedia('(max-width: 700px), (max-height: 520px) and (pointer: coarse)').matches;
 function setMobile(m) {
   $('app').dataset.m = m === 'keys' ? 'bot' : m;
   for (const b of document.querySelectorAll('#mnav button')) b.classList.toggle('on', b.dataset.m === m);
@@ -600,7 +706,9 @@ function bindTop() {
   $('rec').onclick = () => app.setRecord(!app.recording);
   $('home').onclick = () => app.seek(app.store.p.loop.on ? app.store.p.loop.a : 0);
   $('loop').onclick = () => app.store.change((p) => { p.loop.on = !p.loop.on; });
-  $('click').onclick = () => { app.click = !app.click; $('click').classList.toggle('on', app.click); app.audio.send({ t: 'click', on: app.click }); };
+  $('click').onclick = () => { app.click = !app.click; $('click').classList.toggle('on', app.click); app.audio.send({ t: 'click', on: app.click }); if (phone()) toast(`Metronome ${app.click ? 'on' : 'off'}`); };
+  $('pos').onclick = () => { if (phone()) transportSheet(); };
+  $('countin').addEventListener('click', () => { if (phone()) setTimeout(() => toast(`Count-in ${app.store.p.countIn ? 'on: one bar of click before recording' : 'off'}`), 0); });
   $('undo').onclick = () => app.store.undo();
   $('learn').onclick = () => app.control.setLearning(!app.control.learning);
   $('redo').onclick = () => app.store.redo();
@@ -608,9 +716,8 @@ function bindTop() {
   $('mode-arr').onclick = () => app.setMode('arrange');
   $('mode-ses').onclick = () => app.setMode('session');
   const addMenu = $('addmenu');
-  $('addbtn').onclick = (e) => { e.stopPropagation(); addMenu.hidden = !addMenu.hidden; };
-  document.addEventListener('pointerdown', (e) => { if (!addMenu.contains(e.target) && e.target !== $('addbtn')) addMenu.hidden = true; });
-  addMenu.addEventListener('click', () => { addMenu.hidden = true; });
+  popMenu($('addbtn'), addMenu, 'left');
+  addMenu.addEventListener('click', (e) => { if (e.target.closest('button')) addMenu.hidden = true; });
   $('add-sampler').onclick = () => app.addTrack('sampler', { sends: [0.1, 0] });
   $('add-ext').onclick = () => app.addTrack('external', { sends: [0, 0] });
   $('add-group').onclick = () => app.addGroup();
@@ -627,7 +734,15 @@ function bindTop() {
   $('pname').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') e.target.blur(); });
   const bpm = $('bpm');
   const setBpm = (v) => app.store.change((p) => { p.bpm = Math.max(40, Math.min(240, Math.round(v * 100) / 100)); }, 'bpm');
-  bpm.addEventListener('change', () => { const v = parseFloat(bpm.value); if (v) setBpm(v); });
+  bpm.addEventListener('change', () => {
+    const v = parseFloat(bpm.value);
+    if (!(v > 0)) { bpm.value = String(+app.store.p.bpm.toFixed(2)); return; }   // not a number: back to the tempo
+    setBpm(v);
+    if (app.store.p.tempo?.length) {                                              // the tempo map has the last word
+      app.view.tempoLane = true; app.arrange.renderHeads(); app.arrange.redraw();
+      toast('This song has a tempo map: it sets the tempo. Edit it in the TEMPO lane, or CLEAR MAP there.');
+    }
+  });
   bpm.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') bpm.blur(); });
   bpm.addEventListener('pointerdown', (e) => {
     if (document.activeElement === bpm) return;
@@ -640,14 +755,14 @@ function bindTop() {
   });
   for (const b of document.querySelectorAll('#bot .tab[data-tab]')) b.onclick = () => app.showTab(b.dataset.tab);
   const menu = $('filemenu');
-  $('filebtn').onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; };
-  document.addEventListener('pointerdown', (e) => { if (!menu.contains(e.target) && e.target !== $('filebtn')) menu.hidden = true; });
+  popMenu($('filebtn'), menu, 'right');
   menu.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; menu.hidden = true; fileAction(b.dataset.act); };
   $('openfile').onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = '';
     if (!f) return;
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
+      if (isSloopSong(f)) { await openSloopSong(f); return; }
       if (bytes[0] === 0x50 && bytes[1] === 0x4b) {                // a .zip: project.json + the audio
         const entries = await unzip(bytes);
         const pj = entries.find((x) => x.name.endsWith('project.json'));
@@ -658,7 +773,11 @@ function bindTop() {
           if (m && p.assets[m[1]]) addAsset(m[1], { ...(await decode(app.audio.ctx, en.data.slice().buffer)), name: p.assets[m[1]].name });
         }
         load(p);
-      } else load(validate(JSON.parse(new TextDecoder().decode(bytes))));
+      } else {
+        const json = JSON.parse(new TextDecoder().decode(bytes));
+        if (json?.format === 'sloop-song') { await openSloopSong(f, json); return; }
+        load(validate(json));
+      }
       await restoreAssets(app.store.p);
       toast(`${app.store.p.name} opened.`);
     } catch (err) { toast(err.message); }
@@ -669,18 +788,26 @@ function load(p) {
   app.audio.send({ t: 'stop' }); app.audio.send({ t: 'panic' });
   app.params.clear();
   app.view.selTrack = p.tracks[0]?.id ?? null; app.view.selClip = null; app.view.autoOpen.clear();
-  app.store.replace(p);
+  app.store.replace(p, true);
   app.seek(0);
 }
 
 async function fileAction(act) {
   const p = app.store.p, base = (p.name || 'kraken').replace(/[^\w\- ]+/g, '').trim() || 'kraken';
+  if (act === 'transport') return transportSheet();
+  if (act === 'rename') {
+    const inp = h('input', { value: p.name, maxlength: 40, style: { width: '100%' }, 'aria-label': 'Project name' });
+    const ok = () => { const v = inp.value.trim().slice(0, 40); if (v) app.store.change((pp) => { pp.name = v; }); };
+    modal('Rename the project', [inp], [['Cancel'], ['Rename', ok, true]]);
+    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { ok(); document.querySelector('.modal-bg')?.remove(); } });
+    return;
+  }
   try {
-    if (act === 'new') confirmBox('New project', 'Start from an empty project? The current one stays in the undo history until you close the page.', 'New project', () => {
+    if (act === 'new') confirmBox('New project', 'Start from an empty project? Ctrl+Z (or ↶) brings the current one back.', 'New project', () => {
       const np = newProject(); np.tracks = [newTrack('drum', 0, { kit: app.lib.sloop.kits.indexOf('909') }), newTrack('synth', 1, { bank: 'clipper', engine: app.lib.clipper.engines.findIndex((e) => e.name === 'HYBRID') })];
       load(np);
     });
-    else if (act === 'demo') load(demoProject(app.lib));
+    else if (act === 'demo') confirmBox('Open the demo song', 'Replace the current project with the demo song? Ctrl+Z (or ↶) brings yours back.', 'Open the demo', () => load(demoProject(app.lib)));
     else if (act === 'open') $('openfile').click();
     else if (act === 'save') {
       const used = usedAssets(p);
@@ -693,9 +820,10 @@ async function fileAction(act) {
       } else name = await saveFile(`${base}.kraken.json`, JSON.stringify(p, null, 1));
       toast(`Saved ${name}`);
     }
+    else if (act === 'sloop') { const inp = $('sloopfile'); inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) openSloopSong(f); }; inp.click(); }
     else if (act === 'importmidi') { const inp = $('midifile'); inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) importMidiFile(f).catch((e2) => toast(e2.message)); }; inp.click(); }
     else if (act === 'midi') { const name = await saveFile(`${base}.mid`, exportMidi(p), { zipWhenHosted: true }); toast(`Saved ${name}`); }
-    else if (act === 'wav' || act === 'stems') await exportAudio(act === 'stems', base);
+    else if (act === 'wav' || act === 'stems' || act === 'export') await exportDialog(act === 'stems', base);
     else if (act === 'help') help();
     else if (act === 'install') installApp();
     else if (act === 'palette') app.palette.open();
@@ -705,77 +833,197 @@ async function fileAction(act) {
   }
 }
 
-async function exportAudio(stems, base) {
-  const p = structuredClone(app.store.p);
+// export: the format, the mix alone or with stems, the whole song or the loop
+const FORMATS = [['wav24', 'WAV · 24 bit', 'wav'], ['wav16', 'WAV · 16 bit (CD)', 'wav'], ['flac24', 'FLAC · 24 bit (lossless, smaller)', 'flac'],
+  ['flac16', 'FLAC · 16 bit', 'flac'], ['opus', 'OPUS · 192 kbps (small, to share)', 'opus']];
+async function exportDialog(stems, base) {
+  const p = app.store.p;
   if (!p.tracks.some((t) => t.clips.length)) { toast('Nothing to export yet: add a clip first.'); return; }
+  let last = {}; try { last = JSON.parse(localStorage.getItem('kraken.export') || '{}'); } catch { /* storage blocked */ }
+  const opusOk = await opusSupported();
+  const sel = (label, opts, value) => h('label', { class: 'exp-row' }, h('span', { text: label }),
+    h('select', { 'aria-label': label }, opts.map(([v, l, , off]) => h('option', { value: v, selected: v === value ? true : null, disabled: off ? true : null }, l))));
+  const fmt = sel('FORMAT', FORMATS.map((f) => (f[0] === 'opus' && !opusOk ? [f[0], `${f[1]}: not in this browser`, f[2], true] : f)), last.format && (last.format !== 'opus' || opusOk) ? last.format : 'wav24');
+  const what = sel('WHAT', [['mix', 'The mix'], ['stems', 'The mix and one file a track (stems)']], stems ? 'stems' : 'mix');
+  const range = sel('RANGE', [['song', 'The whole song (and its tail)'], ['loop', `The loop: bars ${+(p.loop.a / p.sig + 1).toFixed(2)} to ${+(p.loop.b / p.sig + 1).toFixed(2)}, no tail`]], last.range || 'song');
+  modal('Export', [fmt, what, range, h('p', { class: 'ctl-note', text: 'Rendered by the same engines you hear, faster than real time.' })],
+    [['Cancel'], ['Export', () => {
+      const o = { format: fmt.querySelector('select').value, stems: what.querySelector('select').value === 'stems', range: range.querySelector('select').value };
+      try { localStorage.setItem('kraken.export', JSON.stringify({ format: o.format, range: o.range })); } catch { /* storage blocked */ }
+      exportAudio(o, base);
+    }, true]]);
+}
+async function exportAudio({ format = 'wav24', stems = false, range = 'song' } = {}, base) {
+  const p = structuredClone(app.store.p);
   const bar = h('div', { class: 'progress' }, h('i'));
   const msg = h('p', { text: 'Rendering the mix with the same engines you hear…' });
   const box = modal('Export', [msg, bar], []);
   const step = (i, n, what) => { bar.style.setProperty('--v', (i / n).toFixed(3)); msg.textContent = `Rendering ${what} (${i + 1}/${n})…`; };
+  const ext = FORMATS.find((f) => f[0] === format)?.[2] || 'wav';
+  const encode = async (L, R) => {
+    if (format === 'wav16' || format === 'wav24') return encodeWav([L, R], RATE, format === 'wav16' ? 16 : 24, format === 'wav16');
+    if (format === 'flac16' || format === 'flac24') return encodeFlac([L, R], RATE, format === 'flac16' ? 16 : 24, format === 'flac16');
+    return encodeOpus(L, R, RATE, 192000);
+  };
   try {
     const t0 = performance.now();
     const jobs = [{ name: 'MIX', solo: null }, ...(stems ? p.tracks.map((t, i) => ({ name: `${String(i + 1).padStart(2, '0')} ${t.name}`, solo: t.id })) : [])];
+    const span = range === 'loop' ? { start: p.loop.a, end: p.loop.b, tail: 0 } : {};
     const files = [];
     for (let i = 0; i < jobs.length; i++) {
       step(i, jobs.length, jobs[i].name);
-      const [L, R] = await app.audio.render(p, { soloTrack: jobs[i].solo, assets: usedAssets(p) });
-      files.push({ name: `${base} - ${jobs[i].name}.wav`, data: encodeWav([L, R], RATE, 24) });
+      const [L, R] = await app.audio.render(p, { soloTrack: jobs[i].solo, assets: usedAssets(p), ...span });
+      msg.textContent = `Encoding ${jobs[i].name} (${ext.toUpperCase()})…`;
+      await new Promise((r) => setTimeout(r, 0));
+      files.push({ name: `${base} - ${jobs[i].name}.${ext}`, data: await encode(L, R) });
     }
     bar.style.setProperty('--v', 1);
     msg.textContent = `Rendered in ${((performance.now() - t0) / 1000).toFixed(1)} s. Saving…`;
     const name = stems ? await saveFile(`${base} - stems.zip`, zip(files)) : await saveFile(files[0].name, files[0].data, { zipWhenHosted: true });
     box.close();
     toast(`Saved ${name}`);
+    return files;
   } catch (err) {
     box.close();
     if (err?.code !== 'declined') toast(`Export failed: ${err?.message || err}`);
   }
 }
+app.exportAudio = exportAudio;
 
 // ------------------------------------------------------------- dialogs ---
+// a drop-down menu, laid over everything (never clipped by a panel), kept on screen
+function popMenu(btn, list, align) {
+  const place = () => {
+    const r = btn.getBoundingClientRect(), w = list.offsetWidth, vw = window.innerWidth;
+    const left = align === 'right' ? r.right - w : r.left;
+    list.style.left = `${Math.max(8, Math.min(vw - w - 8, left))}px`;
+    list.style.top = `${r.bottom + 6}px`;
+    list.style.maxHeight = `${window.innerHeight - r.bottom - 16}px`;
+  };
+  list.classList.add('pop');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    for (const m of document.querySelectorAll('.menu-list.pop')) if (m !== list) m.hidden = true;
+    list.hidden = !list.hidden;
+    if (!list.hidden) place();
+  });
+  document.addEventListener('pointerdown', (e) => { if (!list.hidden && !list.contains(e.target) && !btn.contains(e.target)) list.hidden = true; });
+  window.addEventListener('resize', () => { list.hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') list.hidden = true; });
+}
+
 function modal(title, body, buttons) {
   const bg = h('div', { class: 'modal-bg' });
   const close = () => bg.remove();
   const box = h('div', { class: 'modal', role: 'dialog', 'aria-label': title }, h('h3', { text: title }), ...body,
     buttons.length ? h('div', { class: 'row' }, buttons.map(([label, fn, go]) => h('button', { class: 'add' + (go ? ' go' : ''), onclick: () => { close(); fn?.(); } }, label))) : null);
   bg.append(box);
+  $('toast').hidden = true;                                      // no message over a dialog
   bg.addEventListener('pointerdown', (e) => { if (e.target === bg && buttons.length) close(); });
-  bg.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') close(); });
+  bg.addEventListener('keydown', (e) => { e.stopPropagation(); });
+  const esc = (e) => { if (e.key === 'Escape' && bg.isConnected && document.querySelector('.modal-bg:last-of-type') === bg) { e.preventDefault(); e.stopPropagation(); close(); } };
+  document.addEventListener('keydown', esc, true);
+  new MutationObserver((_m, o) => { if (!bg.isConnected) { document.removeEventListener('keydown', esc, true); o.disconnect(); } }).observe(document.body, { childList: true });
   document.body.append(bg);
-  box.querySelector('.go')?.focus();
-  return { close };
+  box.querySelector('.go')?.focus({ preventScroll: true });
+  return { close, box };
 }
+// a menu of big buttons (a long press on a phone): [label, fn, 'danger'?]
+// the transport keys a phone has no room for: a tap on the position shows them
+function transportSheet() {
+  const p = app.store.p, on = (x) => (x ? 'ON' : 'OFF');
+  sheet('Transport & grid', [
+    [`METRONOME · ${on(app.click)}`, () => $('click').click()],
+    [`COUNT-IN · ${on(p.countIn)}`, () => $('countin').click()],
+    [`PUNCH IN / OUT · ${on(p.punch?.on)}`, () => app.togglePunch()],
+    ['BACK TO START', () => $('home').click()],
+    ['REDO', () => app.store.redo()],
+    [`GRID · ${$('snap').selectedOptions[0]?.text}`, () => { const s = $('snap'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change')); toast(`Grid: ${s.selectedOptions[0].text}`); }],
+    [`SWING · ${$('swing').selectedOptions[0]?.text}`, () => { const s = $('swing'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change')); toast(`Swing: ${s.selectedOptions[0].text}`); }],
+  ]);
+}
+app.transportSheet = transportSheet;
+function sheet(title, items) {
+  let m = null, armed = false;
+  const box = h('div', { class: 'sheet', onpointerdown: () => { armed = true; } },
+    items.map(([label, fn, kind]) => h('button', { class: 'add' + (kind ? ' ' + kind : ''), onclick: () => { if (!armed) return; m.close(); fn(); } }, label)));
+  m = modal(title, [box], [['Cancel']]);
+  const cancel = document.querySelector('.modal-bg:last-child .row .add');
+  if (cancel) { cancel.addEventListener('pointerdown', () => { armed = true; }); cancel.addEventListener('click', (e) => { if (!armed) e.stopImmediatePropagation(); }, true); }
+  return m;
+}
+// a name not yet taken: DRUMS, DRUMS 2…
+function uniqueName(p, name) {
+  const names = new Set(p.tracks.map((t) => t.name));
+  if (!names.has(name)) return name;
+  const base = name.replace(/ \d+$/, '');
+  for (let i = 2; ; i++) if (!names.has(`${base} ${i}`.slice(0, 16))) return `${base} ${i}`.slice(0, 16);
+}
+app.renameTrack = (id) => {
+  const t = app.store.track(id); if (!t) return;
+  const inp = h('input', { value: t.name, maxlength: 24, style: { width: '100%' }, 'aria-label': 'Track name' });
+  const ok = () => { const v = inp.value.trim().toUpperCase().slice(0, 24); if (v && v !== t.name) app.store.change((p) => { p.tracks.find((x) => x.id === id).name = v; }); };
+  modal('Rename track', [inp], [['Cancel'], ['Rename', ok, true]]);
+  inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { ok(); document.querySelector('.modal-bg')?.remove(); } });
+  setTimeout(() => { inp.focus(); inp.select(); }, 30);
+};
+app.sheet = sheet;
 function confirmBox(title, text, ok, fn, danger = false) { const m = modal(title, [h('p', { text })], [['Cancel'], [ok, fn, true]]); if (danger) document.querySelector('.modal .go')?.classList.add('danger'); return m; }
+app.confirm = confirmBox;
 function help() {
-  const rows = [
-    ['Space', 'Play / stop'], ['R', 'Record into the armed (or selected) track'], ['L', 'Loop on / off'], ['M', 'Metronome'],
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const TOUCH = [
+    ['Tracks', 'One finger: scroll · two fingers: zoom · double-tap a lane: a new clip · double-tap a clip: edit it'],
+    ['Hold a clip', 'It lifts: drag it to move it (its end: resize), or let go for its menu (open, duplicate, delete)'],
+    ['Hold a track', 'Its menu: sound, rename, automation, duplicate, delete'],
+    ['Ruler', 'Top band: the LOOP · middle band: PUNCH · numbers: the playhead. Drag a zone\'s ends or middle, tap it on / off · double-tap the numbers: a marker'],
+    ['Clip editor', 'Tap: a note or a hit · drag: move / length · double-tap a note: remove · two fingers: scroll · TOOL: SELECT, ACCENT, CHANCE, RATCHET'],
+    ['The screen', 'Tap the position for the metronome, count-in, punch, back to start, redo, grid and swing'],
+    ['Live (session)', 'Tap a clip: launch · double-tap an empty slot: a new clip · hold a slot: its menu · ■: stop'],
+    ['Modulators', 'SOUND tab: MAP, then tap any knob of the track'],
+  ];
+  const KEYS = [
+    ['Space', 'Play / stop'], ['R', 'Record into the armed (or selected) track'], ['L', 'Loop on / off'], ['M', 'Metronome'], ['Home', 'Back to start'],
     ['A W S E D F T G Y H U J K O', 'Play notes · Z / X octave · C / V velocity'], ['[ ]', 'Previous / next sound'],
     ['Ctrl Z · Ctrl Shift Z', 'Undo · redo'], ['Ctrl C · Ctrl V · Ctrl D', 'Copy, paste at the playhead, duplicate a clip'],
-    ['Delete', 'Remove the selected clip or notes'], ['Ctrl wheel', 'Zoom · Shift wheel: scroll sideways'],
-    ['Arrangement', 'Drag on a lane: new clip · drag a clip: move · its end: resize · Alt-drag: copy · right-click: remove'],
-    ['Piano roll', 'Click: note · drag: length · Shift-drag: select · double-click: remove · ↑ ↓ transpose · Q quantize'],
-    ['Ruler', 'Click: move the playhead · top band: set or drag the loop'], ['Esc', 'All notes off'],
+    ['Delete', 'The selected notes (in the editor) · the selected clip, or track (in the arrangement)'], ['Ctrl wheel', 'Zoom · Shift wheel: scroll sideways'],
+    ['Arrangement', 'Drag on a lane: new clip · drag a clip: move (onto another clip: it cuts it) · its end: resize · Alt-drag: copy · right-click: its menu'],
+    ['Track heads', 'Drag a head up or down: reorder · double-click the name: rename · right-click: its menu'],
+    ['Piano roll', 'Click: note · drag: length · Shift-drag or TOOL SELECT: select · double-click: remove · ↑ ↓ transpose · Q quantize'],
+    ['Ruler', 'Top band: the LOOP · middle band: PUNCH in / out · numbers: the playhead. Drag a zone\'s ends or middle, click it on / off'],
+    ['N · , · .', 'A marker at the playhead · previous / next marker (double-click the ruler\'s numbers too)'],
+    ['Tab', 'Arrangement / session · in the session: click a clip to launch it, ▶ a scene, ■ to stop'],
+    ['Esc', 'All notes off, deselect'],
+    ['Ctrl K', 'Command palette: every action, track, sound, kit, effect and marker'],
     ['Ctrl L · LEARN', 'MIDI Learn: click any knob, fader, button or action, then move a control (or press a key)'],
-    ['Controllers tab', 'Devices, Mackie Control, MIDI clock out, mappings, actions, channel routing'],
-    ['Drop a .mid', 'Import a MIDI file as tracks · drop audio files to make audio tracks'],
-    ['Ctrl K', 'Command palette: every action, track, sound, kit and effect'],
-    ['Tab', 'Arrangement / session'],
-    ['Ruler', 'Top band: the LOOP · middle band: PUNCH in / out · bottom: the playhead. Drag a zone\'s ends to resize it, its middle to move it, click it to turn it on / off'],
+    ['Drop files', 'A .mid: tracks · a .sloopsong: the SLOOP song · audio files: audio clips'],
     ['Clip editor', 'The strip above the notes: drag the white handle for the clip length, the orange one for the loop'],
+    ['Sound tab', 'NOTE FX before the sound · MODULATORS: pick a target or MAP and click a knob · EFFECTS after it'],
+    ['Takes', 'Record over audio: each pass is a take. The TAKES badge opens the lanes: click or swipe a take to comp it'],
   ];
-  modal('Keys & mouse', [h('div', { style: { display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', font: '500 11px/1.4 var(--f-ui)' } },
-    rows.flatMap(([k, v]) => [h('span', { style: { font: '500 10px/1.4 var(--f-mono)', color: 'var(--accent)' }, text: k }), h('span', { text: v })]))], [['Close', null, true]]);
+  const grid = (title, rows) => [h('h4', { style: { margin: '6px 0 0', font: '700 9px/1 var(--f-ui)', letterSpacing: '0.16em', color: 'var(--dim)' }, text: title }),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(70px, auto) 1fr', gap: '6px 14px', font: '500 11px/1.4 var(--f-ui)' } },
+      rows.flatMap(([k, v]) => [h('span', { style: { font: '500 10px/1.4 var(--f-mono)', color: 'var(--accent)' }, text: k }), h('span', { text: v })]))];
+  const hm = modal('Help', touch ? [...grid('FINGERS', TOUCH), ...grid('KEYBOARD & MOUSE', KEYS)] : [...grid('KEYBOARD & MOUSE', KEYS), ...grid('FINGERS (PHONE, TABLET)', TOUCH)], [['Close', null, true]]);
+  hm.box.style.width = 'min(640px, 100%)';
 }
 let toastTimer = 0;
 function toast(text) {
-  const t = $('toast'); t.textContent = text; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, Math.max(3200, text.length * 60));
+  const t = $('toast'); t.textContent = text; t.hidden = false; toast.at = performance.now();
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, Math.min(7000, Math.max(2600, text.length * 50)));
 }
+// the next touch or click anywhere puts a message away (it never takes the touch itself)
+document.addEventListener('pointerdown', () => { const t = $('toast'); if (!t.hidden && performance.now() - (toast.at || 0) > 400) t.hidden = true; }, true);
 app.toast = toast;
 
 // -------------------------------------------------------------- keys ---
 let clipboard = null;
 function bindKeys() {
+  // a list or a button keeps no focus after use: Space, Delete and the piano keys go back to the music
+  document.addEventListener('change', (e) => { if (e.target.tagName === 'SELECT' && !e.target.closest('.modal')) e.target.blur(); });
+  document.addEventListener('click', (e) => { const b = e.target.closest?.('button'); if (b && e.detail > 0 && !b.closest('.modal')) b.blur(); });
+  // where the last click was: the arrangement / session, or the editors below (Delete acts there)
+  document.addEventListener('pointerdown', (e) => { app.lastArea = e.target.closest?.('#bot') ? 'bot' : e.target.closest?.('#arr') ? 'arr' : app.lastArea; }, true);
   window.addEventListener('keydown', (e) => {
     if (typing(e) || document.querySelector('.modal-bg')) return;
     const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase(), v = app.view, p = app.store.p;
@@ -798,14 +1046,14 @@ function bindKeys() {
     }
     if (mod && k === 'v' && clipboard && t) {
       e.preventDefault();
-      if (clipboard.kind !== t.kind) { toast(`That clip belongs on a ${clipboard.kind === 'drum' ? 'drum' : 'synth'} track.`); return; }
+      if ((clipboard.kind === 'audio') !== (t.kind === 'audio') || (clipboard.kind === 'drum') !== (t.kind === 'drum') || t.kind === 'group') { toast(`That clip belongs on ${clipboard.kind === 'audio' ? 'an audio' : clipboard.kind === 'drum' ? 'a drum' : 'an instrument'} track.`); return; }
       const c = { ...structuredClone(clipboard.clip), id: uid('c'), start: Math.floor(app.pos / p.sig) * p.sig };
-      app.store.change((pp) => pp.tracks.find((x) => x.id === t.id).clips.push(c)); app.selectClip(c.id, t.id); return;
+      app.placeClip(t.id, c); app.selectClip(c.id, t.id); return;
     }
     if (mod && k === 'd' && clip) {
       e.preventDefault();
       const c = { ...structuredClone(clip), id: uid('c'), start: clip.start + clip.len };
-      app.store.change((pp) => pp.tracks.find((x) => x.id === t.id).clips.push(c)); app.selectClip(c.id, t.id); return;
+      app.placeClip(t.id, c); app.selectClip(c.id, t.id); return;
     }
     if (mod) return;
     if (e.key === 'Tab') { e.preventDefault(); app.setMode(v.mode === 'session' ? 'arrange' : 'session'); return; }
@@ -814,8 +1062,11 @@ function bindKeys() {
     else if (k === 'l') $('loop').click();
     else if (k === 'm') $('click').click();
     else if (k === 'b') $('libbtn').click();
+    else if (k === 'n' && !e.repeat) app.addMarker();
+    else if (e.key === ',') app.gotoMarker(-1);
+    else if (e.key === '.') app.gotoMarker(1);
     else if (e.key === 'Home' || e.key === 'Enter') { e.preventDefault(); $('home').click(); }
-    else if (e.key === 'Escape') { app.audio.send({ t: 'panic' }); }
+    else if (e.key === 'Escape') { app.audio.send({ t: 'panic' }); app.editor.sel.clear(); if (app.lastArea !== 'bot') app.selectClip(null); else app.editor.canvas.redraw(); }
     else if ((e.key === '[' || e.key === ']') && t) {
       const d = e.key === ']' ? 1 : -1;
       if (t.kind === 'drum') {
@@ -826,6 +1077,12 @@ function bindKeys() {
         const s = list[(Math.max(0, list.indexOf(cur)) + d + list.length) % list.length];
         if (s) { app.setSound(t.id, { bank: s.bank, engine: s.engine, preset: s.preset }); app.audition(t.id, [60, 64, 67]); }
       }
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && app.lastArea === 'bot') {
+      e.preventDefault();                                        // in the editors: the selected notes, never the clip or the track
+      if (v.tab === 'edit') app.editor.deleteSelected();
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && t && t.slots?.some((c) => c && c.id === v.selClip)) {
+      e.preventDefault();                                        // a session clip: out of its slot
+      app.store.change((pp) => { const tr = pp.tracks.find((x) => x.id === t.id); tr.slots = tr.slots.map((c) => (c && c.id === v.selClip ? null : c)); });
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && !clip && t) {
       e.preventDefault();
       app.deleteTrack(t.id);
@@ -836,15 +1093,23 @@ function bindKeys() {
   });
 }
 
+// the bottom panel's height: drag its top edge (double-click: back to 300 px); remembered on this device
 function bindResize() {
-  const r = $('resize');
+  const r = $('resize'), KEY = 'kraken.bottom-h';
+  const apply = (px) => { $('app').style.setProperty('--bottom-h', `${px}px`); app.arrange?.redraw(); app.editor?.canvas.redraw(); };
+  let saved = 0;
+  try { saved = +localStorage.getItem(KEY); } catch { /* storage blocked */ }
+  if (saved >= 140) apply(Math.min(saved, window.innerHeight - 220));
+  else if (window.innerHeight > 1000) apply(Math.round(Math.min(560, window.innerHeight * 0.42)));   // a tall screen (a tablet upright): a taller editor
   r.addEventListener('pointerdown', (e) => {
     const y0 = e.clientY, h0 = $('bot').getBoundingClientRect().height;
     r.setPointerCapture(e.pointerId);
-    const mv = (m) => $('app').style.setProperty('--bottom-h', `${Math.max(140, Math.min(window.innerHeight - 220, h0 + y0 - m.clientY))}px`);
-    const up = () => { r.removeEventListener('pointermove', mv); r.removeEventListener('pointerup', up); };
+    let last = h0;
+    const mv = (m) => { last = Math.max(140, Math.min(window.innerHeight - 220, h0 + y0 - m.clientY)); apply(last); };
+    const up = () => { r.removeEventListener('pointermove', mv); r.removeEventListener('pointerup', up); try { localStorage.setItem(KEY, String(Math.round(last))); } catch { /* storage blocked */ } };
     r.addEventListener('pointermove', mv); r.addEventListener('pointerup', up);
   });
+  r.addEventListener('dblclick', () => { apply(300); try { localStorage.removeItem(KEY); } catch { /* storage blocked */ } });
 }
 
 // ----------------------------------------------------- installed app (PWA) ---
@@ -874,6 +1139,7 @@ async function openPending() {
   const files = app.pendingFiles || []; app.pendingFiles = [];
   for (const f of files) {
     if (/\.midi?$/i.test(f.name)) await importMidiFile(f).catch((e) => toast(e.message));
+    else if (isSloopSong(f)) await openSloopSong(f);
     else { const dt = new DataTransfer(); dt.items.add(f); $('openfile').files = dt.files; $('openfile').dispatchEvent(new Event('change')); }
   }
 }

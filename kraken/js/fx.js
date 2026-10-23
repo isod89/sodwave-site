@@ -402,5 +402,11 @@ export class Rack {
     dev.auto[key] = v;
     dev.set({ ...dev.def.p, ...dev.auto }, bpm);
   }
+  release(fxId, key, bpm) {                       // a modulation or automation lets go: back to the knob
+    const dev = this.devs.get(fxId);
+    if (!dev?.auto || !(key in dev.auto)) return;
+    delete dev.auto[key];
+    dev.set({ ...dev.def.p, ...dev.auto }, bpm);
+  }
   process(L, R, n, ctx) { for (const d of this.list) if (d.def.on !== false) d.process(L, R, n, ctx); }
 }

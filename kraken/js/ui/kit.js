@@ -113,8 +113,44 @@ export function fitCanvas(cv, draw) {
 
 export function dragPointer(e, move, up) {
   const t = e.currentTarget;
-  t.setPointerCapture?.(e.pointerId);
+  try { t.setPointerCapture?.(e.pointerId); } catch { /* the pointer is already up (a quick tap handled late) */ }
   const mv = (m) => move(m);
   const u = (m) => { t.removeEventListener('pointermove', mv); t.removeEventListener('pointerup', u); t.removeEventListener('pointercancel', u); up?.(m); };
   t.addEventListener('pointermove', mv); t.addEventListener('pointerup', u); t.addEventListener('pointercancel', u);
+}
+
+// a scroll bar laid over a canvas view: get() -> { pos, view, total } (in any unit), set(pos).
+// Drag the thumb, or touch / click the bar to jump there. Hidden when everything is in view.
+export class ScrollBar {
+  constructor(parent, dir, get, set) {
+    this.dir = dir; this.get = get; this.set = set;
+    this.thumb = h('i');
+    this.el = h('div', { class: `sbar ${dir}`, role: 'scrollbar', 'aria-orientation': dir === 'h' ? 'horizontal' : 'vertical' }, this.thumb);
+    parent.append(this.el);
+    const along = (e) => { const r = this.el.getBoundingClientRect(); return dir === 'h' ? [e.clientX - r.left, r.width] : [e.clientY - r.top, r.height]; };
+    this.el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const { pos, view, total } = this.get(), [p0, len] = along(e), tl = Math.max(28, len * view / total), t0 = (pos / total) * len;
+      let grab = p0 - t0;
+      if (grab < 0 || grab > tl) { grab = tl / 2; this.jump(p0 - grab, len, tl); }        // on the bar: there
+      try { this.el.setPointerCapture(e.pointerId); } catch { /* gone */ }
+      const mv = (m) => { const [p] = along(m); this.jump(p - grab, len, tl); };
+      const up = () => { this.el.removeEventListener('pointermove', mv); this.el.removeEventListener('pointerup', up); this.el.removeEventListener('pointercancel', up); this.el.classList.remove('drag'); };
+      this.el.addEventListener('pointermove', mv); this.el.addEventListener('pointerup', up); this.el.addEventListener('pointercancel', up);
+      this.el.classList.add('drag');
+    });
+  }
+  jump(thumbStart, len, tl) {
+    const { view, total } = this.get(), max = Math.max(0, total - view);
+    this.set(Math.max(0, Math.min(max, (thumbStart / Math.max(1, len - tl)) * max)));
+  }
+  update() {
+    const { pos, view, total } = this.get();
+    const show = total > view + 1e-6;
+    this.el.hidden = !show;
+    if (!show) return;
+    const len = this.dir === 'h' ? this.el.clientWidth : this.el.clientHeight, tl = Math.max(28, len * view / total);
+    const at = (Math.min(pos, total - view) / Math.max(1e-9, total - view)) * (len - tl);
+    Object.assign(this.thumb.style, this.dir === 'h' ? { left: `${at}px`, width: `${tl}px` } : { top: `${at}px`, height: `${tl}px` });
+  }
 }

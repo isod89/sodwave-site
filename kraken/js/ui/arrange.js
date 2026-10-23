@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The arrangement: track heads, a bar ruler with the loop, clip lanes and automation lanes.
-import { h, fitCanvas, dragPointer } from './kit.js';
-import { newClip, uid } from '../project.js';
+import { h, fitCanvas, dragPointer, ScrollBar } from './kit.js';
+import { newClip, uid, cutRange, projectEnd } from '../project.js';
 import { DEVICES } from '../fx.js';
+import { NOTE_FX, fmtNoteParam } from '../notefx.js';
+import { isFolder, expandFolder, setComp, segmentAt, shiftFolder } from '../comp.js';
 
 // the ruler, top to bottom: the LOOP band, the PUNCH band, the bar numbers (click: playhead)
-const BAND = 12, LOOP_Y = 0, PUNCH_Y = 13, NUM_Y = 26, GRIP = 7;
+const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;   // fingers: a taller ruler, bigger grips
+const BAND = COARSE ? 16 : 12, LOOP_Y = 0, PUNCH_Y = BAND + 1, NUM_Y = 2 * BAND + 2, GRIP = COARSE ? 16 : 7;
 const EDGE = 7;                            // px from a clip's end that resizes it
+const TAKE_H = 34;                         // a take lane
 
 export function autoTargets(app, t) {
   if (t.kind === 'tempo') return [{ key: 'tempo', label: 'TEMPO', min: 40, max: 240, def: 120, fmt: (v) => `${v.toFixed(1)} BPM` }];
@@ -18,6 +22,9 @@ export function autoTargets(app, t) {
   for (const d of t.fx || []) for (const p of DEVICES[d.type].params) {
     if (p.k === 'sc') continue;
     list.push({ key: `fx:${d.id}:${p.k}`, label: `${DEVICES[d.type].name} ${p.l}`, min: p.min, max: p.max, def: p.def, fmt: (v) => (Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(2)) });
+  }
+  for (const d of t.nfx || []) for (const p of NOTE_FX[d.type].params) {
+    list.push({ key: `nfx:${d.id}:${p.k}`, label: `${NOTE_FX[d.type].name} ${p.l}`, min: p.min, max: p.max, def: p.def, fmt: (v) => fmtNoteParam(p, v) });
   }
   if (t.kind === 'synth') {
     const cat = app.lib[t.bank], e = cat.engines[t.engine], e0 = cat.e0;
@@ -35,13 +42,22 @@ export class Arrange {
   constructor(app) {
     this.app = app;
     const v = app.view;
-    Object.assign(v, { zoom: 22, sx: 0, sy: 0, trackH: 58, autoH: 64 });
+    Object.assign(v, { zoom: 22, sx: 0, sy: 0, trackH: COARSE ? 66 : 58, autoH: COARSE ? 76 : 64 });
     this.headsInner = document.getElementById('heads-inner');
     this.ruler = fitCanvas(document.getElementById('ruler'), (c, w, hh) => this.drawRuler(c, w, hh));
     this.lanesCv = document.getElementById('lanes-cv');
     this.lanes = fitCanvas(this.lanesCv, (c, w, hh) => this.drawLanes(c, w, hh));
     this.bindRuler();
     this.bindLanes();
+    // scroll bars: the song sideways (to its end and 8 bars more), the tracks up and down
+    const lanesBox = document.getElementById('lanes');
+    this.hbar = new ScrollBar(lanesBox, 'h', () => {
+      const v = this.app.view, [w] = this.lanes.size(), p = this.p;
+      const end = Math.max(projectEnd(p), p.loop.on ? p.loop.b : 0, ...(p.markers || []).map((m) => m.t), this.app.pos) + 8 * p.sig;
+      return { pos: v.sx, view: w, total: Math.max(end * v.zoom, v.sx + w) };
+    }, (x) => this.scrollTo(x, this.app.view.sy));
+    this.vbar = new ScrollBar(lanesBox, 'v', () => { const [, hh] = this.lanes.size(); return { pos: this.app.view.sy, view: hh, total: this.total + 40 }; },
+      (y) => this.scrollTo(this.app.view.sx, y));
     document.getElementById('heads').addEventListener('wheel', (e) => this.wheel(e), { passive: false });
     app.store.on(() => { this.renderHeads(); this.redraw(); });
   }
@@ -64,6 +80,10 @@ export class Arrange {
     for (const t of this.p.tracks) {
       out.push({ kind: 'track', t, y, h: v.trackH });
       y += v.trackH;
+      if (t.kind === 'audio' && v.takesOpen?.has(t.id)) {           // its take lanes, one a take
+        const n = Math.max(0, ...t.clips.filter(isFolder).map((c) => c.takes.length));
+        for (let k = 0; k < n; k++) { out.push({ kind: 'take', t, k, y, h: TAKE_H }); y += TAKE_H; }
+      }
       if (v.autoOpen?.has(t.id)) { out.push({ kind: 'auto', t, y, h: v.autoH }); y += v.autoH; }
     }
     this.total = y;
@@ -76,6 +96,14 @@ export class Arrange {
     const app = this.app, v = app.view;
     this.headsInner.replaceChildren(...this.rows().map((r) => {
       const t = r.t;
+      if (r.kind === 'take') {
+        return h('div', { class: 'take-head', '--ah': TAKE_H + 'px', '--c': t.color },
+          h('span', { text: `TAKE ${r.k + 1}` }),
+          h('button', { class: 'tb', title: `Use take ${r.k + 1} everywhere on this track`, onclick: () => app.store.change((p) => {
+            for (const c of p.tracks.find((x) => x.id === t.id).clips) if (isFolder(c) && c.takes[r.k]) c.comp = setComp(c.comp, 0, c.len, r.k);
+          }) }, 'ALL'),
+          r.k === 0 ? h('button', { class: 'tb', title: 'Hide the take lanes', onclick: () => app.toggleTakes(t.id) }, '×') : null);
+      }
       if (r.kind === 'auto') {
         const targets = autoTargets(app, t);
         const cur = v.autoTarget[t.id] || 'vol';
@@ -84,9 +112,10 @@ export class Arrange {
         if (t.kind === 'tempo') return h('div', { class: 'auto-head', '--ah': v.autoH + 'px' },
           h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', font: '700 10px/1 var(--f-ui)', letterSpacing: '0.12em', color: '#ff5b14' } }, 'TEMPO MAP',
             h('button', { class: 'tb', title: 'Hide the tempo lane', onclick: () => { v.tempoLane = false; this.renderHeads(); this.redraw(); } }, '×')),
-          h('small', { text: this.p.tempo.length ? 'Points ramp from one to the next.' : `No map: ${this.p.bpm} BPM all along. Click to add points.` }));
+          h('small', { text: this.p.tempo.length ? 'Points ramp to the next one.' : `${this.p.bpm} BPM all along: add points.` }),
+          this.p.tempo.length ? h('button', { class: 'add', style: { height: '20px' }, title: 'Remove the tempo map: the BPM field sets the tempo again', onclick: () => app.store.change((p) => { p.tempo = []; }) }, 'CLEAR MAP') : null);
         return h('div', { class: 'auto-head', '--ah': v.autoH + 'px' }, sel,
-          h('small', { text: 'Click: add a point. Drag: move. Double-click: remove.' }));
+          h('small', { text: COARSE ? 'Tap: a point · drag it: move · double-tap: remove' : 'Click: a point · drag: move · double-click: remove' }));
       }
       const grp = t.out && t.out !== 'master' ? this.p.tracks.find((x) => x.id === t.out) : null;
       const snd = (t.frozen ? '❄ ' : '') + (grp ? `→ ${grp.name} · ` : '') + (t.kind === 'drum' ? `KIT ${app.lib.sloop.kits[t.kit] ?? ''}`
@@ -97,21 +126,32 @@ export class Arrange {
         : `${app.lib[t.bank].engines[t.engine]?.name} · ${app.lib[t.bank].engines[t.engine]?.presets[t.preset] ?? ''}${t.dx7 ? ' · ' + t.dx7.name : ''}${t.mpe ? ' · MPE' : ''}`);
       const LEARN = { m: 'mute', s: 'solo', r: 'arm' };
       const tb = (cls, label, on, title, fn) => h('button', { class: `tb ${cls}${on ? ' on' : ''}`, title, 'aria-pressed': on ? 'true' : 'false', 'data-learn': LEARN[cls] ? `t:${t.id}:${LEARN[cls]}` : null, onclick: (e) => { e.stopPropagation(); fn(); } }, label);
-      const name = h('div', { class: 'name', text: t.name, title: 'Double-click to rename' });
+      const name = h('div', { class: 'name', text: t.name, title: 'Double-click to rename', onclick: () => {} });   // (a tap target of its own)
       name.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         name.contentEditable = 'true'; name.focus();
         document.getSelection().selectAllChildren(name);
+        let cancel = false;
         const done = () => {
           name.contentEditable = 'false';
+          if (cancel) { name.textContent = t.name; return; }
           const nv = name.textContent.trim().slice(0, 24) || t.name;
           if (nv !== t.name) app.store.change((p) => { p.tracks.find((x) => x.id === t.id).name = nv; });
         };
         name.addEventListener('blur', done, { once: true });
-        name.addEventListener('keydown', (k) => { if (k.key === 'Enter' || k.key === 'Escape') { k.preventDefault(); name.blur(); } k.stopPropagation(); });
+        name.addEventListener('keydown', (k) => { if (k.key === 'Enter' || k.key === 'Escape') { cancel = k.key === 'Escape'; k.preventDefault(); name.blur(); } k.stopPropagation(); });
       });
       const head = h('div', { class: 'head' + (t.id === v.selTrack ? ' sel' : ''), '--h': v.trackH + 'px', '--c': t.color, 'data-id': t.id,
-        onpointerdown: (e) => { if (!e.target.closest('button, [contenteditable="true"]')) app.selectTrack(t.id); } },
+        oncontextmenu: (e) => { e.preventDefault(); this.trackSheet(t); },
+        onpointerdown: (e) => {
+          if (e.target.closest('button, [contenteditable="true"]')) return;
+          if (e.pointerType !== 'touch') { if (e.button === 0) { app.selectTrack(t.id); this.reorderDrag(e, t); } return; }
+          const y0 = e.clientY, sy0 = v.sy; let moved = false;
+          const timer = setTimeout(() => { if (!moved) { navigator.vibrate?.(12); this.trackSheet(t); } }, 500);
+          const mv = (m) => { if (Math.abs(m.clientY - y0) > 8) { moved = true; clearTimeout(timer); } if (moved) this.scrollTo(v.sx, sy0 - (m.clientY - y0)); };
+          const up = () => { clearTimeout(timer); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); if (!moved) app.selectTrack(t.id); };
+          window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+        } },
         h('span', { class: 'chip' }), name,
         h('div', { class: 'btns' },
           tb('m', 'M', t.mute, 'Mute', () => app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); x.mute = !x.mute; })),
@@ -143,7 +183,7 @@ export class Arrange {
     c.textAlign = 'left';
     const bars = (b) => +(b / p.sig + 1).toFixed(2);
     this.drawRegion(c, p.loop, LOOP_Y, p.loop.on ? '#ff5b14' : '#4a5057', p.loop.on ? 'LOOP' : 'LOOP OFF', hot?.key === 'loop' ? hot.mode : null, true);
-    this.drawRegion(c, p.punch, PUNCH_Y, '#ff2f2f', p.punch.on ? `PUNCH IN ${bars(p.punch.a)} · OUT ${bars(p.punch.b)}` : 'PUNCH OFF · click to arm', hot?.key === 'punch' ? hot.mode : null, p.punch.on);
+    this.drawRegion(c, p.punch, PUNCH_Y, '#ff2f2f', p.punch.on ? `PUNCH IN ${bars(p.punch.a)} · OUT ${bars(p.punch.b)}` : (COARSE ? 'PUNCH OFF · tap to arm' : 'PUNCH OFF · click to arm'), hot?.key === 'punch' ? hot.mode : null, p.punch.on);
     const bar = p.sig, every = v.zoom * bar < 34 ? (v.zoom * bar < 14 ? 8 : 4) : 1;
     c.font = '500 10px "IBM Plex Mono", monospace';
     const b0 = Math.floor(this.beat(0) / bar), b1 = Math.ceil(this.beat(w) / bar);
@@ -154,10 +194,22 @@ export class Arrange {
       c.beginPath(); c.moveTo(x, major ? NUM_Y : hh - 6); c.lineTo(x, hh); c.stroke();
       if (major) { c.fillStyle = '#9aa0a6'; c.fillText(String(b + 1), x + 4, NUM_Y + (hh - NUM_Y) / 2); }
     }
+    // markers: a yellow tag each, on the bar numbers
+    this.markerBoxes = [];
+    c.font = '700 8px "IBM Plex Mono", monospace';
+    for (const m of [...(p.markers || [])].sort((a, b) => a.t - b.t)) {
+      const x = Math.round(this.x(m.t)), tw = c.measureText(m.name).width + 8;
+      if (x + tw < 0 || x > w) continue;
+      const hot = this.markerHot === m.id;
+      c.fillStyle = hot ? '#ffe066' : '#ffc400'; c.fillRect(x, NUM_Y + 1, tw, 11); c.fillRect(x, NUM_Y + 1, 1, hh - NUM_Y - 1);
+      c.fillStyle = '#131415'; c.fillText(m.name, x + 4, NUM_Y + 7);
+      this.markerBoxes.push({ id: m.id, x0: x - 2, x1: x + tw });
+    }
     const px = this.x(this.app.pos);
     c.fillStyle = '#ff5b14';
     c.beginPath(); c.moveTo(px - 5, hh - 7); c.lineTo(px + 5, hh - 7); c.lineTo(px, hh); c.fill();
   }
+  markerAt(x, y) { if (y < NUM_Y) return null; return (this.markerBoxes || []).findLast?.((b) => x >= b.x0 && x <= b.x1) ?? [...(this.markerBoxes || [])].reverse().find((b) => x >= b.x0 && x <= b.x1) ?? null; }
   // a region of the ruler (loop or punch) as a block with a handle at each end, like a clip
   drawRegion(c, R, y, col, label, hot, on) {
     const xa = this.x(R.a), xb = this.x(R.b), wd = xb - xa, top = y + 1, ht = BAND - 2;
@@ -185,6 +237,7 @@ export class Arrange {
   }
   bindRuler() {
     const cv = document.getElementById('ruler'), app = this.app;
+    cv.onclick = () => {};                                     // (a tap target of its own: a finger near its edge stays on it)
     const TIPS = {
       loop: 'LOOP: drag its ends to resize it, its middle to move it; click it to turn the loop on / off; drag on the empty band to draw a new one',
       punch: 'PUNCH IN / OUT: when on, recording only keeps what is played inside the red zone. Drag its ends to resize it, its middle to move it; click it to turn it on / off',
@@ -192,16 +245,42 @@ export class Arrange {
     cv.addEventListener('pointermove', (e) => {
       if (e.buttons) return;
       const r = cv.getBoundingClientRect(), hit = this.rulerHit(e.clientX - r.left, e.clientY - r.top);
-      cv.style.cursor = !hit ? '' : hit.mode === 'move' ? 'grab' : hit.mode === 'new' ? 'crosshair' : 'ew-resize';
-      cv.title = hit ? TIPS[hit.key] : 'Click or drag: move the playhead';
+      const mk = this.markerAt(e.clientX - r.left, e.clientY - r.top);
+      cv.style.cursor = mk ? 'pointer' : !hit ? '' : hit.mode === 'move' ? 'grab' : hit.mode === 'new' ? 'crosshair' : 'ew-resize';
+      cv.title = mk ? 'Marker: click to jump · drag to move · double-click to rename · right-click to delete' : hit ? TIPS[hit.key] : 'Click or drag: move the playhead · double-click: a marker here (N)';
+      if ((mk?.id ?? null) !== (this.markerHot ?? null)) { this.markerHot = mk?.id ?? null; this.ruler.redraw(); }
       const was = this.rulerHot;
       if (hit?.key !== was?.key || hit?.mode !== was?.mode) { this.rulerHot = hit; this.ruler.redraw(); }
     });
-    cv.addEventListener('pointerleave', () => { if (this.rulerHot) { this.rulerHot = null; this.ruler.redraw(); } });
+    cv.addEventListener('pointerleave', () => { if (this.rulerHot || this.markerHot) { this.rulerHot = null; this.markerHot = null; this.ruler.redraw(); } });
+    cv.addEventListener('dblclick', (e) => {
+      const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      if (y < NUM_Y) return;
+      const mk = this.markerAt(x, y);
+      if (mk) app.renameMarker(mk.id); else app.addMarker(Math.max(0, this.snap(this.beat(x))));
+    });
+    cv.addEventListener('contextmenu', (e) => {
+      const r = cv.getBoundingClientRect(), mk = this.markerAt(e.clientX - r.left, e.clientY - r.top);
+      if (!mk) return;
+      e.preventDefault();
+      app.store.change((pp) => { pp.markers = pp.markers.filter((m) => m.id !== mk.id); });
+    });
     cv.addEventListener('pointerdown', (e) => {
       const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       const at = (m) => Math.max(0, this.beat(m.clientX - r.left));
-      const hit = this.rulerHit(x, y);
+      const hit = this.rulerHit(x, y), mk = e.button === 0 && this.markerAt(x, y);
+      if (e.button !== 0) return;
+      if (mk) {                                                  // a marker: click to jump, drag to move
+        const m0 = this.p.markers.find((m) => m.id === mk.id), t0 = m0.t, tag = 'mk' + Math.random();
+        let moved = false;
+        dragPointer(e, (m) => {
+          if (!moved && Math.abs(m.clientX - e.clientX) < 3) return;
+          moved = true;
+          const t = Math.max(0, this.snap(t0 + (m.clientX - e.clientX) / app.view.zoom));
+          app.store.change((pp) => { const x = pp.markers.find((q) => q.id === mk.id); if (x) x.t = t; }, tag);
+        }, () => { if (!moved) app.seek(t0); app.store.endGesture(); });
+        return;
+      }
       if (!hit) {
         app.seek(this.snap(at(e)));
         dragPointer(e, (m) => app.seek(this.snap(at(m))));
@@ -250,11 +329,13 @@ export class Arrange {
       c.fillStyle = isBar ? ((b / bar) % 4 === 0 ? '#2a2e33' : '#1c1f22') : '#141618';
       c.fillRect(Math.round(this.x(b)), 0, 1, hh);
     }
+    this.badges = [];
     for (const r of rows) {
       const y = r.y - v.sy;
       if (y > hh || y + r.h < 0) continue;
       c.fillStyle = '#1a1d20'; c.fillRect(0, y + r.h - 1, w, 1);
       if (r.kind === 'track') this.drawClips(c, r.t, y, r.h, w);
+      else if (r.kind === 'take') this.drawTake(c, r, y, r.h, w);
       else this.drawAuto(c, r.t, y, r.h, w);
     }
     if (this.ghost) {
@@ -264,15 +345,21 @@ export class Arrange {
       c.setLineDash([]);
     }
     if (this.total - v.sy < hh) {
-      c.fillStyle = '#5b616866'; c.font = '600 10px Archivo, sans-serif';
-      c.fillText(p.tracks.length ? 'Double-click or drag on a lane to add a clip · + TRACK in the sound library adds a track' : 'Add a track with + SYNTH or + DRUMS, or pick a sound in the library', 12, this.total - v.sy + 22);
+      c.fillStyle = '#8a9096'; c.font = '600 10px Archivo, sans-serif';
+      const touch = matchMedia('(pointer: coarse)').matches;
+      c.fillText(!p.tracks.length ? 'Add a track with + TRACK, or pick a sound in the library'
+        : touch ? 'Double-tap: a clip · drag: scroll · pinch: zoom' : 'Double-click or drag on a lane to add a clip · + TRACK adds a track', 12, this.total - v.sy + 22);
     }
+    c.fillStyle = 'rgba(255,196,0,0.35)';                    // the markers
+    for (const m of p.markers || []) { const x = Math.round(this.x(m.t)); if (x >= 0 && x <= w) for (let y = 0; y < hh; y += 6) c.fillRect(x, y, 1, 3); }
     if (p.punch?.on) {                                       // the punch in / out lines, over the clips
       c.fillStyle = 'rgba(255,47,47,0.8)';
       c.fillRect(Math.round(this.x(p.punch.a)), 0, 1, hh); c.fillRect(Math.round(this.x(p.punch.b)) - 1, 0, 1, hh);
     }
     const px = Math.round(this.x(this.app.pos)) + 0.5;
     c.strokeStyle = '#ff5b14'; c.beginPath(); c.moveTo(px, 0); c.lineTo(px, hh); c.stroke();
+    const sess = this.app.view.mode === 'session';
+    if (this.hbar) { this.hbar.update(); this.vbar.update(); if (sess) this.hbar.el.hidden = this.vbar.el.hidden = true; }
   }
   drawClips(c, t, y, rh, w) {
     const v = this.app.view;
@@ -287,7 +374,25 @@ export class Arrange {
       c.save(); c.beginPath(); c.rect(x0, top, wd, ht); c.clip();
       c.fillStyle = '#0b0c0d'; c.font = '700 9px Archivo, sans-serif'; c.textBaseline = 'middle';
       c.fillText(clip.name.toUpperCase(), x0 + 4, top + 7);
-      if (t.kind === 'audio') { this.drawWave(c, t, clip, x0, top + 14, wd, ht - 14); c.restore(); if (sel) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x0 + 0.75, top + 0.75, wd - 1.5, ht - 1.5); c.lineWidth = 1; } continue; }
+      if (t.kind === 'audio') {
+        if (isFolder(clip)) {                                  // a take folder: its comp, a seam where takes meet
+          for (const sg of expandFolder(clip, 60 / this.p.bpm)) {
+            const sx = this.x(sg.start);
+            this.drawWave(c, t, sg, sx, top + 14, sg.len * v.zoom, ht - 14);
+            if (sg.start > clip.start + 1e-6) { c.fillStyle = '#0b0c0d'; c.fillRect(Math.round(sx), top + 13, 1, ht - 13); }
+          }
+        } else this.drawWave(c, t, clip, x0, top + 14, wd, ht - 14);
+        c.restore();
+        if (isFolder(clip)) {                                  // the TAKES badge: shows / hides the take lanes
+          const label = `${clip.takes.length} TAKES ${v.takesOpen?.has(t.id) ? '▴' : '▾'}`;
+          c.font = '700 8px "IBM Plex Mono", monospace';
+          const bw = c.measureText(label).width + 8, bx = Math.max(x0 + 2, x0 + wd - bw - 2);
+          c.fillStyle = '#0b0c0d'; c.fillRect(bx, top + 2, bw, 10); c.fillStyle = t.color; c.fillText(label, bx + 4, top + 7.5);
+          (this.badges ||= []).push({ x0: bx, x1: bx + bw, y0: top + v.sy, y1: top + 12 + v.sy, track: t.id });
+        }
+        if (sel) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x0 + 0.75, top + 0.75, wd - 1.5, ht - 1.5); c.lineWidth = 1; }
+        continue;
+      }
       // the notes, repeated over the clip's loop
       const loop = clip.loop || clip.len;
       let lo = 127, hi = 0;
@@ -309,6 +414,35 @@ export class Arrange {
       }
       c.restore();
       if (sel) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x0 + 0.75, top + 0.75, wd - 1.5, ht - 1.5); c.lineWidth = 1; }
+      if (this.lifted === clip.id) { c.strokeStyle = t.color; c.lineWidth = 3; c.strokeRect(x0 - 1, top - 1, wd + 2, ht + 2); c.lineWidth = 1; }
+    }
+  }
+  // a take lane: take k of each folder, the parts in the comp lit
+  drawTake(c, r, y, rh, w) {
+    const t = r.t, k = r.k, v = this.app.view, spbSec = 60 / this.p.bpm;
+    c.fillStyle = '#0e1011'; c.fillRect(0, y, w, rh - 1);
+    for (const clip of t.clips) {
+      if (!isFolder(clip) || !clip.takes[k]) continue;
+      const tk = clip.takes[k], a = this.app.assets.get(tk.src);
+      const audio0 = clip.start + tk.at - tk.offset / spbSec, audio1 = a ? audio0 + a.L.length / 44100 / spbSec : audio0;
+      const v0 = Math.max(clip.start, audio0), v1 = Math.min(clip.start + clip.len, audio1);
+      const cx0 = this.x(clip.start), cx1 = this.x(clip.start + clip.len);
+      c.fillStyle = '#16191c'; c.fillRect(cx0, y + 2, cx1 - cx0, rh - 5);
+      if (v1 > v0) {
+        c.save(); c.globalAlpha = 0.35;
+        this.drawWave(c, t, { src: tk.src, offset: (v0 - audio0) * spbSec, gain: clip.gain }, this.x(v0), y + 3, (v1 - v0) * v.zoom, rh - 7);
+        c.restore();
+      }
+      for (const sg of clip.comp) {                               // this take's part of the comp
+        if (sg.k !== k) continue;
+        const sx = this.x(clip.start + sg.a), sw = (sg.b - sg.a) * v.zoom;
+        c.fillStyle = t.color + '30'; c.fillRect(sx, y + 2, sw, rh - 5);
+        c.fillStyle = t.color; c.fillRect(sx, y + 2, sw, 2);
+        const s0 = Math.max(clip.start + sg.a, v0), s1 = Math.min(clip.start + sg.b, v1);
+        if (s1 > s0) this.drawWave(c, t, { src: tk.src, offset: (s0 - audio0) * spbSec, gain: clip.gain }, this.x(s0), y + 5, (s1 - s0) * v.zoom, rh - 9);
+      }
+      c.fillStyle = '#737980'; c.font = '700 8px "IBM Plex Mono", monospace'; c.textBaseline = 'middle';
+      c.fillText(tk.name || `TAKE ${k + 1}`, Math.max(cx0, 0) + 4, y + 10);
     }
   }
   drawWave(c, t, clip, x0, top, wd, ht) {
@@ -345,7 +479,11 @@ export class Arrange {
     }
     c.lineWidth = 1;
     c.fillStyle = '#737980'; c.font = '500 9px "IBM Plex Mono", monospace';
-    c.fillText(`${tgt.label} ${tgt.fmt(tgt.max)}`, 6, y + 12);
+    const now = pts.length ? (() => { const q = this.app.pos; if (q <= pts[0].t) return pts[0].v; for (let i = 1; i < pts.length; i++) if (q < pts[i].t) { const a = pts[i - 1], b = pts[i]; return a.v + (b.v - a.v) * (q - a.t) / (b.t - a.t); } return pts[pts.length - 1].v; })()
+      : key === 'tempo' ? this.p.bpm : key === 'vol' ? t.vol : key === 'pan' ? t.pan : key.startsWith('send') ? t.sends[+key.slice(4)] ?? 0
+      : key.startsWith('fx:') || key.startsWith('nfx:') ? (() => { const [k0, id, pk] = key.split(':'); return (k0 === 'fx' ? t.fx : t.nfx)?.find((d) => d.id === id)?.p[pk] ?? tgt.def; })()
+      : key[0] === 'p' ? t.params?.[+key.slice(1)] ?? this.app.params.get(t.id)?.[+key.slice(1)] ?? tgt.def : tgt.def;   // no points: the knob's own value
+    c.fillText(`${tgt.label} · ${tgt.fmt(now)}`, 6, y + 12);
     this.autoGeom = this.autoGeom || {};
     this.autoGeom[t.id] = { vy, tgt, y, rh };
   }
@@ -353,32 +491,34 @@ export class Arrange {
   bindLanes() {
     const cv = this.lanesCv, app = this.app;
     const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    const hitClip = (t, x) => {
-      for (let i = t.clips.length - 1; i >= 0; i--) {
-        const c = t.clips[i], x0 = this.x(c.start), x1 = this.x(c.start + c.len);
-        if (x >= x0 && x <= x1) return { clip: c, edge: x > x1 - EDGE && x1 - x0 > EDGE * 2, left: t.kind === 'audio' && x < x0 + EDGE && x1 - x0 > EDGE * 3 };
-      }
-      return null;
-    };
+    const hitClip = (t, x, edge = EDGE) => this.hitClip(t, x, edge);
+    this.bindPinch(cv, this.lanes);
     cv.addEventListener('pointermove', (e) => {
       if (e.buttons) return;
       const [x, y] = local(e), row = this.rowAt(y);
       let cur = 'default';
       if (row?.kind === 'track') { const hc = hitClip(row.t, x); if (hc) cur = hc.edge || hc.left ? 'ew-resize' : 'grab'; else cur = row.t.kind === 'audio' ? 'default' : 'crosshair'; }
       else if (row?.kind === 'auto') cur = 'crosshair';
+      else if (row?.kind === 'take') cur = 'cell';
       cv.style.cursor = cur;
     });
     cv.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       const [x, y] = local(e), row = this.rowAt(y);
+      if (this.pinch) return;
+      if (e.pointerType === 'touch' && (!row || row.kind === 'track')) return this.touchTrack(e, row, x, y);
+      if (e.pointerType === 'touch' && row.kind === 'auto' && !this.autoPointAt(row, x, y)) return this.touchAuto(e, row, x, y);
       if (!row) { app.selectClip(null); return; }
       if (row.kind === 'auto') return this.autoDown(e, row, x, y);
+      if (row.kind === 'take') return this.takeDown(e, row, x);
+      const badge = (this.badges || []).find((b) => x >= b.x0 && x <= b.x1 && y + this.app.view.sy >= b.y0 && y + this.app.view.sy <= b.y1);
+      if (badge) { app.selectTrack(badge.track); app.toggleTakes(badge.track); return; }
       const t = row.t;
       app.selectTrack(t.id);
       const hc = hitClip(t, x);
       if (!hc) {                                             // drag on empty lane: draw a new clip
         app.selectClip(null);
-        if (t.kind === 'audio') return;
+        if (t.kind === 'audio' || t.kind === 'group') return;
         const b0 = this.snap(this.beat(x), true);
         dragPointer(e, (m) => {
           const [mx] = local(m), b1 = this.snap(this.beat(mx));
@@ -392,40 +532,9 @@ export class Arrange {
         });
         return;
       }
-      let clip = hc.clip;
-      if (e.altKey && !hc.edge) {                            // Alt-drag: a copy
-        const copy = structuredClone(clip); copy.id = uid('c');
-        app.store.change((p) => p.tracks.find((x2) => x2.id === t.id).clips.push(copy));
-        clip = copy;
-      }
-      app.selectClip(clip.id, t.id);
-      const start0 = clip.start, len0 = clip.len, off0 = clip.offset || 0, b0 = this.beat(x), id = clip.id;
-      const spb = 60 / this.p.bpm, asset = t.kind === 'audio' ? app.assets.get(clip.src) : null;
-      const maxLen = asset ? (asset.L.length / 44100 - off0) / spb : Infinity;
-      let trackId = t.id;
-      const tag = 'clip' + uid();
+      const d = this.startClipDrag(t, hc, x, e.altKey);
       cv.style.cursor = hc.edge || hc.left ? 'ew-resize' : 'grabbing';
-      dragPointer(e, (m) => {
-        const [mx, my] = local(m), db = this.beat(mx) - b0;
-        app.store.change((p) => {
-          const tr = p.tracks.find((q) => q.id === trackId), c = tr.clips.find((q) => q.id === id);
-          if (hc.edge) {
-            c.len = Math.min(maxLen, Math.max(this.app.view.snap || 0.25, this.snap(start0 + len0 + db) - start0));
-          } else if (hc.left) {                              // audio: trim the start
-            const ns = Math.min(start0 + len0 - 0.25, Math.max(start0 - off0 / spb, this.snap(start0 + db)));
-            c.start = Math.max(0, ns); c.offset = Math.max(0, off0 + (c.start - start0) * spb); c.len = start0 + len0 - c.start;
-          } else {
-            c.start = Math.max(0, this.snap(start0 + db));
-            const over = this.rowAt(my);
-            if (over?.kind === 'track' && over.t.id !== trackId && over.t.kind === tr.kind) {
-              tr.clips = tr.clips.filter((q) => q !== c);
-              p.tracks.find((q) => q.id === over.t.id).clips.push(c);
-              trackId = over.t.id;
-              this.app.view.selTrack = trackId;
-            }
-          }
-        }, tag);
-      }, () => { app.store.endGesture(); cv.style.cursor = ''; });
+      dragPointer(e, d.move, () => { d.up(); cv.style.cursor = ''; });
     });
     cv.addEventListener('dblclick', (e) => {
       const [x, y] = local(e), row = this.rowAt(y);
@@ -443,6 +552,8 @@ export class Arrange {
     lanes.addEventListener('drop', (e) => {
       e.preventDefault();
       const [x, y] = local(e), row = this.rowAt(y);
+      const song = [...e.dataTransfer.files].find((f) => /\.sloopsong$/i.test(f.name));
+      if (song) { app.openSloopSong(song); return; }
       const mids = [...e.dataTransfer.files].filter((f) => /\.midi?$/i.test(f.name));
       for (const f of mids) app.importMidiFile(f, Math.max(0, this.snap(this.beat(x), true))).catch((err) => app.toast(err.message));
       if (mids.length) return;
@@ -455,16 +566,228 @@ export class Arrange {
       const [x, y] = local(e), row = this.rowAt(y);
       if (row?.kind !== 'track') return;
       const hc = hitClip(row.t, x);
-      if (hc) app.store.change((p) => { const tr = p.tracks.find((q) => q.id === row.t.id); tr.clips = tr.clips.filter((c) => c.id !== hc.clip.id); });
+      if (hc) { app.selectClip(hc.clip.id, row.t.id); this.clipSheet(row.t, hc.clip); }
+    });
+  }
+  // ---------------------------------------------------------------- touch ---
+  // the view by fingers: v.sx / v.sy scrolled, the zoom pinched (around the fingers)
+  scrollTo(sx, sy) {
+    const v = this.app.view, [, hh] = this.lanes.size();
+    v.sx = Math.max(0, sx);
+    v.sy = Math.max(0, Math.min(Math.max(0, this.total - hh + 40), sy));
+    this.headsInner.style.transform = `translateY(${-v.sy}px)`;
+    if (v.mode === 'session') this.app.session.render();
+    this.redraw();
+  }
+  bindPinch(el) {
+    const pts = new Map();
+    const start = () => {
+      const [a, b] = [...pts.values()], v = this.app.view, r = this.lanesCv.getBoundingClientRect();
+      this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx0: (a.x + b.x) / 2 - r.left, cy0: (a.y + b.y) / 2, zoom0: v.zoom, sx0: v.sx, sy0: v.sy };
+      this.app.store.endGesture();
+    };
+    el.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) start(); });
+    el.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!this.pinch || pts.size < 2) return;
+      const [a, b] = [...pts.values()], g = this.pinch, v = this.app.view, r = this.lanesCv.getBoundingClientRect();
+      const zoom = Math.max(3, Math.min(240, g.zoom0 * Math.hypot(a.x - b.x, a.y - b.y) / g.d0)), cx = (a.x + b.x) / 2 - r.left, cy = (a.y + b.y) / 2;
+      const beat = (g.cx0 + g.sx0) / g.zoom0;
+      v.zoom = zoom;
+      this.scrollTo(beat * zoom - cx, g.sy0 - (cy - g.cy0));
+    });
+    const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2 && this.pinch) setTimeout(() => { if (pts.size < 2) this.pinch = null; }, 0); };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  }
+  // one finger on a lane: drag scrolls; a tap selects; a double tap opens the clip (or writes one);
+  // held still, the clip lifts: then drag moves it (its end: resizes), or let go for its menu
+  touchTrack(e, row, x, y) {
+    const app = this.app, v = app.view, t = row?.t, hc = t ? this.hitClip(t, x, 16) : null;
+    const badge = (this.badges || []).find((b) => x >= b.x0 - 8 && x <= b.x1 + 8 && y + v.sy >= b.y0 - 8 && y + v.sy <= b.y1 + 8);
+    if (badge) { app.selectTrack(badge.track); app.toggleTakes(badge.track); return; }
+    const x0 = e.clientX, y0 = e.clientY, sx0 = v.sx, sy0 = v.sy;
+    let mode = 'wait', drag = null;
+    const timer = hc ? setTimeout(() => {
+      if (mode !== 'wait') return;
+      mode = 'lift'; navigator.vibrate?.(12);
+      app.selectClip(hc.clip.id, t.id);
+      this.lifted = hc.clip.id; this.redraw();
+    }, 380) : 0;
+    dragPointer(e, (m) => {
+      if (this.pinch) { mode = 'gone'; clearTimeout(timer); return; }
+      const dx = m.clientX - x0, dy = m.clientY - y0;
+      if (mode === 'wait' && Math.hypot(dx, dy) > 8) { mode = 'pan'; clearTimeout(timer); }
+      if (mode === 'pan') this.scrollTo(sx0 - dx, sy0 - dy);
+      else if (mode === 'lift' && Math.hypot(dx, dy) > 4) { mode = 'move'; drag = this.startClipDrag(t, hc, x); }
+      if (mode === 'move') drag.move(m);
+    }, () => {
+      clearTimeout(timer);
+      this.lifted = null;
+      if (mode === 'wait') {                                   // a tap, or the second tap of a double tap
+        const now = performance.now(), last = this.lastTap, dbl = last && now - last.at < 320 && Math.hypot(x0 - last.x, y0 - last.y) < 30;
+        this.lastTap = dbl ? null : { at: now, x: x0, y: y0 };
+        if (t) app.selectTrack(t.id);
+        if (hc) { app.selectClip(hc.clip.id, t.id); if (dbl) app.showTab('edit'); }
+        else { app.selectClip(null); if (dbl && t && t.kind !== 'audio' && t.kind !== 'group') this.createClip(t, Math.floor(this.beat(x) / this.p.sig) * this.p.sig, this.p.sig * 4); }
+      } else if (mode === 'lift') this.clipSheet(t, hc.clip);
+      else if (mode === 'move') drag.up();
+      this.redraw();
+    });
+  }
+  // scroll a track into view
+  reveal(trackId, withLanes = false) {
+    const rows = this.rows(), i = rows.findIndex((q) => q.kind === 'track' && q.t.id === trackId), [, hh] = this.lanes.size(), v = this.app.view;
+    if (i < 0) return;
+    const r = rows[i];
+    let end = r.y + r.h;
+    if (withLanes) for (let j = i + 1; j < rows.length && rows[j].kind !== 'track'; j++) end = rows[j].y + rows[j].h;
+    if (r.y < v.sy) this.scrollTo(v.sx, r.y);
+    else if (end > v.sy + hh) this.scrollTo(v.sx, Math.min(r.y, end - hh + 8));
+  }
+  // drag a head up or down: the track moves there (mouse; on a touch screen: its menu, MOVE UP / DOWN)
+  reorderDrag(e, t) {
+    const app = this.app, y0 = e.clientY;
+    let moved = false, target = null;
+    const mv = (m) => {
+      if (!moved && Math.abs(m.clientY - y0) < 6) return;
+      moved = true;
+      const r = this.lanesCv.getBoundingClientRect(), row = this.rowAt(m.clientY - r.top);
+      target = row?.kind === 'track' ? row.t.id : null;
+      this.dropMark = target && target !== t.id ? { id: target, below: m.clientY > y0 } : null;
+      document.body.style.cursor = 'grabbing';
+      this.renderHeadsMark();
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+      document.body.style.cursor = ''; this.dropMark = null; this.renderHeadsMark();
+      if (!moved || !target || target === t.id) return;
+      app.store.change((p) => {
+        const from = p.tracks.findIndex((x) => x.id === t.id), [tr] = p.tracks.splice(from, 1);
+        const to = p.tracks.findIndex((x) => x.id === target);
+        p.tracks.splice(to + (from <= to ? 1 : 0), 0, tr);
+      });
+    };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  }
+  renderHeadsMark() {
+    for (const el of this.headsInner.querySelectorAll('.head')) el.classList.toggle('drop', this.dropMark?.id === el.dataset.id);
+  }
+  // the menus a long press (or a right-click) opens: a clip's, a track's
+  clipSheet(t, clip) {
+    const app = this.app;
+    app.sheet(clip.name, [
+      ['OPEN IN THE EDITOR', () => { app.selectClip(clip.id, t.id); app.showTab('edit'); }],
+      ['DUPLICATE AFTER IT', () => { const c = { ...structuredClone(clip), id: uid('c'), start: clip.start + clip.len }; app.placeClip(t.id, c); app.selectClip(c.id, t.id); }],
+      ...(isFolder(clip) ? [[app.view.takesOpen?.has(t.id) ? 'HIDE THE TAKES' : 'SHOW THE TAKES', () => app.toggleTakes(t.id)]] : []),
+      ['DELETE', () => app.store.change((p) => { const tr = p.tracks.find((x) => x.id === t.id); tr.clips = tr.clips.filter((c) => c.id !== clip.id); }), 'danger'],
+    ]);
+  }
+  trackSheet(t) {
+    const app = this.app, v = app.view, i = this.p.tracks.findIndex((x) => x.id === t.id);
+    const move = (d) => app.store.change((p) => { const j = p.tracks.findIndex((x) => x.id === t.id), k = j + d; if (k >= 0 && k < p.tracks.length) [p.tracks[j], p.tracks[k]] = [p.tracks[k], p.tracks[j]]; });
+    app.sheet(t.name, [
+      ...(i > 0 ? [['MOVE UP', () => move(-1)]] : []), ...(i < this.p.tracks.length - 1 ? [['MOVE DOWN', () => move(1)]] : []),
+      [t.kind === 'audio' ? 'THE AUDIO TRACK' : 'INSTRUMENT & EFFECTS', () => { app.selectTrack(t.id); app.showTab('device'); }],
+      ['RENAME', () => app.renameTrack(t.id)],
+      [v.autoOpen.has(t.id) ? 'HIDE THE AUTOMATION' : 'SHOW THE AUTOMATION', () => { v.autoOpen.has(t.id) ? v.autoOpen.delete(t.id) : v.autoOpen.add(t.id); this.renderHeads(); this.redraw(); }],
+      ['DUPLICATE', () => app.duplicateTrack(t.id)],
+      ['DELETE…', () => app.deleteTrack(t.id), 'danger'],
+    ]);
+  }
+  hitClip(t, x, edge = EDGE) {
+    for (let i = t.clips.length - 1; i >= 0; i--) {
+      const c = t.clips[i], x0 = this.x(c.start), x1 = this.x(c.start + c.len);
+      if (x >= x0 && x <= x1) return { clip: c, edge: x > x1 - edge && x1 - x0 > edge * 2, left: t.kind === 'audio' && x < x0 + edge && x1 - x0 > edge * 3 };
+    }
+    return null;
+  }
+  // a clip moved, resized or trimmed (audio, from the left), by mouse or finger: { move(pointer), up() }
+  startClipDrag(t, hc, x, alt = false) {
+    const app = this.app, cv = this.lanesCv;
+    const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    let clip = hc.clip;
+    if (alt && !hc.edge) {                            // Alt-drag: a copy
+      const copy = structuredClone(clip); copy.id = uid('c');
+      app.store.change((p) => p.tracks.find((x2) => x2.id === t.id).clips.push(copy));
+      clip = copy;
+    }
+    app.selectClip(clip.id, t.id);
+    const start0 = clip.start, len0 = clip.len, off0 = clip.offset || 0, b0 = this.beat(x), id = clip.id;
+    const spb = 60 / this.p.bpm, asset = t.kind === 'audio' ? app.assets.get(clip.src) : null;
+    const maxLen = asset && !isFolder(clip) ? (asset.L.length / 44100 - off0) / spb : Infinity;
+    const takes0 = isFolder(clip) ? structuredClone(clip.takes) : null, comp0 = takes0 ? structuredClone(clip.comp) : null;
+    let trackId = t.id;
+    const tag = 'clip' + uid();
+    const move = (m) => {
+      const [mx, my] = local(m), db = this.beat(mx) - b0;
+      app.store.change((p) => {
+        const tr = p.tracks.find((q) => q.id === trackId), c = tr.clips.find((q) => q.id === id);
+        if (hc.edge) {
+          c.len = Math.min(maxLen, Math.max(this.app.view.snap || 0.25, this.snap(start0 + len0 + db) - start0));
+        } else if (hc.left) {                              // audio: trim the start
+          const ns = Math.min(start0 + len0 - 0.25, Math.max(takes0 ? 0 : start0 - off0 / spb, this.snap(start0 + db)));
+          c.start = Math.max(0, ns); c.offset = Math.max(0, off0 + (c.start - start0) * spb); c.len = start0 + len0 - c.start;
+          if (takes0) shiftFolder(c, takes0, comp0, c.start - start0, c.len);
+        } else {
+          c.start = Math.max(0, this.snap(start0 + db));
+          const over = this.rowAt(my);
+          if (over?.kind === 'track' && over.t.id !== trackId && over.t.kind === tr.kind) {
+            tr.clips = tr.clips.filter((q) => q !== c);
+            p.tracks.find((q) => q.id === over.t.id).clips.push(c);
+            trackId = over.t.id;
+            this.app.view.selTrack = trackId;
+          }
+        }
+      }, tag);
+    };
+    const up = () => {
+      app.store.endGesture();
+      const tr = app.store.track(trackId), c = tr?.clips.find((q) => q.id === id);
+      if (!c || !tr.clips.some((q) => q !== c && q.start < c.start + c.len - 1e-6 && q.start + q.len > c.start + 1e-6)) return;
+      app.store.amend((p) => { const x = p.tracks.find((q) => q.id === trackId); x.clips = cutRange(x.clips, c.start, c.start + c.len, p.bpm, id); });   // one undo: the move and its cut
+    };
+    return { move, up };
+  }
+  // a take lane: click picks this take for the part under the pointer, a swipe picks it from here to there
+  takeDown(e, row, x) {
+    const app = this.app, t = row.t, k = row.k, b = this.beat(x);
+    const clip = t.clips.find((c) => isFolder(c) && c.takes[k] && b >= c.start && b < c.start + c.len);
+    if (!clip) return;
+    app.selectClip(clip.id, t.id);
+    const comp0 = structuredClone(clip.comp), a0 = this.snap(b - clip.start), tag = 'comp' + uid();
+    let moved = false;
+    dragPointer(e, (m) => {
+      if (!moved && Math.abs(m.clientX - e.clientX) < 4) return;
+      moved = true;
+      const r = this.lanesCv.getBoundingClientRect(), b1 = Math.max(0, Math.min(clip.len, this.snap(this.beat(m.clientX - r.left) - clip.start)));
+      const lo = Math.max(0, Math.min(a0, b1)), hi = Math.min(clip.len, Math.max(a0, b1));
+      app.store.change((p) => { const c = p.tracks.find((q) => q.id === t.id).clips.find((q) => q.id === clip.id); c.comp = setComp(comp0, lo, hi, k); }, tag);
+    }, () => {
+      if (!moved) { const sg = segmentAt(comp0, b - clip.start); if (sg) app.compTake(t.id, clip.id, k, sg.a, sg.b); }
+      app.store.endGesture();
     });
   }
   createClip(t, start, len) {
+    if (t.kind === 'group' || t.kind === 'audio') return;
     const c = newClip(start, len, t.kind === 'drum' ? 'BEAT' : 'CLIP');
-    this.app.store.change((p) => p.tracks.find((x) => x.id === t.id).clips.push(c));
+    this.app.placeClip(t.id, c);
     this.app.selectClip(c.id, t.id);
     this.app.showTab('edit');
   }
-  autoDown(e, row, x, y) {
+  autoPointAt(row, x, y) {
+    const t = row.t, key = this.app.view.autoTarget[t.id] || 'vol', g = this.autoGeom?.[t.id];
+    const pts = (t.kind === 'tempo' ? this.p.tempo : t.auto[key]) || [];
+    return !!g && pts.some((pt) => Math.abs(this.x(pt.t) - x) < 16 && Math.abs(g.vy(pt.v) - y) < 16);
+  }
+  // a finger on an automation lane, off its points: a drag scrolls, a tap adds a point
+  touchAuto(e, row, x, y) {
+    const v = this.app.view, x0 = e.clientX, y0 = e.clientY, sx0 = v.sx, sy0 = v.sy;
+    let moved = false;
+    dragPointer(e, (m) => { if (this.pinch) { moved = true; return; } if (!moved && Math.hypot(m.clientX - x0, m.clientY - y0) > 8) moved = true; if (moved) this.scrollTo(sx0 - (m.clientX - x0), sy0 - (m.clientY - y0)); },
+      () => { if (!moved) this.autoDown({ ...e, detail: 1, currentTarget: this.lanesCv, pointerId: e.pointerId, clientX: x0, clientY: y0 }, row, x, y, true); });
+  }
+  autoDown(e, row, x, y, tapOnly = false) {
     const app = this.app, t = row.t, key = app.view.autoTarget[t.id] || 'vol';
     const g = this.autoGeom?.[t.id];
     if (!g) return;
@@ -475,9 +798,12 @@ export class Arrange {
     const tempo = t.kind === 'tempo';
     const listOf = (p, create) => { if (tempo) return p.tempo; const tr = p.tracks.find((q) => q.id === t.id); return create ? (tr.auto[key] ||= []) : tr.auto[key]; };
     const pts = (tempo ? this.p.tempo : t.auto[key]) || [];
-    let idx = pts.findIndex((pt) => Math.abs(this.x(pt.t) - x) < 7 && Math.abs(g.vy(pt.v) - y) < 7);
+    const R = e.pointerType === 'touch' ? 16 : 7;
+    let idx = pts.findIndex((pt) => Math.abs(this.x(pt.t) - x) < R && Math.abs(g.vy(pt.v) - y) < R);
     const tag = 'auto' + uid();
-    if (e.detail >= 2 && idx >= 0) {
+    const now = performance.now(), lc = this.lastAutoClick, again = idx >= 0 && lc && lc.t === t.id && lc.key === key && lc.idx === idx && now - lc.at < 420;
+    this.lastAutoClick = idx >= 0 && !again ? { t: t.id, key, idx, at: now } : null;
+    if (again) {                                              // a double click on a point: it goes (pointerdown has no click count)
       app.store.change((p) => { const list = listOf(p); list.splice(idx, 1); if (!tempo && !list.length) delete p.tracks.find((q) => q.id === t.id).auto[key]; });
       return;
     }
@@ -489,6 +815,7 @@ export class Arrange {
         idx = list.indexOf(pt);
       }, tag);
     }
+    if (tapOnly) { app.store.endGesture(); return; }
     dragPointer(e, (m) => {
       const r = this.lanesCv.getBoundingClientRect();
       const mx = m.clientX - r.left, my = m.clientY - r.top;

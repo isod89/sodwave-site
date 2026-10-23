@@ -3,6 +3,8 @@
 // (quarter notes). Every edit goes through store.change(), which keeps the undo history and tells
 // the audio engine and the views.
 
+import { isFolder, shiftFolder } from './comp.js';
+
 export const FORMAT = 1;
 export const SCENES = 8;
 export const COLORS = ['#ff5b14', '#3d6bff', '#1fb46a', '#ffc21a', '#e8e8e8', '#ff4f8b', '#8a5cff', '#22c5d6'];
@@ -20,7 +22,7 @@ export function newTrack(kind, i, opts = {}) {
     engine: opts.engine ?? 0, preset: opts.preset ?? 0, kit: opts.kit ?? 15, params: {},
     vol: opts.vol ?? (kind === 'group' ? 0 : -6), pan: opts.pan ?? 0, mute: false, solo: false, arm: false,
     sends: opts.sends || [kind === 'group' ? 0 : 0.15, 0], sendPre: [], clips: [], slots: Array(opts.scenes || SCENES).fill(null),
-    auto: {}, rev: 0, fx: [], midiCh: 0, out: opts.out || 'master',
+    auto: {}, rev: 0, fx: [], nfx: [], mods: [], midiCh: 0, out: opts.out || 'master',
   };
   if (kind === 'sampler') t.sample = { src: opts.src || null, name: opts.sampleName || '', root: 60, mode: opts.mode || 'keys', slices: 16, start: 0, end: 1, att: 2, rel: 150, gain: 0, loop: false, tune: 0 };
   if (kind === 'external') t.ext = { port: '', ch: 1, latency: 0 };
@@ -42,6 +44,7 @@ export function newProject() {
     swing: 0,                // 0 straight .. 1 (offbeat 16ths 75 %)
     countIn: false,
     punch: { on: false, a: 4, b: 12 },
+    markers: [],             // arrangement markers: [{ id, t: beat, name }]
     assets: {},              // audio files: id -> { name, frames }; their samples live outside the JSON
   };
 }
@@ -148,6 +151,8 @@ export class Store {
     this.emit('change');
   }
   endGesture() { this.lastTag = null; }
+  // a change that belongs to the last step of the history (the clip a drag cut, after the drag): no new undo step
+  amend(fn) { fn(this.p); this.emit('change'); }
   undo() {
     if (!this.past.length) return;
     this.future.push(structuredClone(this.p));
@@ -162,8 +167,10 @@ export class Store {
     this.lastTag = null;
     this.emit('history');
   }
-  replace(p) {
-    this.p = p; this.past = []; this.future = []; this.lastTag = null;
+  // another project: the one before stays one undo away (keep), or the history starts afresh
+  replace(p, keep = false) {
+    if (keep && this.p) { this.past.push(structuredClone(this.p)); if (this.past.length > 300) this.past.shift(); } else this.past = [];
+    this.p = p; this.future = []; this.lastTag = null;
     this.emit('load');
   }
   track(id) { return this.p.tracks.find((t) => t.id === id); }
@@ -173,7 +180,7 @@ export function validate(p) {
   if (!p || p.kraken !== FORMAT || !Array.isArray(p.tracks)) throw new Error('This file is not a Kraken project.');
   const d = newProject();
   p.loop ??= d.loop; p.master ??= d.master; p.returns ??= d.returns; p.sig ??= 4; p.assets ??= {};
-  p.scenes ??= d.scenes; p.launchQ ??= 4; p.tempo ??= []; p.swing ??= 0; p.countIn ??= false; p.punch ??= d.punch;
+  p.scenes ??= d.scenes; p.launchQ ??= 4; p.tempo ??= []; p.swing ??= 0; p.countIn ??= false; p.punch ??= d.punch; p.markers ??= [];
   // repairs: what a damaged or hand-edited file may hold
   const num = (x, d) => (Number.isFinite(x) ? x : d);
   p.bpm = Math.max(20, Math.min(300, num(p.bpm, 120)));
@@ -183,7 +190,7 @@ export function validate(p) {
   }
   p.returns.forEach((r, i) => { r.id ??= uid('r'); r.type ??= i === 0 ? 'reverb' : i === 1 ? 'delay' : 'none'; });
   for (const t of p.tracks) {
-    t.auto ??= {}; t.params ??= {}; t.sends ??= [0, 0]; t.sendPre ??= []; t.clips ??= []; t.fx ??= []; t.midiCh ??= 0; t.out ??= 'master';
+    t.auto ??= {}; t.params ??= {}; t.sends ??= [0, 0]; t.sendPre ??= []; t.clips ??= []; t.fx ??= []; t.nfx ??= []; t.mods ??= []; t.midiCh ??= 0; t.out ??= 'master';
     t.slots ??= []; while (t.slots.length < p.scenes.length) t.slots.push(null);
   }
   for (const r of p.returns) r.fx ??= [];
@@ -199,4 +206,33 @@ export function projectEnd(p) {
   let end = 0;
   for (const t of p.tracks) for (const c of t.clips) end = Math.max(end, c.start + c.len);
   return end;
+}
+
+// clear the beats [a, b) of a track's clips (a recording or a moved clip lands there): what overlaps is cut,
+// a clip across the range becomes two, each part still playing what it played. bpm for audio offsets.
+export function cutRange(clips, a, b, bpm, keep = null) {
+  const out = [], spb = 60 / bpm;
+  for (const c of clips) {
+    const s = c.start, e = c.start + c.len;
+    if (c === keep || c.id === keep || e <= a + 1e-6 || s >= b - 1e-6) { out.push(c); continue; }
+    if (s < a - 1e-6) {                                           // the part before
+      const left = structuredClone(c);
+      left.len = a - s;
+      if (left.notes && (left.loop || 0) >= c.len - 1e-6) left.loop = left.len;
+      if (isFolder(left)) left.comp = left.comp.filter((g) => g.a < left.len).map((g) => ({ ...g, b: Math.min(g.b, left.len) }));
+      out.push(left);
+    }
+    if (e > b + 1e-6) {                                           // the part after, in phase with what was there
+      const right = structuredClone(c), off = b - s;
+      right.id = uid('c'); right.start = b; right.len = e - b;
+      if (c.notes) {
+        const loop = c.loop || c.len;
+        if (loop < c.len - 1e-6) { const ph = off % loop; right.notes = c.notes.filter((n) => n.t < loop).map((n) => ({ ...n, t: ((n.t - ph) % loop + loop) % loop })); right.loop = loop; }
+        else { right.notes = c.notes.filter((n) => n.t >= off - 1e-6).map((n) => ({ ...n, t: n.t - off })); right.loop = right.len; }
+      } else if (isFolder(c)) shiftFolder(right, c.takes, c.comp, off, right.len);
+      else if (c.src) right.offset = (c.offset || 0) + off * (c.warp === 'repitch' && c.bpm ? 60 / c.bpm : spb);
+      out.push(right);
+    }
+  }
+  return out;
 }

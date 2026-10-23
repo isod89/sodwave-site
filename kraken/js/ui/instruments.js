@@ -70,6 +70,7 @@ export function buildSampler(dev, t) {
   const set = (fn, tag) => app.store.change((p) => fn(p.tracks.find((x) => x.id === t.id).sample), tag);
   const cv = h('canvas', { class: 'smp-wave', width: 520, height: 110 });
   const draw = () => {
+    const s = app.store.track(t.id)?.sample || {};                // (the current values: the panel is not rebuilt while dragging)
     const c = cv.getContext('2d'), W = cv.width, H = cv.height;
     c.fillStyle = '#0b0c0d'; c.fillRect(0, 0, W, H);
     if (!a) { c.fillStyle = '#737980'; c.font = '600 12px Archivo, sans-serif'; c.fillText('NO SAMPLE: LOAD A FILE, OR PICK AN AUDIO FILE OF THE PROJECT', 14, H / 2); return; }
@@ -87,8 +88,8 @@ export function buildSampler(dev, t) {
   cv.addEventListener('pointerdown', (e) => {             // drag the nearer of start / end
     const r = cv.getBoundingClientRect(), pos = (m) => Math.max(0, Math.min(1, (m.clientX - r.left) / r.width));
     const k = Math.abs(pos(e) - (s.start ?? 0)) < Math.abs(pos(e) - (s.end ?? 1)) ? 'start' : 'end';
-    const mv = (m) => set((x) => { x[k] = k === 'start' ? Math.min(pos(m), (x.end ?? 1) - 0.005) : Math.max(pos(m), (x.start ?? 0) + 0.005); }, 'smp' + k);
-    mv(e); cv.setPointerCapture(e.pointerId);
+    const mv = (m) => { set((x) => { x[k] = k === 'start' ? Math.min(pos(m), (x.end ?? 1) - 0.005) : Math.max(pos(m), (x.start ?? 0) + 0.005); }, 'smp' + k); draw(); };
+    cv.setPointerCapture(e.pointerId); mv(e);
     cv.onpointermove = (m) => { if (m.buttons) mv(m); };
     cv.onpointerup = () => { cv.onpointermove = null; app.store.endGesture(); };
   });

@@ -9,6 +9,9 @@
 // micro-timing and parameter locks, the way SLOOP's sequencer plays them.
 
 import { Reverb, Delay, Rack, Biquad } from './fx.js';
+import { NoteChain } from './notefx.js';
+import { Modulator, applyMod } from './mods.js';
+import { isFolder, expandFolder } from './comp.js';
 
 export const RATE = 44100;
 export const BLOCK = 32;                       // the firmware's control block (CTL)
@@ -167,18 +170,29 @@ class Track {
     this.slotEvents = [];      // per session slot: its notes, in [0, loop)
     this.sess = null;          // { slot, at } while a session clip plays
     this.queued = null;        // { slot, at } a launch (slot -1: a stop) waiting for its quantize
+    this.chain = new NoteChain((on, n, v) => (on ? this.instOn(engine, n, v) : this.instOff(engine, n)));   // the note effects
+    this.mods = []; this.modKeys = new Set(); this.modBase = {}; this.modLast = {};             // the modulators
   }
-  noteOn(engine, n, v) {
+  // notes go through the track's note effects, then to the instrument
+  noteOn(engine, n, v) { if (this.chain.empty) this.instOn(engine, n, v); else this.chain.noteOn(n, v); }
+  noteOff(engine, n) { if (this.chain.empty) this.instOff(engine, n); else this.chain.noteOff(n); }
+  instOn(engine, n, v) {
+    for (const m of this.mods) m.note(true);
     if (this.w) this.w.k_note(n, v, 1);
     else if (this.sampler) this.sampler.noteOn(this.def, engine.assets.get(this.def.sample?.src), n, v);
     else if (this.kind === 'external') engine.ext.push([this.id, 0x90, n, v]);
   }
-  noteOff(engine, n) {
+  instOff(engine, n) {
+    for (const m of this.mods) m.note(false);
     if (this.w) this.w.k_note(n, 0, 0);
     else if (this.sampler) this.sampler.noteOff(n);
     else if (this.kind === 'external') engine.ext.push([this.id, 0x80, n, 0]);
   }
   allOff(engine) {
+    this.seqOff(engine);
+    this.chain.reset();
+  }
+  seqOff(engine) {                                   // the sequencer's notes only: keys held live keep their arpeggio going
     for (const n of this.active.keys()) this.noteOff(engine, n);
     this.active.clear();
     this.unlock();
@@ -216,7 +230,13 @@ class Track {
         const loop = c.loop || c.len, k = Math.floor((engine.pos - this.sess.at) / loop);
         return this.playAudio(engine, [0, 1].map((j) => ({ ...c, start: this.sess.at + (k + j) * loop, len: loop })));
       }
-      return this.playAudio(engine, d.clips);
+      // take folders play their comp: the clips are rebuilt when the project or the tempo changes
+      if (this.playList?.clips !== d.clips || this.playList.bpm !== engine.bpm) {
+        const list = [];
+        for (const c of d.clips) if (isFolder(c)) list.push(...expandFolder(c, 60 / engine.bpm)); else list.push(c);
+        this.playList = { clips: d.clips, bpm: engine.bpm, list };
+      }
+      return this.playAudio(engine, this.playList.list);
     }
     this.out.fill(0);                                            // groups and external tracks make no sound here
   }
@@ -291,6 +311,7 @@ export class KrakenEngine {
     this.lastBeat = -1;
     this.ext = [];             // notes for external MIDI tracks, posted after each render
     this.slotMsgs = [];
+    this.free = 0;             // a clock in beats that always runs: the note effects' time when stopped
   }
 
   // ------------------------------------------------------------- project ---
@@ -313,6 +334,8 @@ export class KrakenEngine {
       this.order.push(tr);
       if (!fresh) continue;                                     // unchanged: its events and sound stay as they are
       tr.rack.sync(def.fx, this.bpm);
+      tr.chain.sync(def.nfx);
+      this.syncMods(tr, def);
       if (tr.w) {
         this.applySound(tr, def);
         tr.w.k_bpm(Math.round(this.bpm));
@@ -361,11 +384,59 @@ export class KrakenEngine {
         }
       }
       tr.soundKey = key;
-      tr.params = {};
+      tr.params = {}; tr.modBase = {}; tr.modLast = {};
       if (!this.offline) this.post({ t: 'params', track: tr.id, values: tr.readParams() });
     }
     for (const k in def.params) {
       if (tr.params[k] !== def.params[k]) { tr.w.k_param(+k, def.params[k]); tr.params[k] = def.params[k]; }
+    }
+  }
+  // the modulators of a track; a target no longer modulated goes back to its knob
+  syncMods(tr, def) {
+    const old = new Map(tr.mods.map((m) => [m.id, m]));
+    tr.mods = (def.mods || []).map((d) => { let m = old.get(d.id); if (!m || m.type !== d.type) m = new Modulator(d); else m.set(d); return m; });
+    const keys = new Set();
+    for (const d of def.mods || []) if (d.on !== false) for (const t of d.to || []) keys.add(t.key);
+    for (const k of tr.modKeys) if (!keys.has(k)) {
+      if (k.startsWith('fx:')) { const [, id, pk] = k.split(':'); tr.rack.release(id, pk, this.bpm); }
+      else if (k[0] === 'p' && tr.w) { const id = +k.slice(1), v = def.params[id] ?? tr.modBase[id]; if (v != null) tr.w.k_param(id, v); delete tr.modLast[id]; }
+    }
+    tr.modKeys = keys;
+  }
+  modulate(tr, clock, dt, sec) {
+    tr.modVol = tr.modPan = tr.modSend = undefined;
+    if (!tr.mods.length) return;
+    const d = tr.def, sums = new Map();
+    for (const m of tr.mods) {
+      let key = 0;
+      if (m.type === 'follow') {
+        const src = this.tracks.get(m.def.src || tr.id);
+        if (src) { let pk = 0; for (let i = 0; i < BLOCK; i++) { const a = Math.abs(src.bufL[i]) + Math.abs(src.bufR[i]); if (a > pk) pk = a; } key = pk * 0.5; }
+      }
+      const v = m.step(clock, dt, sec, key);
+      if (!m.on) continue;
+      for (const t of m.def.to || []) { const s = sums.get(t.key); if (s) s.d += v * t.amt; else sums.set(t.key, { d: v * t.amt, lo: t.lo, hi: t.hi }); }
+    }
+    const playing = this.playing && !this.counting, autoV = (key) => (playing && d.auto?.[key]?.length ? autoAt(d.auto[key], this.pos) : undefined);
+    const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    for (const [key, { d: delta, lo, hi }] of sums) {
+      if (key === 'vol') tr.modVol = clamp((tr.autoVol ?? d.vol) + delta * 66, -60, 6);
+      else if (key === 'pan') tr.modPan = clamp((tr.autoPan ?? d.pan) + delta * 2, -1, 1);
+      else if (key.startsWith('send')) { tr.modSend ??= [...(tr.autoSend || d.sends || [])]; const i = +key.slice(4); tr.modSend[i] = clamp((tr.modSend[i] || 0) + delta, 0, 1); }
+      else if (key[0] === 'p') {
+        if (!tr.w) continue;
+        const id = +key.slice(1);
+        if (tr.lockBase[id] !== undefined) continue;                  // a parameter lock has it for now
+        const base = autoV(key) ?? d.params[id] ?? (tr.modBase[id] ??= tr.w.k_get(id));
+        const a = lo ?? 0, b = hi ?? 127, v = Math.round(clamp(base + delta * (b - a), a, b));
+        if (tr.modLast[id] !== v) { tr.modLast[id] = v; tr.w.k_param(id, v); }
+      } else if (key.startsWith('fx:')) {
+        const v = applyMod(key, autoV(key), delta, d);
+        if (v != null) { const [, fxId, pk] = key.split(':'); tr.rack.automate(fxId, pk, v, this.bpm); }
+      } else if (key.startsWith('nfx:')) {
+        const v = applyMod(key, autoV(key), delta, d);
+        if (v != null) { const [, fxId, pk] = key.split(':'); tr.chain.automate(fxId, pk, v); }
+      }
     }
   }
   seekIndex(ev, t) {
@@ -387,10 +458,10 @@ export class KrakenEngine {
     this.flushRecording();
     for (const tr of this.order) { tr.allOff(this); if (tr.queued) tr.queued = null; }
   }
-  seek(beat) {
+  seek(beat, wrap = false) {
     this.pos = Math.max(0, beat);
     this.counting = false;
-    for (const tr of this.order) { tr.allOff(this); tr.cursor = this.seekIndex(tr.events, this.pos); }
+    for (const tr of this.order) { if (wrap) tr.seqOff(this); else tr.allOff(this); tr.cursor = this.seekIndex(tr.events, this.pos); }
     this.lastBeat = -1;
   }
   panic() { for (const tr of this.order) { tr.allOff(this); tr.w?.k_panic(); tr.sampler && (tr.sampler.v = []); } }
@@ -490,6 +561,11 @@ export class KrakenEngine {
     }
     const dt = BLOCK / RATE * this.bpm / 60;
     if (this.playing) this.sequence(dt);
+    // the note effects' time: the song's while it plays (an arpeggio on the grid, the same in an export)
+    const song = this.playing && !this.counting, t0 = song ? this.pos : this.free;
+    for (const tr of this.order) if (!tr.chain.empty) tr.chain.tick(t0, t0 + dt);
+    for (const tr of this.order) if (tr.mods.length || tr.modVol !== undefined) this.modulate(tr, t0, dt, BLOCK / RATE);
+    this.free += dt;
     // instruments, racks, faders, sends, groups
     const mL = this.mix.L, mR = this.mix.R;
     mL.fill(0); mR.fill(0);
@@ -508,7 +584,7 @@ export class KrakenEngine {
       tr.rack.process(bL, bR, BLOCK, ctx);
       let on = aud.get(tr.id);
       if (this.soloTrack) on = tr.id === this.soloTrack || (tr.kind === 'group' && this.isAncestor(tr.id, this.soloTrack));
-      const vol = tr.autoVol ?? d.vol, pan = tr.autoPan ?? d.pan;
+      const vol = tr.modVol ?? tr.autoVol ?? d.vol, pan = tr.modPan ?? tr.autoPan ?? d.pan;
       const g = on ? dbToGain(vol) : 0, a = (pan + 1) * Math.PI / 4;
       const tl = g * Math.cos(a) * Math.SQRT2, trg = g * Math.sin(a) * Math.SQRT2;
       const sl0 = tr.gL, sr0 = tr.gR;
@@ -524,7 +600,7 @@ export class KrakenEngine {
       tr.gL = tl; tr.gR = trg;
       tr.peakL = Math.max(tr.peakL, pl); tr.peakR = Math.max(tr.peakR, pr);
       if (this.soloTrack && tr.id !== this.soloTrack) return;
-      const sends = tr.autoSend || d.sends || [];
+      const sends = tr.modSend || tr.autoSend || d.sends || [];
       for (let s = 0; s < this.returns.length; s++) {
         const amt = (sends[s] || 0) * (on ? 1 : 0);
         if (amt <= 0) continue;
@@ -588,7 +664,7 @@ export class KrakenEngine {
     return false;
   }
   sequence(dt) {
-    if (!this.counting && this.loop.on && this.pos >= this.loop.b - 1e-9) { this.flushWrap(); this.seek(this.loop.a); }
+    if (!this.counting && this.loop.on && this.pos >= this.loop.b - 1e-9) { this.flushWrap(); this.seek(this.loop.a, true); }
     const end = this.pos + dt;
     for (const tr of this.order) {
       for (const [n, e] of tr.active) if (e <= end) { tr.noteOff(this, n); tr.active.delete(n); }
@@ -612,17 +688,18 @@ export class KrakenEngine {
   }
   report() {
     this.blocksSinceMeter = 0;
-    const tracks = {}, sess = {};
+    const tracks = {}, sess = {}, mods = {};
     for (const tr of this.order) {
       tracks[tr.id] = [tr.peakL, tr.peakR]; tr.peakL = tr.peakR = 0;
       if (tr.sess || tr.queued) sess[tr.id] = { slot: tr.sess?.slot ?? -1, at: tr.sess?.at, queued: tr.queued?.slot, qat: tr.queued?.at };
+      if (tr.mods.length) mods[tr.id] = tr.mods.map((m) => Math.round(m.value * 1000) / 1000);
     }
     const gr = {};
     const grOf = (rack) => { for (const d of rack.list) if (d.gr !== undefined && (d.type === 'comp' || d.type === 'limiter' || d.type === 'gate')) gr[d.def.id] = d.gr; };
     for (const tr of this.order) grOf(tr.rack);
     this.returns.forEach((r) => grOf(r.rack)); grOf(this.masterRack);
     const l = this.lufs;
-    this.post({ t: 'tick', pos: this.pos, playing: this.playing, counting: this.counting, bpm: this.bpm, tracks, gr, sess,
+    this.post({ t: 'tick', pos: this.pos, seq: this.seekSeq || 0, playing: this.playing, counting: this.counting, bpm: this.bpm, tracks, gr, sess, mods,
       master: [this.master.peakL, this.master.peakR, 1 - this.master.env],
       lufs: [l.momentary, l.short, l.integrated],
       returns: this.returns.map((r) => { const x = [...r.peak]; r.peak = [0, 0]; return x; }) });
@@ -649,6 +726,7 @@ export class KrakenEngine {
       else if (key === 'pan') tr.autoPan = v;
       else if (key.startsWith('send')) { tr.autoSend ??= [...(tr.def.sends || [])]; tr.autoSend[+key.slice(4)] = v; }
       else if (key.startsWith('fx:')) { const [, fxId, pk] = key.split(':'); tr.rack.automate(fxId, pk, v, this.bpm); }
+      else if (key.startsWith('nfx:')) { const [, fxId, pk] = key.split(':'); tr.chain.automate(fxId, pk, v); }
       else if (key[0] === 'p') {
         const id = +key.slice(1), iv = Math.round(v);
         if (tr.w && tr.lastAuto[id] !== iv && tr.lockBase[id] === undefined) { tr.lastAuto[id] = iv; tr.w.k_param(id, iv); }

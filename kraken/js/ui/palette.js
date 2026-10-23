@@ -12,8 +12,8 @@ export class Palette {
     const out = [];
     const add = (group, label, run, hint = '') => out.push({ group, label, run, hint, key: `${group} ${label} ${hint}`.toLowerCase() });
     for (const [a, l] of ACTIONS) add('ACTION', l, () => app.control.run(a));
-    for (const [act, l] of [['new', 'New project'], ['demo', 'Open the demo song'], ['open', 'Open a project…'], ['save', 'Save project'], ['wav', 'Export mix (WAV)'],
-      ['stems', 'Export stems (WAV)'], ['midi', 'Export MIDI'], ['importmidi', 'Import a MIDI file…'], ['install', 'Install the app (offline)'], ['help', 'Keys & mouse']]) add('PROJECT', l, () => app.fileAction(act));
+    for (const [act, l] of [['new', 'New project'], ['demo', 'Open the demo song'], ['open', 'Open a project…'], ['save', 'Save project'], ['export', 'Export audio (WAV, FLAC, Opus)…'],
+      ['stems', 'Export stems…'], ['midi', 'Export MIDI'], ['importmidi', 'Import a MIDI file…'], ['sloop', 'Open a SLOOP song (.sloopsong)…'], ['install', 'Install the app (offline)'], ['help', 'Help: keys, mouse, fingers']]) add('PROJECT', l, () => app.fileAction(act));
     for (const [id, l] of [['add-synth', 'Synth track'], ['add-drum', 'Drum track'], ['add-audio', 'Audio track'], ['add-sampler', 'Sampler track'], ['add-ext', 'External MIDI track'],
       ['add-group', 'Group the selected track'], ['add-return', 'Return track'], ['add-tempo', 'Tempo lane']]) add('ADD', l, () => $(id).click());
     for (const x of p.tracks) add('TRACK', `Go to ${x.name}`, () => app.selectTrack(x.id), x.kind);
@@ -27,6 +27,7 @@ export class Palette {
     for (const s of app.lib.sounds) add('SOUND', s.name, () => app.library.pick({ bank: s.bank, engine: s.engine, preset: s.preset }, false), `${s.eng} ${s.kind}`);
     app.lib.sloop.kits.forEach((k, i) => { if (!/^USR|^SYN/.test(k)) add('KIT', k, () => app.library.pick({ kit: i }, false)); });
     p.scenes.forEach((sc, i) => add('SESSION', `Launch ${sc.name}`, () => app.launchScene(i)));
+    for (const m of p.markers || []) add('MARKER', `Go to ${m.name}`, () => app.seek(m.t), `bar ${+(m.t / p.sig + 1).toFixed(2)}`);
     return out;
   }
   open() {

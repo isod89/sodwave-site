@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "b10b0edd63e2";
+const VERSION = "0894a9380e9a";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -16,13 +16,19 @@ const FILES = [
 "engines/sloop.wasm",
 "js/assets.js",
 "js/audio.js",
+"js/comp.js",
 "js/control.js",
 "js/engine-core.js",
+"js/flac.js",
 "js/fx.js",
 "js/input.js",
 "js/io.js",
 "js/main.js",
+"js/mods.js",
+"js/notefx.js",
+"js/opus.js",
 "js/project.js",
+"js/sloopsong.js",
 "js/ui/arrange.js",
 "js/ui/controllers.js",
 "js/ui/device.js",
@@ -32,6 +38,8 @@ const FILES = [
 "js/ui/kit.js",
 "js/ui/library.js",
 "js/ui/mixer.js",
+"js/ui/mods.js",
+"js/ui/notes.js",
 "js/ui/palette.js",
 "js/ui/session.js",
 "js/wav.js",
@@ -40,7 +48,8 @@ const FILES = [
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts';
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(APP).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // from the network, never the browser's HTTP cache: a new version is installed whole, file for file
+  e.waitUntil(caches.open(APP).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('kraken-') && k !== APP && k !== FONTS).map((k) => caches.delete(k))))

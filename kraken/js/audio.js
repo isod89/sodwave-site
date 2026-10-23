@@ -94,18 +94,19 @@ export class Audio {
   latency() { return (this.ctx?.baseLatency || 0) + (this.ctx?.outputLatency || 0); }
 
   // Render the project offline (no loop, from 0 to its end plus a tail), optionally one track only.
-  async render(project, { soloTrack = null, freezeTrack = null, tail = 2, assets = {} } = {}) {
-    const beats = Math.max(1, projectEnd(project));
-    const seconds = beatsToSeconds(project, beats) + tail;
+  // the song (or a range of it: start / end in beats) rendered offline, with the same engine
+  async render(project, { soloTrack = null, freezeTrack = null, tail = 2, assets = {}, start = 0, end = null } = {}) {
+    const beats = end ?? Math.max(1, projectEnd(project));
+    const seconds = beatsToSeconds(project, beats) - beatsToSeconds(project, start) + tail;
     const frames = Math.ceil(seconds * RATE / 128) * 128;
     const ctx = new OfflineAudioContext(2, frames, RATE);
     await ctx.audioWorklet.addModule(WORKLET);
     const node = new AudioWorkletNode(ctx, 'kraken', {
       numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
-      processorOptions: { modules: this.modules, project: structuredClone(project), offline: true, soloTrack, freezeTrack, assets },
+      processorOptions: { modules: this.modules, project: structuredClone(project), offline: true, soloTrack, freezeTrack, assets, start },
     });
     node.connect(ctx.destination);
-    const buf = await ctx.startRendering();
-    return [buf.getChannelData(0), buf.getChannelData(1)];
+    const buf = await ctx.startRendering(), exact = Math.min(frames, Math.round(seconds * RATE));   // to the sample (a loop exports seamless)
+    return [buf.getChannelData(0).subarray(0, exact), buf.getChannelData(1).subarray(0, exact)];
   }
 }

@@ -37,7 +37,7 @@ class KrakenProcessor extends AudioWorkletProcessor {
           case 'stopAll': e.stopAll(); break;
           case 'raw': e.tracks.get(m.track)?.w?.k_midi_in(m.st, m.d1, m.d2); break;
           case 'stop': e.stop(); this.endCapture(); break;
-          case 'seek': e.seek(m.beat); this.endCapture(); break;
+          case 'seek': e.seek(m.beat); e.seekSeq = m.seq || 0; this.endCapture(); break;
           case 'rec': e.recording = m.on; if (!m.on) e.flushRecording(); break;
           case 'capture': this.capWanted = m.on; if (!m.on) this.endCapture(); break;
           case 'click': e.click = m.on; break;

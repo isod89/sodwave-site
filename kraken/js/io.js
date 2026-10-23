@@ -79,6 +79,7 @@ export function exportMidi(p) {
   chunks.push(track([
     { tick: 0, order: 0, data: [0xff, 0x51, 3, (tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255] },
     { tick: 0, order: 1, data: [0xff, 0x58, 4, p.sig || 4, 2, 24, 8] },
+    ...(p.markers || []).map((m) => { const b = new TextEncoder().encode(m.name); return { tick: Math.round(m.t * PPQ), order: 2, data: [0xff, 0x06, ...vlq(b.length), ...b] }; }),
   ]));
   let next = 0;
   const chan = () => { if (next % 16 === 9) next++; return next++ % 16; };

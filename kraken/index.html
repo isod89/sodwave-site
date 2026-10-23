@@ -87,6 +87,7 @@ canvas { display: block; }
 .lcd .cell { display: grid; gap: 2px; }
 .lcd .cell b { font: 600 8px/1 var(--f-ui); letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
 .lcd .cell span, .lcd input { font: 500 13px/1 var(--f-mono); color: var(--text); }
+#lufs { display: inline-block; min-width: 9.6em; font-variant-numeric: tabular-nums; }
 .lcd input { width: 4.2em; background: transparent; border: 0; padding: 0; outline: none; cursor: ns-resize; }
 .lcd input:focus { color: var(--accent); cursor: text; }
 .lcd select { background: var(--screen); border: 0; color: var(--text); font: 500 12px/1 var(--f-mono); padding: 0; }
@@ -110,6 +111,15 @@ canvas { display: block; }
 .menu-list button:hover { background: var(--screen-3); color: var(--accent); }
 .menu-list kbd { font: 500 10px/1 var(--f-mono); color: var(--dim); }
 .menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.menu-list.pop { position: fixed; right: auto; z-index: 120; overflow-y: auto; }
+#lanes canvas, #ruler, .ecanvas, #heads, .smp-wave { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.head.drop { box-shadow: 0 -2px 0 var(--accent) inset, 0 2px 0 var(--accent); }
+@media (pointer: coarse) { #arr { grid-template-rows: 52px minmax(0, 1fr); } }
+.sm { display: none; }
+.phone-only { display: none !important; }
+.sheet { display: grid; gap: 6px; }
+.sheet .add { height: 44px; font-size: 11px; justify-content: center; }
+.sheet .add.danger { background: var(--rec); border-color: var(--rec); color: #fff; }
 
 /* ------------------------------------------------------------ arrangement */
 .panel { background: var(--screen); border-radius: 10px; color: var(--text); min-width: 0; min-height: 0; overflow: hidden;
@@ -159,7 +169,9 @@ canvas { display: block; }
 
 /* ------------------------------------------------------------ bottom deck */
 #bot { grid-area: bot; display: grid; grid-template-rows: 30px minmax(0, 1fr); }
-#resize { position: absolute; top: -9px; left: 0; right: 0; height: 8px; cursor: ns-resize; z-index: 3; }
+#resize { position: absolute; top: 0; left: 0; right: 0; height: 7px; cursor: ns-resize; z-index: 5; touch-action: none; }
+#resize::after { content: ""; position: absolute; left: 50%; top: 2px; width: 44px; height: 3px; margin-left: -22px; border-radius: 2px; background: var(--line-2); }
+#resize:hover::after { background: var(--accent); }
 .tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); gap: 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .tab {
   background: none; border: 0; border-right: 1px solid var(--line); padding: 0 14px; color: var(--dim);
@@ -179,6 +191,18 @@ canvas { display: block; }
 .ebar input { width: 4em; }
 .ebar .add { height: 22px; }
 .ecanvas { position: absolute; top: 30px; left: 0; width: 100%; height: calc(100% - 30px); outline: none; }
+/* scroll bars over the views: a thumb to drag, the bar to jump (fingers and mice) */
+.sbar { position: absolute; z-index: 4; background: #0b0c0dcc; border-radius: 6px; touch-action: none; cursor: pointer; }
+.sbar.h { left: 4px; right: 18px; bottom: 3px; height: 10px; }
+.sbar.v { top: 4px; bottom: 18px; right: 3px; width: 10px; }
+.sbar i { position: absolute; border-radius: 5px; background: #5b6168; }
+.sbar.h i { top: 1px; bottom: 1px; } .sbar.v i { left: 1px; right: 1px; }
+.sbar:hover i, .sbar.drag i { background: var(--accent); }
+.sbar[hidden] { display: none; }
+@media (pointer: coarse) {
+  .sbar.h { height: 18px; bottom: 4px; right: 26px; } .sbar.v { width: 18px; right: 4px; bottom: 26px; }
+  .sbar i { background: #8a9096; }
+}
 .empty { position: absolute; inset: 30px 0 0; display: grid; place-content: center; gap: 8px; text-align: center; color: var(--dim); padding: 16px; }
 .empty b { font: 400 14px/1.2 var(--f-lcd); color: var(--text); }
 .empty p { margin: 0; max-width: 42ch; font: 500 11px/1.5 var(--f-ui); }
@@ -210,15 +234,22 @@ canvas { display: block; }
 .pad:active, .pad.hit { background: var(--c); color: #000; }
 
 /* mixer */
-.mixer { position: absolute; inset: 0; overflow: auto; min-height: 0; display: flex; gap: 6px; padding: 10px; align-items: flex-start; }
-.strip { width: 76px; flex: none; background: var(--screen-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; display: flex;
-  flex-direction: column; gap: 7px; align-items: center; min-height: 100%; box-sizing: border-box; }
-.strip > * { flex: none; }
-.strip > .fader { flex: 1 1 auto; }
+.mixer { position: absolute; inset: 0; overflow: auto; min-height: 0; display: flex; gap: 6px; padding: 8px 10px; align-items: stretch; box-sizing: border-box; }
+/* a strip: its name; knobs (sends, pan) beside the fader; level, M / S; output, effects. It fits the panel's height. */
+.strip { width: 104px; flex: none; background: var(--screen-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px; box-sizing: border-box;
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 6px 4px; min-height: 236px; }
+.strip .sname { grid-column: 1 / -1; }
+.strip .kcol { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: center; gap: 4px; overflow-y: auto; scrollbar-width: none; min-height: 0; }
+.strip > .fader { grid-column: 2; grid-row: 2; min-height: 70px; justify-self: center; }
+.strip > .db { grid-column: 1; grid-row: 3; align-self: center; justify-self: center; }
+.strip > .ms { grid-column: 2; grid-row: 3; justify-self: center; }
+.strip > .out { grid-column: 2; grid-row: 4; }
+.strip > .fxb { grid-column: 1; grid-row: 4; }
+.strip .kcol .knob .lbl { cursor: pointer; }
 .strip.sel { border-color: var(--c); }
 .strip .sname { font: 700 10px/1 var(--f-ui); font-stretch: 85%; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
   width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 3px solid var(--c); padding-top: 6px; }
-.strip .sends { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; max-width: 70px; }
+.strip .sends { display: contents; }
 .strip .out { width: 100%; background: var(--screen-3); color: var(--dim); border: 1px solid var(--line-2); border-radius: 3px; font: 600 8px/1 var(--f-ui); padding: 2px; }
 .strip.grp { background: #191c1f; border-style: dashed; }
 .strip .sends .knob svg { width: 28px; height: 28px; }
@@ -235,7 +266,7 @@ canvas { display: block; }
   background: linear-gradient(to top, var(--go) 0 70%, var(--warn) 70% 88%, var(--rec) 88%); background-size: 100% var(--fh, 140px); background-position: bottom; }
 .strip .db { font: 500 10px/1 var(--f-mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .strip .ms { display: flex; gap: 3px; }
-.strip.master { width: 92px; }
+.strip.master { width: 104px; }
 .strip.ret { background: #101214; }
 
 /* ------------------------------------------------------------- library */
@@ -260,6 +291,25 @@ canvas { display: block; }
 .item .plus:hover { border-color: var(--accent); color: var(--accent); }
 .item.cur .plus { border-color: var(--accent-ink); color: var(--accent-ink); }
 .item .tag + .plus { margin-left: 6px; }
+.lib-none { margin: 12px; font: 500 11px/1.4 var(--f-ui); color: var(--dim); }
+.kpick { background: var(--screen-3); border: 1px solid var(--line-2); border-radius: 4px; font: 700 10px/1 var(--f-ui); letter-spacing: 0.08em; padding: 6px; max-width: 150px; }
+/* fingers: bigger targets everywhere (phones and tablets) */
+@media (pointer: coarse) {
+  .item { padding: 10px 8px 10px 12px; }
+  .strip .kcol .knob .lbl { padding: 6px 2px; }
+  .item .plus { visibility: visible; padding: 7px 8px; }
+  .fx-ctl .tb { width: 30px; height: 28px; }
+  .strip .out, .strip .fxb { height: 28px; font-size: 9px; }
+  .head .tb { width: 30px; height: 26px; }
+  .head .btns { grid-template-rows: 26px 26px; grid-template-columns: repeat(3, 30px); }
+  #scene-bar .launch { width: 30px; height: 30px; font-size: 10px; }
+  .auto-head select { font-size: 12px; padding: 6px; }
+  .keys-bar .add { height: 34px; padding: 0 12px; }
+  .mod-tgt { grid-template-columns: minmax(0, 1fr) 80px 36px 28px; }
+  .mod-tgt .tb { width: 28px; height: 26px; }
+  .ebar .add { height: 28px; }
+  .menu-list button { padding: 12px 10px; }
+}
 #lib-foot { border-top: 1px solid var(--line); padding: 8px 10px; font: 500 10px/1.45 var(--f-ui); color: var(--dim); }
 #lib-foot b { color: var(--text); font-weight: 700; }
 
@@ -276,8 +326,9 @@ canvas { display: block; }
 #boot .stats { display: flex; gap: 22px; justify-content: center; font: 400 11px/1.2 var(--f-lcd); color: var(--ink); flex-wrap: wrap; }
 #boot .stats span { display: grid; gap: 4px; }
 #boot .stats small { font: 700 8px/1 var(--f-ui); letter-spacing: 0.16em; color: var(--ink-2); }
+.modal input:not([type=checkbox]):not([type=range]) { background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 4px; font: 500 13px/1 var(--f-mono); padding: 8px; box-sizing: border-box; }
 .modal-bg { position: fixed; inset: 0; background: #0006; z-index: 80; display: grid; place-items: center; padding: 16px; }
-.modal { background: var(--screen); color: var(--text); border-radius: 10px; padding: 18px; width: min(440px, 100%); display: grid; gap: 12px; box-shadow: 0 20px 60px #0008; }
+.modal { background: var(--screen); color: var(--text); border-radius: 10px; padding: 18px; width: min(440px, 100%); box-sizing: border-box; max-height: calc(100dvh - 32px); overflow-y: auto; display: grid; gap: 12px; box-shadow: 0 20px 60px #0008; }
 .modal h3 { margin: 0; font: 400 15px/1 var(--f-lcd); }
 .modal p { margin: 0; font: 500 11px/1.5 var(--f-ui); color: var(--dim); }
 .modal .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
@@ -303,7 +354,11 @@ canvas { display: block; }
 #scene-bar { grid-column: 2; grid-row: 1; overflow: hidden; border-bottom: 1px solid var(--line); }
 #scene-bar .scenes { display: flex; height: 100%; }
 #scene-bar .scene { flex: none; display: flex; align-items: center; gap: 5px; padding: 0 6px; box-sizing: border-box; border-right: 1px solid var(--line); }
-#scene-bar .scene.tools { width: 140px; gap: 4px; border: 0; }
+#scene-bar .scene.tools { width: 190px; gap: 6px; border: 0; }
+#scene-bar .scene.lead { padding: 0 4px; justify-content: center; }
+#scene-bar .stopall { padding: 0 5px; white-space: nowrap; font-size: 8px; height: 22px; }
+#scene-bar .lq { display: flex; align-items: center; gap: 4px; font: 700 8px/1 var(--f-ui); letter-spacing: 0.12em; color: var(--dim); }
+#scene-bar .lq select { background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 3px; font: 500 10px/1 var(--f-mono); padding: 2px; }
 #scene-bar .launch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--screen-3); color: var(--go); font-size: 8px; padding: 0; }
 #scene-bar .launch:hover { background: var(--go); color: #000; }
 #scene-bar .sname { font: 700 9px/1 var(--f-ui); letter-spacing: 0.1em; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
@@ -355,6 +410,33 @@ canvas { display: block; }
 .device .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .fx-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .fx-list .add { height: 24px; font-size: 8.5px; }
+.exp-row { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 10px; font: 700 9px/1 var(--f-ui); letter-spacing: 0.14em; color: var(--dim); }
+.exp-row select { height: 30px; width: 100%; background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 4px; font: 500 11px/1 var(--f-mono); padding: 0 6px; }
+.module.nfx { border-color: #3a3f45; background: linear-gradient(180deg, #1c1f22, var(--screen-2)); }
+.module.nfx h4 span:first-child::before { content: '♪ '; color: var(--c, var(--accent)); }
+.nfx-add { border-style: dashed; }
+.module.modm { width: 236px; align-content: start; }
+.module.modm h4 span:first-child { color: var(--c, var(--accent)); }
+.mod-meter { position: relative; height: 6px; border-radius: 3px; background: #0b0c0d; border: 1px solid var(--line); overflow: hidden; }
+.mod-meter i { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--c, var(--accent)); }
+.mod-tgts { display: grid; gap: 4px; }
+.mod-tgt { display: grid; grid-template-columns: minmax(0, 1fr) 70px 36px 20px; gap: 4px; align-items: center; font: 600 8.5px/1 var(--f-ui); letter-spacing: 0.06em; color: var(--text); }
+.mod-tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+.mod-tgt input[type=range] { width: 70px; accent-color: var(--c, var(--accent)); }
+.mod-amt { font: 500 9px/1 var(--f-mono); color: var(--dim); text-align: right; }
+.mod-tgt .tb { width: 20px; height: 18px; }
+.take-head { height: var(--ah); box-sizing: border-box; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px; padding: 0 8px 0 18px; background: #101214;
+  font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.14em; color: var(--c); }
+.take-head span { flex: 1; }
+.take-head .tb { width: auto; padding: 0 6px; height: 18px; }
+.mod-add { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
+.mod-add select { min-width: 0; }
+.mod-add .add.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.mod-src { display: grid; gap: 4px; font: 700 8px/1 var(--f-ui); letter-spacing: 0.14em; color: var(--dim); }
+.knob.modded svg { filter: drop-shadow(0 0 3px var(--c, var(--accent))); }
+.knob.modded .lbl::after { content: ' ~'; color: var(--c, var(--accent)); }
+body.mapping #bot [data-learn] { outline: 1.5px dashed var(--go); outline-offset: 1px; cursor: crosshair !important; }
+body.mapping #learn-banner { pointer-events: auto; cursor: pointer; }
 .strip .fxb { width: 100%; height: 18px; font-size: 8px; padding: 0; }
 
 /* ------------------------------------------------------------ controllers */
@@ -385,7 +467,9 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   background: var(--accent); color: var(--accent-ink); padding: 9px 14px; border-radius: 6px; font: 700 11px/1.35 var(--f-ui); letter-spacing: 0.03em; box-shadow: 0 8px 24px #0004; pointer-events: none; }
 
 @media (max-width: 1640px) { .lcd .hide-l { display: none; } }
-@media (max-width: 1400px) { .lcd .hide-m, .title-field, #top > .sep { display: none; } .lcd { gap: 10px; } }
+@media (max-width: 1520px) { .title-field, #top > .sep { display: none; } }
+@media (max-width: 1400px) { .lcd .hide-m { display: none; } .lcd { gap: 10px; } }
+@media (max-width: 1320px) { #top .key { padding-inline: 8px; } #top .lcd .big { min-width: 5.6em; } #lufs { min-width: 0; } }
 /* keys (touch keyboard, pads) */
 .keys-view { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .keys-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -405,8 +489,9 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 .top-icon { display: none; height: 38px; width: 38px; border-radius: 9px; }
 
 /* phone: one view at a time, a navigation bar at the bottom, bigger targets */
-@media (max-width: 860px) {
-  #app, #app.no-lib { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top" "main" "nav"; padding-block: 6px; gap: 6px; }
+@media (max-width: 700px), (max-height: 520px) and (pointer: coarse) {
+  #app, #app.no-lib { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top" "main" "nav"; padding-block: 6px; gap: 6px;
+    padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
   #arr, #bot, #lib { grid-area: main; }
   #app.no-lib #lib { display: grid; }
   #app:not([data-m="arr"]) #arr, #app:not([data-m="bot"]) #bot, #app:not([data-m="lib"]) #lib { display: none !important; }
@@ -414,21 +499,46 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   #mnav { grid-area: nav; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
   #mnav button { height: 46px; border-radius: 8px; border: 1px solid var(--edge); background: linear-gradient(var(--chassis-hi), var(--chassis)); font: 700 10px/1 var(--f-ui); letter-spacing: 0.12em; }
   #mnav button.on { background: var(--ink); color: var(--chassis-hi); border-color: var(--ink); }
-  #top { gap: 6px; }
-  .top-logo, .title-field, #click, #countin, #punch, #learn, #libbtn, #undo, #redo, #home, #install, .sep, .lcd .hide-s { display: none !important; }
-  .top-icon { display: block; }
-  .lcd { gap: 10px; padding: 0 10px; }
-  .lcd .big { min-width: 5.6em; font-size: 17px; }
-  .spacer { display: none; }
-  #arr { grid-template-columns: 118px minmax(0, 1fr); }
-  .head .btns { grid-template-columns: repeat(2, 22px); grid-template-rows: 20px 20px; }
-  .head .tb.x, .head .tb.d { display: none; }
-  #arr { grid-template-columns: 136px minmax(0, 1fr); }
-  #toast { bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
-  .tb { width: 22px; height: 20px; }
+  .lg { display: none; } .sm { display: inline; } .phone-only { display: flex !important; }
+  /* one row on top: the transport, the screen, undo, the menu */
+  #top { gap: 5px; flex-wrap: nowrap; }
+  #top .group { gap: 4px; flex: none; }
+  .top-logo, .title-field, #click, #countin, #punch, #learn, #libbtn, #redo, #home, #install, .sep, .spacer, .lcd .hide-s, .lcd .hide-xs { display: none !important; }
+  .top-icon { display: block; width: 30px; height: 30px; flex: none; }
+  .key { height: 38px; min-width: 38px; }
+  .key.round { width: 40px; height: 40px; }
+  #loop { padding: 0 6px; font-size: 9px; }
+  #filebtn { width: 40px; padding: 0; font-size: 17px; }
+  #undo { width: 38px; }
+  .lcd { flex: 1 1 auto; min-width: 0; gap: 6px; padding: 0 7px; height: 40px; justify-content: space-between; }
+  .lcd .big { min-width: 0; font-size: 14px; letter-spacing: 0; }
+  .lcd input { width: 2.7em; font-size: 12px; }
+  /* tracks: narrow heads (long-press a head for its menu), a compact corner */
+  #arr { grid-template-columns: 104px minmax(0, 1fr); }
+  #arr-corner { padding: 0 3px; gap: 3px; }
+  #arr-corner .seg button { padding: 6px 5px; font-size: 8.5px; }
+  #arr-corner #addbtn { width: 28px; padding: 0; font-size: 16px; line-height: 1; }
+  .head { grid-template-columns: 4px minmax(0, 1fr); padding: 7px 5px 5px 0; row-gap: 6px; }
+  .head .snd, .head .tb.a, .head .tb.x, .head .tb.d { display: none; }
+  .head .btns { grid-row: 2; grid-column: 2; grid-template-columns: repeat(3, 28px); grid-template-rows: 26px; grid-auto-flow: row; gap: 3px; }
+  .head .tb { width: 28px; height: 26px; }
+  .head .name { font-size: 10.5px; }
+  .tb { width: 24px; height: 22px; font-size: 10px; }
+  .take-head { padding-left: 10px; }
+  /* the bottom deck: short tab names, the clip bar scrolls sideways */
+  .tab { padding: 0 10px; font-size: 9.5px; letter-spacing: 0.1em; }
+  .tab[data-tab="keys"], .tab-info { display: none; }
+  .ebar { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 40px; }
+  .ebar select, .ebar input { font-size: 12px; padding: 4px; }
+  #toast { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 32px); font-size: 12px; }
   #resize { display: none; }
-  .tab { padding: 0 11px; }
   .pal-item { padding: 10px 8px; }
+  .menu-list button { padding: 12px 10px; font-size: 12px; }
+  .modal { max-width: calc(100vw - 24px); }
+  #learn-banner { top: auto; bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
+  .head { column-gap: 5px; }
+  .device .module .knobs { --cols: 4 !important; }
+  .device .module { max-width: 100%; box-sizing: border-box; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -461,7 +571,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <button class="key" id="punch" title="Punch in / out: when on, recording only keeps what is played inside the red zone of the ruler (its middle band: drag its ends to move them)" data-learn="act:punch">PUNCH</button>
     </div>
     <div class="lcd">
-      <span class="big" id="pos">001.1.1</span>
+      <span class="big" id="pos" title="The position (bar . beat . sixteenth)">001.1.1</span>
       <label class="cell" data-learn="bpm"><b>BPM</b><input id="bpm" inputmode="decimal" aria-label="Tempo"></label>
       <label class="cell hide-s"><b>SNAP</b><select id="snap" aria-label="Grid">
         <option value="4">BAR</option><option value="1">1/4</option><option value="0.5">1/8</option><option value="0.25" selected>1/16</option><option value="0.125">1/32</option><option value="0">OFF</option>
@@ -471,7 +581,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       </select></label>
       <span class="cell hide-s hide-l"><b>KEYS</b><span id="oct">OCT 4</span></span>
       <span class="cell hide-s hide-l"><b>MIDI</b><span id="midi">—</span></span>
-      <span class="cell"><b>OUT</b><span class="meter-h" id="mmeter"><i></i><i></i></span></span>
+      <span class="cell hide-xs"><b>OUT</b><span class="meter-h" id="mmeter"><i></i><i></i></span></span>
       <span class="cell hide-s" title="Loudness (EBU R128): momentary · integrated since play"><b>LUFS</b><span id="lufs">—</span></span>
     </div>
     <div class="spacer"></div>
@@ -482,21 +592,24 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <button class="key icon" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" data-learn="act:redo">↷</button>
       <button class="key" id="libbtn" title="Sound library (B)" data-learn="act:library">SOUNDS</button>
       <div class="menu">
-        <button class="key" id="filebtn" aria-haspopup="true">PROJECT</button>
+        <button class="key" id="filebtn" aria-haspopup="true" aria-label="Project menu"><span class="lg">PROJECT</span><span class="sm" aria-hidden="true">☰</span></button>
         <div class="menu-list" id="filemenu" hidden>
+          <button data-act="transport" class="phone-only">Metronome, count-in, punch…</button>
+          <button data-act="rename" class="phone-only">Rename the project</button>
           <button data-act="new">New project</button>
           <button data-act="demo">Open demo song</button>
           <button data-act="open">Open… <kbd>Ctrl O</kbd></button>
           <button data-act="save">Save project <kbd>Ctrl S</kbd></button>
           <hr>
-          <button data-act="wav">Export mix (WAV)</button>
-          <button data-act="stems">Export stems (WAV)</button>
+          <button data-act="export">Export audio… <kbd>WAV FLAC OPUS</kbd></button>
+          <button data-act="stems">Export stems…</button>
           <button data-act="midi">Export MIDI</button>
           <button data-act="importmidi">Import MIDI file…</button>
+          <button data-act="sloop">Open a SLOOP song… <kbd>.SLOOPSONG</kbd></button>
           <hr>
           <button data-act="install">Install the app (offline)</button>
           <button data-act="palette">Command palette <kbd>Ctrl K</kbd></button>
-          <button data-act="help">Keys &amp; mouse</button>
+          <button data-act="help">Help <kbd>KEYS · MOUSE · FINGERS</kbd></button>
         </div>
       </div>
     </div>
@@ -505,11 +618,11 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   <section id="arr" class="panel" aria-label="Arrangement">
     <div id="arr-corner">
       <div class="seg" role="tablist" aria-label="View">
-        <button class="on" id="mode-arr" title="Arrangement (Tab)">ARRANGE</button>
-        <button id="mode-ses" title="Session: clips to launch (Tab)">SESSION</button>
+        <button class="on" id="mode-arr" title="Arrangement (Tab)"><span class="lg">ARRANGE</span><span class="sm">ARR</span></button>
+        <button id="mode-ses" title="Session: clips to launch (Tab)"><span class="lg">SESSION</span><span class="sm">LIVE</span></button>
       </div>
       <div class="menu">
-        <button class="add" id="addbtn" aria-haspopup="true" title="Add a track">+ TRACK</button>
+        <button class="add" id="addbtn" aria-haspopup="true" aria-label="Add a track" title="Add a track"><span class="lg">+ TRACK</span><span class="sm">+</span></button>
         <div class="menu-list" id="addmenu" hidden>
           <button id="add-synth">Synth <kbd>SLOOP · CLIPPER</kbd></button>
           <button id="add-drum">Drums <kbd>KITS</kbd></button>
@@ -530,13 +643,13 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   </section>
 
   <section id="bot" class="panel" aria-label="Editors">
-    <div id="resize" title="Drag to resize"></div>
+    <div id="resize" title="Drag: the panel's height · double-click: back to normal"></div>
     <div class="tabs" role="tablist">
       <button class="tab on" data-tab="edit">Clip</button>
-      <button class="tab" data-tab="device">Instrument</button>
+      <button class="tab" data-tab="device"><span class="lg">Instrument</span><span class="sm">Sound</span></button>
       <button class="tab" data-tab="mixer">Mixer</button>
       <button class="tab" data-tab="keys">Keys</button>
-      <button class="tab" data-tab="ctl">Controllers</button>
+      <button class="tab" data-tab="ctl"><span class="lg">Controllers</span><span class="sm">MIDI</span></button>
       <div class="tab-info" id="tab-info"></div>
     </div>
     <div class="view" id="v-edit"></div>
@@ -566,7 +679,8 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 </div>
 <div id="toast" hidden></div>
 <div id="learn-banner" hidden></div>
-<input type="file" id="openfile" accept=".json,.zip,application/json,application/zip" hidden>
+<input type="file" id="openfile" accept=".json,.zip,.sloopsong,application/json,application/zip" hidden>
+<input type="file" id="sloopfile" hidden>
 <input type="file" id="midifile" accept=".mid,.midi,audio/midi" hidden>
 <input type="file" id="audiofile" accept="audio/*,.wav,.aif,.aiff,.mp3,.flac,.ogg,.m4a" multiple hidden>
 <script type="module" src="js/main.js"></script>

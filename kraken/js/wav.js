@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // WAV files: 16 / 24-bit PCM or 32-bit float, interleaved from planar channels.
-export function encodeWav(channels, rate, bits = 24) {
+// dither: TPDF noise of one 16-bit step, for 16-bit files (masks the rounding distortion of quiet tails)
+export function encodeWav(channels, rate, bits = 24, dither = false) {
   const ch = channels.length, frames = channels[0].length;
   const bytes = bits / 8, fmt = bits === 32 ? 3 : 1;
   const data = frames * ch * bytes;
@@ -19,7 +20,7 @@ export function encodeWav(channels, rate, bits = 24) {
       else if (bits === 24) {
         const s = Math.round(x * 8388607);
         v.setUint8(o, s & 255); v.setUint8(o + 1, (s >> 8) & 255); v.setUint8(o + 2, (s >> 16) & 255); o += 3;
-      } else { v.setInt16(o, Math.round(x * 32767), true); o += 2; }
+      } else { v.setInt16(o, Math.max(-32768, Math.min(32767, Math.round(x * 32767 + (dither ? Math.random() - Math.random() : 0)))), true); o += 2; }
     }
   }
   return new Uint8Array(buf);

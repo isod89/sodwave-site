@@ -6,7 +6,7 @@
 import { h } from './kit.js';
 import { newClip, uid } from '../project.js';
 
-const CELL = 116;
+const CELL = 116, LEAD = 76;                       // a slot's width; the first column: the stop keys
 
 export class Session {
   constructor(app) {
@@ -27,19 +27,30 @@ export class Session {
     const app = this.app, p = this.p, v = app.view, rows = app.arrange.rows();
     const scenes = p.scenes;
     // scene bar: launch a column, stop everything, the launch quantize
-    this.bar.replaceChildren(h('div', { class: 'scenes', style: { width: `${scenes.length * CELL + 140}px` } },
+    const Q = [[0, 'NOW'], [0.25, '1/16'], [1, 'BEAT'], [p.sig, 'BAR'], [p.sig * 2, '2 BARS'], [p.sig * 4, '4 BARS']];
+    let lastTap = 0;
+    this.bar.replaceChildren(h('div', { class: 'scenes', style: { width: `${LEAD + scenes.length * CELL + 190}px` } },
+      h('div', { class: 'scene lead', style: { width: `${LEAD}px` } },
+        h('button', { class: 'add stopall', title: 'Stop every clip (at the quantize)', 'data-learn': 'act:stopAll', onclick: () => app.stopAll() }, '■ ALL'),
+        h('button', { class: 'add stopall', title: 'Launch quantize, add a scene', onclick: () => app.sheet('Session', [
+          ...Q.map(([v, l]) => [`${Math.abs((p.launchQ ?? 4) - v) < 1e-9 ? '✓ ' : ''}LAUNCH ON ${l === 'NOW' ? 'THE SPOT' : l === 'BEAT' ? 'THE BEAT' : l === 'BAR' ? 'THE BAR' : l}`, () => app.store.change((pp) => { pp.launchQ = v; })]),
+          ['+ A SCENE', () => app.store.change((pp) => { pp.scenes.push({ id: uid('s'), name: `SCENE ${pp.scenes.length + 1}` }); for (const t of pp.tracks) t.slots.push(null); })]]) }, '⋯')),
       ...scenes.map((s, i) => h('div', { class: 'scene', style: { width: `${CELL}px` } },
         h('button', { class: 'launch', title: `Launch ${s.name} (all its clips)`, 'data-learn': `scene:${i}`, onclick: () => app.launchScene(i) }, '▶'),
-        h('span', { class: 'sname', text: s.name, title: 'Double-click to rename', ondblclick: (e) => this.rename(e.target, i) }))),
+        h('span', { class: 'sname', text: s.name, title: 'Double-click (or double-tap) to rename',
+          onclick: (e) => { const now = performance.now(); if (now - lastTap < 350) this.rename(e.target, i); lastTap = now; } }))),
       h('div', { class: 'scene tools' },
         h('button', { class: 'add', title: 'Add a scene', onclick: () => app.store.change((pp) => { pp.scenes.push({ id: uid('s'), name: `SCENE ${pp.scenes.length + 1}` }); for (const t of pp.tracks) t.slots.push(null); }) }, '+ SCENE'),
-        h('button', { class: 'add', title: 'Stop every clip (at the quantize)', 'data-learn': 'act:stopAll', onclick: () => app.stopAll() }, '■ ALL'))));
-    const W = scenes.length * CELL + 140;
+        h('label', { class: 'lq', title: 'A launch waits for this (Ableton\'s launch quantize)' }, 'Q',
+          h('select', { 'aria-label': 'Launch quantize', onchange: (e) => { app.store.change((pp) => { pp.launchQ = +e.target.value; }); e.target.blur(); } },
+            Q.map(([v, l]) => h('option', { value: v, selected: Math.abs((p.launchQ ?? 4) - v) < 1e-9 ? true : null }, l)))))));
+    const W = LEAD + scenes.length * CELL + 190;
     const kids = rows.map((r) => {
       const t = r.t;
-      const row = h('div', { class: 'srow' + (r.kind === 'auto' ? ' auto' : ''), style: { top: `${r.y - v.sy}px`, height: `${r.h}px`, width: `${W}px` } });
-      if (r.kind === 'auto' || t.kind === 'group') return row;
+      const row = h('div', { class: 'srow' + (r.kind !== 'track' ? ' auto' : ''), style: { top: `${r.y - v.sy}px`, height: `${r.h}px`, width: `${W}px` } });
+      if (r.kind !== 'track' || t.kind === 'group') return row;
       const st = this.state[t.id] || {};
+      row.append(h('button', { class: 'tstop' + (st.slot >= 0 ? ' on' : ''), style: { width: `${LEAD - 8}px` }, title: 'Stop this track (back to the arrangement)', 'data-learn': `stoptrack:${t.id}`, onclick: () => app.launch(t.id, -1) }, '■'));
       scenes.forEach((s, i) => {
         const c = this.slotClip(t, i);
         const playing = st.slot === i, queued = st.queued === i;
@@ -51,8 +62,17 @@ export class Session {
             h('span', { class: 'clen', text: `${+((c.loop || c.len) / p.sig).toFixed(2)}` }));
           if (playing) cell.append(h('i', { class: 'prog', style: { '--a': st.at } }));
         }
+        // a long press (or a right-click): the slot's menu
+        let held = false;
+        cell.addEventListener('pointerdown', (e) => {
+          if (e.pointerType !== 'touch') return;
+          held = false; const x0 = e.clientX, y0 = e.clientY;
+          const timer = setTimeout(() => { held = true; navigator.vibrate?.(12); this.slotSheet(t, i, c); }, 500);
+          const stop = (m) => { if (m.type !== 'pointermove' || Math.hypot(m.clientX - x0, m.clientY - y0) > 8) { clearTimeout(timer); cell.removeEventListener('pointermove', stop); cell.removeEventListener('pointerup', stop); cell.removeEventListener('pointercancel', stop); } };
+          cell.addEventListener('pointermove', stop); cell.addEventListener('pointerup', stop); cell.addEventListener('pointercancel', stop);
+        });
         cell.addEventListener('click', (e) => {
-          if (e.detail > 1) return;
+          if (e.detail > 1 || held) { held = false; return; }
           app.view.selSlot = { track: t.id, i };
           app.selectClip(c ? c.id : null, t.id);
           if (c) app.launch(t.id, i); else if (this.state[t.id]?.slot >= 0) app.launch(t.id, -1);
@@ -65,20 +85,31 @@ export class Session {
           app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i] = nc; });
           app.selectClip(nc.id, t.id); app.showTab('edit');
         });
-        cell.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          if (c) app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i] = null; });
-        });
+        cell.addEventListener('contextmenu', (e) => { e.preventDefault(); this.slotSheet(t, i, c); });
         cell.dataset.slot = `${t.id}:${i}`;
         row.append(cell);
       });
-      row.append(h('button', { class: 'tstop' + (st.slot >= 0 ? ' on' : ''), title: 'Stop this track (back to the arrangement)', 'data-learn': `stoptrack:${t.id}`, onclick: () => app.launch(t.id, -1) }, '■'));
       return row;
     });
     this.root.replaceChildren(h('div', { class: 'sgrid', style: { height: `${Math.max(app.arrange.total, 10)}px`, width: `${W}px` } }, ...kids),
       ...(p.tracks.length ? [] : [h('div', { class: 'empty', style: { inset: 0 } }, h('b', { text: 'SESSION' }), h('p', { text: 'Add a track, then double-click a slot to write a clip, and click it to launch it.' }))]));
     this.bar.scrollLeft = this.root.scrollLeft;
     app.control?.markMapped();
+  }
+  slotSheet(t, i, c) {
+    const app = this.app, p = this.p;
+    if (!c) {
+      if (t.kind === 'audio' || t.kind === 'group') return;
+      app.sheet(`${t.name} · slot ${i + 1}`, [['NEW CLIP HERE', () => { const nc = newClip(0, p.sig * 4, t.kind === 'drum' ? 'BEAT' : 'CLIP'); delete nc.start; app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i] = nc; }); app.selectClip(nc.id, t.id); app.showTab('edit'); }]]);
+      return;
+    }
+    const next = t.slots.findIndex((x, j) => j > i && !x);
+    app.sheet(c.name, [
+      ['OPEN IN THE EDITOR', () => { app.selectClip(c.id, t.id); app.showTab('edit'); }],
+      ['LAUNCH', () => app.launch(t.id, i)],
+      ...(next >= 0 ? [[`DUPLICATE TO SLOT ${next + 1}`, () => app.store.change((pp) => { const x = structuredClone(c); x.id = uid('c'); pp.tracks.find((q) => q.id === t.id).slots[next] = x; })]] : []),
+      ['DELETE', () => app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i] = null; }), 'danger'],
+    ]);
   }
   rename(el, i) {
     el.contentEditable = 'true'; el.focus(); document.getSelection().selectAllChildren(el);

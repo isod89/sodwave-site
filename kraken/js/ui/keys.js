@@ -16,13 +16,27 @@ export class Keys {
     app.store.on((_p, why) => { if (why !== 'change' && app.view.tab === 'keys') this.render(); });
   }
   render() {
-    const app = this.app, t = app.playTarget();
+    const app = this.app;
+    let t = app.playTarget();
+    if (!t || t.kind === 'audio' || t.kind === 'group') {        // nothing to play on the selected track: the first that can
+      t = app.store.p.tracks.find((x) => !['audio', 'group'].includes(x.kind)) || null;
+      if (t && !app.store.p.tracks.some((x) => x.arm)) app.view.selTrack = t.id;
+    }
+    // which track the keys play: picked here (it moves the arm, if a track is armed)
+    const playable = app.store.p.tracks.filter((x) => !['audio', 'group'].includes(x.kind));
+    const pick = h('select', { class: 'kpick', 'aria-label': 'Track the keys play', style: { color: t?.color }, onchange: (e) => {
+      const id = e.target.value, armed = app.store.p.tracks.some((x) => x.arm);
+      if (armed) app.store.change((p) => { for (const x of p.tracks) x.arm = x.id === id; });
+      app.selectTrack(id); this.render();
+    } }, playable.map((x) => h('option', { value: x.id, selected: x.id === t?.id ? true : null }, `${x.name}${x.arm ? ' ●' : ''}`)));
+    const span = (this.wrap.clientWidth || window.innerWidth) < 560 ? 1 : 2;   // a phone held upright: one octave, wider keys
+    this.span = span;
     const bar = h('div', { class: 'keys-bar' },
-      h('span', { class: 'kt', style: { color: t?.color || 'var(--dim)' }, text: t ? `${t.name}${t.arm ? ' · ARMED' : ''}` : 'NO TRACK' }),
+      playable.length ? pick : h('span', { class: 'kt dim', text: 'NO TRACK TO PLAY' }),
       t?.kind === 'drum' ? null : h('button', { class: 'add', onclick: () => { this.oct = Math.max(0, this.oct - 1); this.render(); } }, 'OCT −'),
-      t?.kind === 'drum' ? null : h('span', { class: 'kt', text: `C${this.oct}–C${this.oct + 2}` }),
+      t?.kind === 'drum' ? null : h('span', { class: 'kt', text: `C${this.oct}–C${this.oct + span}` }),
       t?.kind === 'drum' ? null : h('button', { class: 'add', onclick: () => { this.oct = Math.min(7, this.oct + 1); this.render(); } }, 'OCT +'),
-      h('span', { class: 'kt dim', text: 'Touch high on a key: soft · low: hard' }));
+      h('span', { class: 'kt dim', text: 'High on a key: soft · low: hard' }));
     const surface = t?.kind === 'drum' ? this.pads(t) : this.piano(t);
     this.wrap.replaceChildren(bar, surface);
   }
@@ -60,11 +74,12 @@ export class Keys {
     const surface = h('div', { class: 'piano', style: { '--c': t?.color || 'var(--accent)' } });
     const base = (this.oct + 1) * 12;
     const whites = [];
-    for (let o = 0; o < 2; o++) for (const w of WHITE) whites.push(base + o * 12 + w);
-    whites.push(base + 24);
+    const span = this.span || 2;
+    for (let o = 0; o < span; o++) for (const w of WHITE) whites.push(base + o * 12 + w);
+    whites.push(base + 12 * span);
     whites.forEach((n, i) => surface.append(h('div', { class: 'wk', 'data-n': n, style: { left: `${(i / whites.length) * 100}%`, width: `${100 / whites.length}%` } },
       n % 12 === 0 ? h('span', { text: noteName(n) }) : null)));
-    for (let o = 0; o < 2; o++) for (const [b, wi] of Object.entries(BLACKS)) {
+    for (let o = 0; o < span; o++) for (const [b, wi] of Object.entries(BLACKS)) {
       const n = base + o * 12 + +b, i = o * 7 + wi;
       surface.append(h('div', { class: 'bk', 'data-n': n, style: { left: `${((i + 0.68) / whites.length) * 100}%`, width: `${(0.64 / whites.length) * 100}%` } }));
     }

@@ -35,7 +35,7 @@ export class Library {
         if (/^USR|^SYN/.test(name) || (q && !name.includes(q))) return;
         kids.push(this.item(name, '', { kit: i }));
       });
-      this.foot.innerHTML = '<b>Click</b> a kit to load it on the drum track. <b>+ TRACK</b> (or Alt-click) makes a new drum track.';
+      this.footer();
     } else {
       const cur = t?.kind === 'synth' ? lib.soundOf(t) : null;
       const groups = this.mode === 'type'
@@ -50,8 +50,9 @@ export class Library {
           h('span', { text: `${open ? '▾' : '▸'} ${label}` }), h('span', { text: String(hits.length) })));
         if (open) for (const s of hits) kids.push(this.item(s.name, this.mode === 'type' ? s.eng : '', { bank: s.bank, engine: s.engine, preset: s.preset }));
       }
-      this.foot.innerHTML = '<b>Click</b> a sound to load it on the selected track and hear it. <b>+ TRACK</b> (or Alt-click) makes a new track with it.';
+      this.footer();
     }
+    if (!kids.length) kids.push(h('p', { class: 'lib-none', text: q ? `No sound or kit called "${q}".` : 'Nothing here.' }));
     this.list.replaceChildren(...kids);
     this.mark();
   }
@@ -65,8 +66,7 @@ export class Library {
     const app = this.app;
     let t = app.store.track(app.view.selTrack);
     if (snd.kit != null) {
-      if (t?.kind !== 'drum') t = app.store.p.tracks.find((x) => x.kind === 'drum');
-      if (asNew || !t) { app.addTrack('drum', { kit: snd.kit }); return; }
+      if (asNew || t?.kind !== 'drum') { app.addTrack('drum', { kit: snd.kit }); return; }       // not a drum track selected: a new one
       app.selectTrack(t.id);
       app.setKit(t.id, snd.kit);
       app.audition(t.id, [36, 38, 42]);
@@ -76,8 +76,17 @@ export class Library {
     app.setSound(t.id, snd);
     app.audition(t.id, [60, 64, 67]);
   }
+  // says where a sound will go: the selected track, or a new one
+  footer() {
+    const t = this.app.store.track(this.app.view.selTrack), touch = matchMedia('(pointer: coarse)').matches, tap = touch ? 'Tap' : 'Click';
+    const kits = this.mode === 'kits', fits = kits ? t?.kind === 'drum' : t?.kind === 'synth';
+    this.foot.replaceChildren(h('b', { text: tap }), ` a ${kits ? 'kit' : 'sound'}: `,
+      fits ? h('span', {}, 'it loads on ', h('b', { text: t.name, style: { color: t.color } })) : `a new ${kits ? 'drum' : 'synth'} track with it`,
+      '. ', h('b', { text: '+ TRACK' }), touch ? ': always a new track.' : ' (or Alt-click): always a new track.');
+  }
   mark() {
     const t = this.app.store.track(this.app.view.selTrack);
+    if (this.foot) this.footer();
     for (const el of this.list.querySelectorAll('.item')) {
       const s = JSON.parse(el.dataset.snd);
       el.classList.toggle('cur', !!t && (s.kit != null ? t.kind === 'drum' && t.kit === s.kit
