@@ -10,6 +10,9 @@ async function downloadsCap() {
   return downloads;
 }
 
+// inside claude.ai: the hosted save (a page there cannot write files itself)
+export const hostedSave = async () => !!(await downloadsCap());
+
 // .wav and .mid are not accepted by the hosted save, so inside claude.ai they travel in a .zip
 export async function saveFile(filename, data, { zipWhenHosted = false } = {}) {
   const cap = await downloadsCap();

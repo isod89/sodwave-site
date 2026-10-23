@@ -18,3 +18,10 @@ AddType text/javascript .js .mjs
 # RewriteEngine On
 # RewriteCond %{HTTPS} !=on
 # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# added by PUBLIER-KRAKEN.bat: last, so it wins over the .js rule above (sw.js must never be cached)
+<IfModule mod_headers.c>
+  <FilesMatch ^(index\.html|sw\.js|manifest\.webmanifest)$>
+    Header set Cache-Control no-cache
+  </FilesMatch>
+</IfModule>

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken: a free DAW in the browser, with the SLOOP and Clipper engines of the M-VAVE FM-1 firmwares.
 import { loadEngines, Audio } from './audio.js';
-import { Store, demoProject, newProject, newTrack, newClip, newAudioClip, newReturn, validate, uid, COLORS, cutRange } from './project.js';
-import { peaks, decode, storeAsset, loadAsset, detectBpm, stretch, saveProject, loadProject } from './assets.js';
+import { Store, demoProject, newProject, newTrack, newClip, newAudioClip, newReturn, validate, uid, COLORS, cutRange, APP_VERSION } from './project.js';
+import { peaks, decode, storeAsset, loadAsset, detectBpm, stretch } from './assets.js';
+import { autosaves, writeAutosave, emergencySave, addSnapshot, listSnapshots, getSnapshot, claimAutosave, askPersist, storageInfo } from './vault.js';
 import { encodeWav } from './wav.js';
 import { encodeFlac } from './flac.js';
 import { encodeOpus, opusSupported } from './opus.js';
 import { isFolder, addTake, renderFolder, setComp } from './comp.js';
-import { saveFile, zip, unzip, exportMidi, parseMidi } from './io.js';
+import { saveFile, zip, unzip, exportMidi, parseMidi, hostedSave } from './io.js';
 import { importSloopSong, presetDefaults } from './sloopsong.js';
 import { RATE } from './engine-core.js';
 import { h } from './ui/kit.js';
@@ -22,16 +23,35 @@ import { Controllers } from './ui/controllers.js';
 import { Session } from './ui/session.js';
 import { Palette } from './ui/palette.js';
 import { Keys } from './ui/keys.js';
+import { diagnose, diagnosisText } from './ui/diagnostic.js';
+import { reportDialog } from './ui/report.js';
+import { welcome, startTour } from './ui/welcome.js';
 
 const $ = (id) => document.getElementById(id);
-const AUTOSAVE = 'kraken.autosave.v1';
+const BOOTING = 'kraken.booting';        // set while a project opens: still there at the next start, it did not
 
 const app = {
   view: { mode: 'arrange', selSlot: null, selTrack: null, selClip: null, snap: 0.25, autoOpen: new Set(), autoTarget: {}, tab: 'edit', follow: true },
   params: new Map(),          // track id -> the engine's parameter values after its preset loaded
   assets: new Map(),          // audio id -> { L, R, name, peaks }
   pos: 0, playing: false, recording: false, click: false,
+  errors: [],                 // the last errors of this session (PROJECT > Report a problem)
+  actions: [],                // and the last things done (the same report)
+  canSave: false, dirty: false,
 };
+function logAct(what) { app.actions.push({ t: Date.now(), what }); if (app.actions.length > 40) app.actions.shift(); }
+app.logAct = logAct;
+// every error is kept for a report and said once in a while; the work is saved anyway
+function noteError(msg, stack = '') {
+  app.errors.push({ t: Date.now(), msg: String(msg).slice(0, 300), stack: String(stack || '').slice(0, 1200) });
+  if (app.errors.length > 30) app.errors.shift();
+  if (app.store && performance.now() - (noteError.last || -1e9) > 30000) {
+    noteError.last = performance.now();
+    toast(`Something went wrong (${String(msg).slice(0, 80)}). Your work is saved; ${matchMedia('(pointer: coarse)').matches ? '☰' : 'PROJECT'} > Report a problem helps fix it.`);
+  }
+}
+window.addEventListener('error', (e) => noteError(e.message || 'error', e.error?.stack));
+window.addEventListener('unhandledrejection', (e) => noteError(e.reason?.message || String(e.reason), e.reason?.stack));
 window.kraken = app;           // handy in the console
 
 // ------------------------------------------------------------------ boot ---
@@ -62,12 +82,63 @@ async function start() {
     $('boot-go').disabled = false;
     return;
   }
-  let project = null;
-  for (const read of [() => loadProject(AUTOSAVE), () => loadProject(AUTOSAVE + '.prev'), () => localStorage.getItem(AUTOSAVE)]) {
-    try { const s = await read(); if (s) { project = validate(JSON.parse(s)); break; } } catch { project = null; }   // a damaged save: the one before it
+  askPersist();                                                  // (the browser keeps Kraken's data: never cleared for room)
+  // the last session: the newest good copy (a damaged one: the one before it)
+  let project = null, from = null;
+  let newer = null;
+  for (const s of await autosaves()) {
+    try { project = validate(JSON.parse(s.json)); from = s; break; } catch (e) { project = null; if (/newer Kraken/.test(e.message) && !newer) newer = s; }
   }
+  if (newer) {                                                   // the last session was saved by a newer Kraken: kept aside, said
+    await addSnapshot(newer.json, { name: 'Saved by a newer Kraken', why: 'Open it after reloading the page (the newer Kraken)', tracks: 0, keep: true });
+    const pick = await bootChoice('Your last session was saved by a newer version of Kraken. Reload the page to get that version and your song.',
+      [['reload', 'Reload the page'], ['go', project ? 'Open the older copy for now' : 'Start anyway']]);
+    if (pick === 'reload') { location.reload(); return; }
+  }
+  let stuck = false;
+  try { stuck = !!localStorage.getItem(BOOTING); } catch { /* */ }
+  if (project && stuck) {                                       // it did not open last time: the person chooses
+    const when = from.t ? new Date(from.t).toLocaleString() : 'earlier';
+    const pick = await bootChoice(`Kraken did not finish opening last time. Your project "${project.name}" (saved ${when}) is safe.`,
+      [['open', 'Open it'], ['demo', 'Start with the demo song (yours stays in PROJECT > Earlier versions)'], ['file', 'Download it first']]);
+    if (pick === 'file') await saveFile(`${(project.name || 'kraken').replace(/[^\w\- ]+/g, '').trim() || 'kraken'}.kraken.json`, from.json);
+    if (pick === 'demo') {
+      const kept = await addSnapshot(from.json, { name: project.name, why: 'Kept when Kraken could not open it', tracks: project.tracks.length, keep: true });
+      if (!kept) await saveFile(`${(project.name || 'kraken').replace(/[^\w\- ]+/g, '').trim() || 'kraken'}.kraken.json`, from.json);   // (no room to keep it here: a file)
+      project = null;
+    }
+  }
+  try { localStorage.setItem(BOOTING, String(Date.now())); } catch { /* */ }
+  try {
+    await openUi(project);
+  } catch (err) {
+    noteError(err.message, err.stack);
+    $('boot').hidden = false;
+    const pick = await bootChoice(`Kraken stopped while opening: ${err.message}. Your project is safe.`, [['again', 'Try again'], ['demo', 'Start with the demo song (yours stays in PROJECT > Earlier versions)']]);
+    if (pick === 'demo' && from && !(await addSnapshot(from.json, { name: project?.name || 'Project', why: 'Kept when Kraken could not open it', tracks: project?.tracks.length || 0, keep: true }))) await saveFile('kraken-project.kraken.json', from.json);
+    if (pick === 'demo') { try { localStorage.removeItem(BOOTING); } catch { /* */ } await writeAutosave(JSON.stringify(demoProject(app.lib))); }
+    location.reload();
+    return;
+  }
+}
+// the boot screen asks: choices [[key, label]] -> the key picked
+function bootChoice(text, choices) {
+  $('boot-msg').textContent = text;
+  $('boot-go').hidden = true;
+  const box = $('boot-choices');
+  return new Promise((resolve) => {
+    box.replaceChildren(...choices.map(([key, label], i) => h('button', { class: 'key' + (i ? ' alt' : ''), onclick: () => { box.replaceChildren(); resolve(key); } }, label)));
+    box.hidden = false;
+    box.firstChild?.focus();
+  });
+}
+
+async function openUi(project) {
   app.store = new Store(project || demoProject(app.lib));
-  await restoreAssets(app.store.p);
+  app.missingAtStart = 0;
+  const change = app.store.change.bind(app.store);                // (each edit, once, for a problem report)
+  app.store.change = (fn, tag = null) => { if (!tag || tag !== app.store.lastTag) logAct(`edit${tag ? ' ' + String(tag).slice(0, 40) : ''}`); return change(fn, tag); };
+  app.missingAtStart = await restoreAssets(app.store.p);
   app.view.selTrack = app.store.p.tracks[0]?.id ?? null;
   app.view.selClip = app.store.p.tracks[0]?.clips[0]?.id ?? null;
   app.arrange = new Arrange(app);
@@ -88,11 +159,44 @@ async function start() {
   bindTop();
   bindKeys();
   bindResize();
+  app.booting = true;
   app.store.emit('load');
+  app.booting = false;
+  app.audio.onRestart = () => resyncAll();                       // (the engines re-sent as bytes: the project again)
   $('boot').hidden = true;
+  const opened = () => { try { localStorage.removeItem(BOOTING); } catch { /* */ } };
+  requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(opened, 300)));   // (it opened and drew)
+  window.addEventListener('pagehide', opened);
+  // one tab writes the autosave: another one open asks first
+  claimAutosave(() => { app.canSave = false; tabBanner(true); }, () => {
+    app.canSave = true; $('save-banner').hidden = true; app.dirty = true; flushSave();
+    toast('The other Kraken tab closed: this one saves your work now.');
+  }).then((claim) => {   // (not waited for: the screen is ready now)
+    app.canSave = claim.ok;
+    app.takeOver = async () => {
+      const other = (await autosaves())[0];
+      if (other) await addSnapshot(other.json, { name: 'Saved by another tab', why: 'Replaced when this tab took over', tracks: 0 });
+      await claim.take(); app.canSave = true; app.dirty = true; $('save-banner').hidden = true; flushSave();
+      toast('This tab saves your work now.');
+    };
+    if (!claim.ok) tabBanner(false);
+    else {
+      if (project) addSnapshot(JSON.stringify(project), { name: project.name, why: 'Opened', tracks: project.tracks.length });
+      if (app.dirty) flushSave();                                  // (changed before the claim came back)
+    }
+  });
+  setTimeout(() => { if (!app.audio.lastTick) toast(`No sound engine running in this browser. ${matchMedia('(pointer: coarse)').matches ? '☰' : 'PROJECT'} > Check this device says why.`); }, 3000);
+  for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault());   // (Safari: pinch zooms the clips, not the page)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') closingSave(); });
+  window.addEventListener('pagehide', closingSave);
   if (window.innerWidth > 1180) $('app').classList.remove('no-lib');     // the library open where there is room for it
   const touch = matchMedia('(pointer: coarse)').matches;
-  toast(project ? `Your last session is back. ${touch ? '☰' : 'PROJECT'} > Open demo song for the demo.` : touch ? 'Demo song loaded: tap ▶ to play. Hold a clip or a track for its menu.' : 'Demo song loaded: press Space to play.');
+  let welcomed = false;
+  try { welcomed = !!localStorage.getItem('kraken.welcomed'); } catch { /* */ }
+  // the first visit: the welcome (not under automation: the test suites start from the demo song)
+  if (!project && !welcomed && !app.pendingFiles?.length && !navigator.webdriver) { welcome(app, { modal, first: true }); return; }
+  if (app.missingAtStart) toast(`Your last session is back. ${missingText(app.missingAtStart)}`);
+  else toast(project ? `Your last session is back. ${touch ? '☰' : 'PROJECT'} > Open demo song for the demo.` : touch ? 'Demo song loaded: tap ▶ to play. Hold a clip or a track for its menu.' : 'Demo song loaded: press Space to play.');
   if (app.pendingFiles?.length) openPending();
 }
 
@@ -108,11 +212,11 @@ function onChange(p, why) {
     syncQueued = true;
     requestAnimationFrame(() => { syncQueued = false; const f = syncFull; syncFull = false; syncEngine(f); });
   }
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const js = JSON.stringify(app.store.p);
-    saveProject(AUTOSAVE, js).then((ok) => { if (ok === null) try { localStorage.setItem(AUTOSAVE, js); } catch { /* storage full or blocked */ } });
-  }, 800);
+  if (why !== 'select' && !app.booting) {                       // (only what changed the song is saved; what it opened with is there)
+    app.dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 800);
+  }
   if ($('pname') !== document.activeElement) $('pname').value = p.name;
   if (p.bpm !== onChange.bpm) { onChange.bpm = p.bpm; if (why === 'change') restretchSoon(); }
   if ($('bpm') !== document.activeElement) $('bpm').value = String(+p.bpm.toFixed(2));
@@ -124,6 +228,47 @@ function onChange(p, why) {
   const clip = t?.clips.find((c) => c.id === v.selClip);
   $('tab-info').replaceChildren(...(t ? [h('span', { class: 'dot', '--c': t.color }), `${t.name}${clip ? ' · ' + clip.name : ''}`] : []));
   if (why === 'load' || why === 'history') app.arrange.redraw();
+}
+
+// ------------------------------------------------------------ the autosave ---
+const projectJson = () => JSON.stringify({ ...app.store.p, savedWith: APP_VERSION });
+let lastSnap = { t: Date.now(), json: '' };
+async function flushSave() {
+  clearTimeout(saveTimer);
+  if (!app.dirty || !app.canSave || !app.store) return;
+  app.dirty = false;
+  const js = projectJson();
+  const ok = await writeAutosave(js);
+  saveBanner(!ok);
+  // an earlier version every 5 minutes of work
+  if (ok && Date.now() - lastSnap.t > 5 * 60000 && js !== lastSnap.json) {
+    lastSnap = { t: Date.now(), json: js };
+    addSnapshot(js, { name: app.store.p.name, why: 'While you worked', tracks: app.store.p.tracks.length });
+  }
+}
+app.flushSave = flushSave;
+function closingSave() {                                // the page is hidden or closing: written now, while it can
+  if (!app.dirty || !app.canSave || !app.store) return;
+  emergencySave(projectJson());
+  flushSave();
+}
+function saveBanner(failed) {
+  const b = $('save-banner');
+  if (!failed) { if (b.dataset.kind === 'fail') b.hidden = true; return; }
+  if ((!b.hidden && b.dataset.kind === 'fail') || Date.now() - (+b.dataset.snooze || 0) < 120000) return;
+  b.dataset.kind = 'fail';
+  b.replaceChildren(h('span', { text: 'Kraken cannot save in this browser right now (storage full or blocked). Keep your work in a file:' }),
+    h('button', { class: 'key', onclick: () => fileAction('save') }, 'SAVE TO A FILE'), closeX(b));
+  b.hidden = false;
+}
+const closeX = (b) => h('button', { class: 'x', title: 'Hide', 'aria-label': 'Hide', onclick: () => { b.hidden = true; b.dataset.snooze = String(Date.now()); } }, '×');
+function tabBanner(lost) {
+  const b = $('save-banner');
+  b.dataset.kind = 'tab';
+  b.replaceChildren(h('span', { text: lost ? 'Kraken was opened in another tab, which saves your work now. This tab no longer saves by itself.'
+    : 'Kraken is already open in another tab. This one does not save by itself.' }),
+  h('button', { class: 'key', onclick: () => app.takeOver() }, 'SAVE FROM THIS TAB'), closeX(b));
+  b.hidden = false;
 }
 
 // the engine gets only what changed: the tracks whose content moved, and the top of the project
@@ -142,6 +287,7 @@ function syncEngine(full = false) {
   sync.top = top; sync.order = order.join();
 }
 function resyncAll() { sync.top = ''; sync.tracks.clear(); for (const [id, a] of app.assets) app.audio.send({ t: 'asset', id, L: a.L, R: a.R }); syncEngine(true); }
+app.restartAudioQuiet = () => resyncAll();
 app.restartAudio = () => { app.audio.restart(); resyncAll(); app.playing = false; $('play').classList.remove('on'); toast('Audio engine restarted.'); };
 
 function onAudio(m) {
@@ -161,6 +307,14 @@ function onAudio(m) {
     const lv = (x) => Math.min(1, Math.max(0, (20 * Math.log10(Math.max(1e-5, x)) + 48) / 48)).toFixed(3);
     const [a, b] = $('mmeter').children;
     a.style.setProperty('--v', lv(m.master[0])); b.style.setProperty('--v', lv(m.master[1]));
+  } else if (m.t === 'load') {
+    const v = Math.round(m.v * 100), cell = $('cpu-cell');
+    $('cpu').textContent = `${v} %`;
+    cell.classList.toggle('hot', v >= 80);
+    if (v >= 90 && app.playing && performance.now() - (onAudio.hotAt || -1e9) > 120000) {
+      onAudio.hotAt = performance.now();
+      toast(`The audio engine is at ${v} %: it may crackle. Freeze a heavy track (INSTRUMENT tab > FREEZE TRACK) or remove effects to lighten it.`);
+    }
   } else if (m.t === 'params') {
     app.params.set(m.track, m.values);
     if (m.track === app.view.selTrack) app.device.refresh(true);
@@ -254,7 +408,7 @@ function addAsset(id, a, persist = true) {
   const asset = { L: a.L, R: a.R, name: a.name, peaks: peaks(a.L, a.R) };
   app.assets.set(id, asset);
   app.audio.send({ t: 'asset', id, L: a.L, R: a.R });
-  if (persist) storeAsset(id, asset);
+  if (persist) storeAsset(id, asset).then((ok) => { if (ok === null) toast(`${a.name || 'This audio'} could not be kept in the browser (storage full?): PROJECT > Save keeps it in the project's .zip.`); });
   return asset;
 }
 async function restoreAssets(p) {
@@ -262,10 +416,12 @@ async function restoreAssets(p) {
   for (const id of Object.keys(p.assets || {})) {
     if (app.assets.has(id)) { app.audio.send({ t: 'asset', id, L: app.assets.get(id).L, R: app.assets.get(id).R }); continue; }
     const a = await loadAsset(id);
-    if (a) addAsset(id, a, false); else missing++;
+    if (a?.L && a.R) addAsset(id, a, false); else missing++;
   }
-  if (missing) toast(`${missing} audio file${missing > 1 ? 's are' : ' is'} missing from this browser. Open the project's .zip to bring them back.`);
+  if (missing) toast(missingText(missing));
+  return missing;
 }
+const missingText = (n) => `${n} audio file${n > 1 ? 's are' : ' is'} missing from this browser. Open the project's .zip to bring them back.`;
 function usedAssets(p) {
   const out = {};
   const use = (id) => { const a = id && app.assets.get(id); if (a) out[id] = { L: a.L, R: a.R }; };
@@ -459,6 +615,7 @@ Object.assign(app, {
     app.store.emit('select');
   },
   showTab(name) {
+    if (name !== app.view.tab) logAct(`tab: ${name}`);
     app.view.tab = name;
     for (const b of document.querySelectorAll('#bot .tab[data-tab]')) b.classList.toggle('on', b.dataset.tab === name);
     for (const v of ['edit', 'device', 'mixer', 'ctl', 'keys']) $('v-' + v).hidden = v !== name;
@@ -470,6 +627,7 @@ Object.assign(app, {
   },
   seek(beat) { app.pos = beat; app.seekSeq = (app.seekSeq || 0) + 1; app.seekAt = performance.now(); app.audio.send({ t: 'seek', beat, seq: app.seekSeq }); showPos(); app.arrange.redraw(); app.editor.canvas.redraw(); },
   play(on = !app.playing, countIn = false) {
+    logAct(on ? 'play' : 'stop');
     if (app.audio.ctx.state !== 'running') app.audio.ctx.resume();
     if (!on) closeAllSessionTakes();
     app.audio.send({ t: on ? 'play' : 'stop', countIn });
@@ -478,6 +636,7 @@ Object.assign(app, {
     app.playing = on; $('play').classList.toggle('on', on);
   },
   setMode(mode) {
+    logAct(`view: ${mode}`);
     app.view.mode = mode;
     $('mode-arr').classList.toggle('on', mode === 'arrange'); $('mode-ses').classList.toggle('on', mode === 'session');
     $('session').hidden = mode !== 'session'; $('scene-bar').hidden = mode !== 'session';
@@ -784,7 +943,11 @@ function bindTop() {
   };
 }
 
+app.load = (p) => load(p);
 function load(p) {
+  const cur = app.store.p;                                       // the project replaced: an earlier version to go back to
+  if (cur.tracks.some((t) => t.clips.length || t.slots?.some(Boolean))) addSnapshot(projectJson(), { name: cur.name, why: `Before opening ${p.name}`, tracks: cur.tracks.length });
+  app.fileHandle = null;
   app.audio.send({ t: 'stop' }); app.audio.send({ t: 'panic' });
   app.params.clear();
   app.view.selTrack = p.tracks[0]?.id ?? null; app.view.selClip = null; app.view.autoOpen.clear();
@@ -792,7 +955,57 @@ function load(p) {
   app.seek(0);
 }
 
+// the project in a file: with audio, one .zip (the project and its files), else a .json. Where the browser lets a page
+// write a file it was given (Chrome, Edge on a computer), the first save asks where, the next ones write there
+async function saveProjectFile(as, base) {
+  const p = { ...app.store.p, savedWith: APP_VERSION };
+  const used = usedAssets(p), ids = Object.keys(used);
+  const data = ids.length ? zip([{ name: 'project.json', data: JSON.stringify(p, null, 1) }, ...ids.map((id) => ({ name: `assets/${id}.wav`, data: encodeWav([used[id].L, used[id].R], RATE, 24) }))])
+    : JSON.stringify(p, null, 1);
+  const kind = ids.length ? 'zip' : 'json', name = `${base}.kraken.${kind}`;
+  if (window.showSaveFilePicker && !(await hostedSave())) {
+    try {
+      let fh = !as && app.fileHandle?.kind === kind ? app.fileHandle.h : null;
+      if (!fh) fh = await window.showSaveFilePicker({ suggestedName: name, types: [kind === 'zip' ? { description: 'Kraken project with audio', accept: { 'application/zip': ['.zip'] } } : { description: 'Kraken project', accept: { 'application/json': ['.json'] } }] });
+      const w = await fh.createWritable();
+      await w.write(new Blob([data]));
+      await w.close();
+      app.fileHandle = { h: fh, kind };
+      toast(`Saved to ${fh.name}${as ? '' : '. Ctrl+S saves there again'}.`);
+      return;
+    } catch (e) { if (e.name === 'AbortError') return; }      // (cancelled; any other trouble: a download instead)
+  }
+  toast(`Saved ${await saveFile(name, data)}`);
+}
+// earlier versions of the work: every few minutes, and the project each time another one replaced it
+async function recoverDialog() {
+  await flushSave();
+  const list = await listSnapshots();
+  const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
+  const rows = list.length ? list.map((x) => h('button', { class: 'add recover-row', onclick: async () => {
+    m.close();
+    const json = await getSnapshot(x.t);
+    try { const p = validate(JSON.parse(json)); load(p); await restoreAssets(app.store.p); toast(`${p.name} from ${ago(x.t)} is back. Ctrl+Z returns to what you had.`); } catch (e) { toast(e.message); }
+  } }, h('b', { text: x.name || 'Untitled' }), h('span', { text: `${ago(x.t)} · ${new Date(x.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${x.tracks ? ` · ${x.tracks} tracks` : ''}` }), h('em', { text: x.why || '' })))
+    : [h('p', { text: 'No earlier version yet: Kraken keeps one every five minutes of work, and each time another project replaces yours.' })];
+  const m = modal('Earlier versions', [h('p', { class: 'hint', text: 'Kraken keeps the last 40 in this browser. Opening one keeps what you have now one Ctrl+Z away.' }), h('div', { class: 'recover-list' }, rows)], [['Close', null, true]]);
+}
+
+// what this device can do for Kraken, measured
+async function checkDialog() {
+  const wait = modal('Checking this device…', [h('p', { class: 'hint', text: 'Audio, engine speed, storage, MIDI, export: a few seconds.' })], []);
+  await new Promise((r) => setTimeout(r, 50));
+  let rows;
+  try { rows = await diagnose(app); } finally { wait.close(); }
+  const text = diagnosisText(rows);
+  const list = h('div', { class: 'diag' }, rows.map((r) => h('div', { class: `diag-row ${r.s}` }, h('i', { text: r.s === 'ok' ? '✓' : r.s === 'warn' ? '!' : '✗' }), h('b', { text: r.k }), h('span', { text: r.v }))));
+  const bad = rows.filter((r) => r.s !== 'ok').length;
+  modal('This device', [h('p', { class: 'hint', text: bad ? `${bad} thing${bad > 1 ? 's' : ''} to know below.` : 'Everything Kraken needs is here.' }), list],
+    [['Copy the report', () => { navigator.clipboard?.writeText(text).then(() => toast('Report copied.'), () => toast('Could not copy: select the text instead.')); }], ['Close', null, true]]);
+}
+
 async function fileAction(act) {
+  logAct(`project: ${act}`);
   const p = app.store.p, base = (p.name || 'kraken').replace(/[^\w\- ]+/g, '').trim() || 'kraken';
   if (act === 'transport') return transportSheet();
   if (act === 'rename') {
@@ -809,17 +1022,12 @@ async function fileAction(act) {
     });
     else if (act === 'demo') confirmBox('Open the demo song', 'Replace the current project with the demo song? Ctrl+Z (or ↶) brings yours back.', 'Open the demo', () => load(demoProject(app.lib)));
     else if (act === 'open') $('openfile').click();
-    else if (act === 'save') {
-      const used = usedAssets(p);
-      const ids = Object.keys(used);
-      let name;
-      if (ids.length) {                                          // with audio: one .zip, the project and its files
-        const files = [{ name: 'project.json', data: JSON.stringify(p, null, 1) },
-          ...ids.map((id) => ({ name: `assets/${id}.wav`, data: encodeWav([used[id].L, used[id].R], RATE, 24) }))];
-        name = await saveFile(`${base}.kraken.zip`, zip(files));
-      } else name = await saveFile(`${base}.kraken.json`, JSON.stringify(p, null, 1));
-      toast(`Saved ${name}`);
-    }
+    else if (act === 'save' || act === 'saveas') await saveProjectFile(act === 'saveas', base);
+    else if (act === 'recover') await recoverDialog();
+    else if (act === 'check') await checkDialog();
+    else if (act === 'starter') welcome(app, { modal });
+    else if (act === 'tour') startTour(app);
+    else if (act === 'report') await reportDialog(app, { modal, toast });
     else if (act === 'sloop') { const inp = $('sloopfile'); inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) openSloopSong(f); }; inp.click(); }
     else if (act === 'importmidi') { const inp = $('midifile'); inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) importMidiFile(f).catch((e2) => toast(e2.message)); }; inp.click(); }
     else if (act === 'midi') { const name = await saveFile(`${base}.mid`, exportMidi(p), { zipWhenHosted: true }); toast(`Saved ${name}`); }
@@ -976,6 +1184,7 @@ function help() {
     ['Tracks', 'One finger: scroll · two fingers: zoom · double-tap a lane: a new clip · double-tap a clip: edit it'],
     ['Hold a clip', 'It lifts: drag it to move it (its end: resize), or let go for its menu (open, duplicate, delete)'],
     ['Hold a track', 'Its menu: sound, rename, automation, duplicate, delete'],
+    ['☰ menu', 'Earlier versions of your song · Check this device · Report a problem · Show me around'],
     ['Ruler', 'Top band: the LOOP · middle band: PUNCH · numbers: the playhead. Drag a zone\'s ends or middle, tap it on / off · double-tap the numbers: a marker'],
     ['Clip editor', 'Tap: a note or a hit · drag: move / length · double-tap a note: remove · two fingers: scroll · TOOL: SELECT, ACCENT, CHANCE, RATCHET'],
     ['The screen', 'Tap the position for the metronome, count-in, punch, back to start, redo, grid and swing'],
@@ -995,6 +1204,8 @@ function help() {
     ['Tab', 'Arrangement / session · in the session: click a clip to launch it, ▶ a scene, ■ to stop'],
     ['Esc', 'All notes off, deselect'],
     ['Ctrl K', 'Command palette: every action, track, sound, kit, effect and marker'],
+    ['Ctrl S · Ctrl Shift S', 'Save to a file (Chrome, Edge: the same file again) · save as. Kraken also saves by itself'],
+    ['PROJECT menu', 'Earlier versions (your work every 5 minutes) · Check this device · Report a problem · Show me around'],
     ['Ctrl L · LEARN', 'MIDI Learn: click any knob, fader, button or action, then move a control (or press a key)'],
     ['Drop files', 'A .mid: tracks · a .sloopsong: the SLOOP song · audio files: audio clips'],
     ['Clip editor', 'The strip above the notes: drag the white handle for the clip length, the orange one for the loop'],
@@ -1029,7 +1240,7 @@ function bindKeys() {
     const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase(), v = app.view, p = app.store.p;
     if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? app.store.redo() : app.store.undo(); return; }
     if (mod && k === 'y') { e.preventDefault(); app.store.redo(); return; }
-    if (mod && k === 's') { e.preventDefault(); fileAction('save'); return; }
+    if (mod && k === 's') { e.preventDefault(); fileAction(e.shiftKey ? 'saveas' : 'save'); return; }
     if (mod && k === 'o') { e.preventDefault(); fileAction('open'); return; }
     if (mod && k === 'l') { e.preventDefault(); app.control.setLearning(!app.control.learning); return; }
     if (mod && k === 'k') { e.preventDefault(); app.palette.open(); return; }

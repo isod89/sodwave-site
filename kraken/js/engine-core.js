@@ -288,6 +288,7 @@ export class KrakenEngine {
     this.post = post;
     this.tracks = new Map();
     this.order = [];           // every track, in project order
+    this.renderOrder = [];     // the same, without the groups, the sidechain keys first
     this.project = null;
     this.playing = false;
     this.recording = false;
@@ -352,6 +353,10 @@ export class KrakenEngine {
     // the groups, deepest first: a group's output can feed another group
     const depth = (t, k = 0) => { const parent = p.tracks.find((x) => x.id === t.out && x.kind === 'group'); return parent && k < 8 ? depth(parent, k + 1) + 1 : 0; };
     this.groups = this.order.filter((t) => t.kind === 'group').sort((a, b) => depth(b.def) - depth(a.def));
+    // a compressor keyed by another track hears that track in the same block: the keys play first
+    const keys = new Set();
+    for (const t of p.tracks) for (const f of t.fx || []) if (f.type === 'comp' && f.p?.sc && f.on !== false) keys.add(f.p.sc);
+    this.renderOrder = [...this.order.filter((t) => t.kind !== 'group' && keys.has(t.id)), ...this.order.filter((t) => t.kind !== 'group' && !keys.has(t.id))];
     this.audibleCache = null;
     while (this.returns.length < p.returns.length) this.returns.push(new Return());
     this.returns.length = p.returns.length;
@@ -609,7 +614,7 @@ export class KrakenEngine {
         for (let i = 0; i < BLOCK; i++) { r.L[i] += bL[i] * sl; r.R[i] += bR[i] * sr; }
       }
     };
-    for (const tr of this.order) if (tr.kind !== 'group') strip(tr);
+    for (const tr of this.renderOrder) strip(tr);
     for (const g of this.groups) strip(g);
     if (!this.freezeTrack) {
       // returns

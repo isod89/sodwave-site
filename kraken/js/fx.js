@@ -47,16 +47,18 @@ export class Reverb {                            // Freeverb (Jezar, public doma
     this.preN = Math.max(1, Math.min(this.pre.length - 1, Math.round(predelay * RATE)));
   }
   process(inL, inR, outL, outR, n) {
+    const pre = this.pre, pn = pre.length, fb = this.fb, d1 = this.d1, d2 = this.d2;
     for (let i = 0; i < n; i++) {
-      this.pre[this.pi] = (inL[i] + inR[i]) * 0.5;
-      let r = this.pi - this.preN; if (r < 0) r += this.pre.length;
-      const x = this.pre[r] * 0.03;
-      this.pi = (this.pi + 1) % this.pre.length;
+      pre[this.pi] = (inL[i] + inR[i]) * 0.5;
+      let r = this.pi - this.preN; if (r < 0) r += pn;
+      const x = pre[r] * 0.03;
+      if (++this.pi >= pn) this.pi = 0;
       for (let ch = 0; ch < 2; ch++) {
+        const cs = this.c[ch], as = this.a[ch];
         let s = 0;
-        for (const c of this.c[ch]) { const y = c.b[c.i]; c.f = y * this.d2 + c.f * this.d1; c.b[c.i] = x + c.f * this.fb; if (++c.i >= c.b.length) c.i = 0; s += y; }
-        for (const a of this.a[ch]) { const y = a.b[a.i]; a.b[a.i] = s + y * 0.5; if (++a.i >= a.b.length) a.i = 0; s = y - s; }
-        (ch ? outR : outL)[i] += s;
+        for (let k = 0; k < 8; k++) { const c = cs[k], b = c.b; const y = b[c.i]; c.f = y * d2 + c.f * d1; b[c.i] = x + c.f * fb; if (++c.i >= b.length) c.i = 0; s += y; }
+        for (let k = 0; k < 4; k++) { const a = as[k], b = a.b; const y = b[a.i]; b[a.i] = s + y * 0.5; if (++a.i >= b.length) a.i = 0; s = y - s; }
+        if (ch) outR[i] += s; else outL[i] += s;
       }
     }
   }
@@ -154,7 +156,7 @@ export function createDevice(type) {
 class Dev {
   constructor() { this.p = {}; this.gr = 0; this.dryL = new Float32Array(128); this.dryR = new Float32Array(128); }
   set(p, bpm) { const changed = JSON.stringify(p) !== this.key || bpm !== this.bpm; this.p = p; this.bpm = bpm; this.key = JSON.stringify(p); if (changed) this.update?.(); }
-  keepDry(L, R, n) { this.dryL.set(L.subarray(0, n)); this.dryR.set(R.subarray(0, n)); }
+  keepDry(L, R, n) { if ((this.p.mx ?? 1) >= 1) return; this.dryL.set(L.subarray(0, n)); this.dryR.set(R.subarray(0, n)); }   // (all wet: no dry needed)
   mix(L, R, n, m) { if (m >= 1) return; for (let i = 0; i < n; i++) { L[i] = this.dryL[i] + (L[i] - this.dryL[i]) * m; R[i] = this.dryR[i] + (R[i] - this.dryR[i]) * m; } }
 }
 
@@ -173,26 +175,38 @@ class EqDev extends Dev {
 }
 
 class CompDev extends Dev {
-  constructor() { super(); this.env = 0; }
+  constructor() { super(); this.env = 0; this.g = 1; }
+  // the level is read and the gain worked out every 4 samples (the gain glides between): a quarter of the logs and
+  // powers of doing it at every sample, the same sound (the fastest attack, 0.1 ms, is 4.4 samples)
+  update() {
+    const p = this.p;
+    this.at = Math.exp(-4 / (p.at * 0.001 * RATE)); this.re = Math.exp(-4 / (p.re * 0.001 * RATE));
+    this.mk = dbg(p.mk);
+  }
   process(L, R, n, ctx) {
     const p = this.p, key = p.sc && ctx.sidechain ? ctx.sidechain(p.sc) : null;
-    const at = Math.exp(-1 / (p.at * 0.001 * RATE)), re = Math.exp(-1 / (p.re * 0.001 * RATE));
-    const th = p.th, ra = p.ra, kn = p.kn, mk = dbg(p.mk);
+    const at = this.at, re = this.re, th = p.th, ra = p.ra, kn = p.kn, mk = this.mk, slope = 1 - 1 / ra;
+    const kL = key ? key.L : L, kR = key ? key.R : R;
     this.keepDry(L, R, n);
-    let env = this.env, maxGr = 0;
-    for (let i = 0; i < n; i++) {
-      const x = key ? Math.max(Math.abs(key.L[i]), Math.abs(key.R[i])) : Math.max(Math.abs(L[i]), Math.abs(R[i]));
-      const lvl = 20 * Math.log10(x + 1e-9);
+    let env = this.env, g0 = this.g, maxGr = 0;
+    for (let i = 0; i < n; i += 4) {
+      const e = i + 4 < n ? i + 4 : n;
+      let x = 0;
+      for (let j = i; j < e; j++) { const a = Math.abs(kL[j]), b = Math.abs(kR[j]); if (a > x) x = a; if (b > x) x = b; }
+      const lvl = 8.685889638065035 * Math.log(x + 1e-9);          // (dB)
       env = lvl > env ? at * env + (1 - at) * lvl : re * env + (1 - re) * lvl;
       const over = env - th;
       let gr = 0;
-      if (over > kn / 2) gr = over * (1 - 1 / ra);
-      else if (over > -kn / 2 && kn > 0) gr = (1 - 1 / ra) * (over + kn / 2) ** 2 / (2 * kn);
-      const g = dbg(-gr) * mk;
-      L[i] *= g; R[i] *= g;
+      if (over > kn / 2) gr = over * slope;
+      else if (over > -kn / 2 && kn > 0) gr = slope * (over + kn / 2) ** 2 / (2 * kn);
+      const g1 = Math.exp(-0.11512925464970229 * gr) * mk;        // (dB to gain)
+      const step = (g1 - g0) / (e - i);
+      for (let j = i; j < e; j++) { g0 += step; L[j] *= g0; R[j] *= g0; }
+      g0 = g1;
       if (gr > maxGr) maxGr = gr;
     }
     this.env = Number.isFinite(env) ? env : -120;
+    this.g = Number.isFinite(g0) ? g0 : 1;
     this.gr = Math.max(this.gr * 0.9, maxGr);
     this.mix(L, R, n, p.mx);
   }
@@ -200,18 +214,16 @@ class CompDev extends Dev {
 
 class SatDev extends Dev {
   constructor() { super(); this.tl = new Biquad(); this.th = new Biquad(); this.lpL = 0; this.lpR = 0; }
-  update() { this.tl.set('low', 300, 0.7, -this.p.to * 6); this.th.set('high', 3000, 0.7, this.p.to * 6); }
+  update() { this.tl.set('low', 300, 0.7, -this.p.to * 6); this.th.set('high', 3000, 0.7, this.p.to * 6); this.d = dbg(this.p.dr); this.o = dbg(this.p.ou); }
   process(L, R, n) {
-    const p = this.p, d = dbg(p.dr), o = dbg(p.ou), ty = Math.round(p.ty);
+    const p = this.p, d = this.d, o = this.o, ty = Math.round(p.ty);
     this.keepDry(L, R, n);
-    const sh = (x) => {
-      x *= d;
-      if (ty === 0) return Math.tanh(x);
-      if (ty === 1) return x >= 0 ? 1 - Math.exp(-x) : -(1 - Math.exp(x)) * 0.8;      // asymmetric: even harmonics
-      if (ty === 2) return Math.sin(x);                                            // wavefolder
-      return Math.max(-1, Math.min(1, x));
-    };
-    for (let i = 0; i < n; i++) { L[i] = sh(L[i]) * o; R[i] = sh(R[i]) * o; }
+    for (const X of [L, R]) {
+      if (ty === 0) for (let i = 0; i < n; i++) X[i] = Math.tanh(X[i] * d) * o;
+      else if (ty === 1) for (let i = 0; i < n; i++) { const x = X[i] * d; X[i] = (x >= 0 ? 1 - Math.exp(-x) : -(1 - Math.exp(x)) * 0.8) * o; }   // asymmetric: even harmonics
+      else if (ty === 2) for (let i = 0; i < n; i++) X[i] = Math.sin(X[i] * d) * o;                                                      // wavefolder
+      else for (let i = 0; i < n; i++) { const x = X[i] * d; X[i] = (x > 1 ? 1 : x < -1 ? -1 : x) * o; }
+    }
     if (Math.abs(p.to) > 0.02) { this.tl.run(L, R, n); this.th.run(L, R, n); }
     this.mix(L, R, n, p.mx);
   }
@@ -233,39 +245,58 @@ class FilterDev extends Dev {
 
 class ChorusDev extends Dev {
   constructor() { super(); this.L = new Float32Array(4096); this.R = new Float32Array(4096); this.w = 0; this.ph = 0; }
+  // the delay times move with the LFO, worked out every 8 samples and glided between
   process(L, R, n) {
-    const p = this.p, base = 0.012 * RATE, depth = p.de * 0.008 * RATE, inc = TAU * p.ra / RATE;
+    const p = this.p, base = 0.012 * RATE, depth = p.de * 0.008 * RATE, inc = TAU * p.ra / RATE, fb = p.fb;
+    const BL = this.L, BR = this.R;
     this.keepDry(L, R, n);
-    for (let i = 0; i < n; i++) {
-      this.ph += inc; if (this.ph > TAU) this.ph -= TAU;
-      const dl = base + depth * (1 + Math.sin(this.ph)) / 2, dr = base + depth * (1 + Math.sin(this.ph + Math.PI / 2)) / 2;
-      const rd = (buf, d) => { let x = this.w - d; while (x < 0) x += 4096; const a = Math.floor(x), f = x - a; return buf[a & 4095] * (1 - f) + buf[(a + 1) & 4095] * f; };
-      const yl = rd(this.L, dl), yr = rd(this.R, dr);
-      this.L[this.w] = L[i] + yl * p.fb; this.R[this.w] = R[i] + yr * p.fb;
-      this.w = (this.w + 1) & 4095;
-      L[i] = yl; R[i] = yr;
+    let w = this.w, ph = this.ph;
+    let dl0 = base + depth * (1 + Math.sin(ph)) / 2, dr0 = base + depth * (1 + Math.cos(ph)) / 2;
+    for (let i = 0; i < n; i += 8) {
+      const e = i + 8 < n ? i + 8 : n;
+      ph += inc * (e - i); if (ph > TAU) ph -= TAU;
+      const dl1 = base + depth * (1 + Math.sin(ph)) / 2, dr1 = base + depth * (1 + Math.cos(ph)) / 2;   // (cos: sin a quarter turn on)
+      const sl = (dl1 - dl0) / (e - i), sr = (dr1 - dr0) / (e - i);
+      for (let j = i; j < e; j++) {
+        dl0 += sl; dr0 += sr;
+        let x = w - dl0; if (x < 0) x += 4096; let a = x | 0, f = x - a;
+        const yl = BL[a & 4095] * (1 - f) + BL[(a + 1) & 4095] * f;
+        x = w - dr0; if (x < 0) x += 4096; a = x | 0; f = x - a;
+        const yr = BR[a & 4095] * (1 - f) + BR[(a + 1) & 4095] * f;
+        BL[w] = L[j] + yl * fb; BR[w] = R[j] + yr * fb;
+        w = (w + 1) & 4095;
+        L[j] = yl; R[j] = yr;
+      }
+      dl0 = dl1; dr0 = dr1;
     }
+    this.w = w; this.ph = ph;
     this.mix(L, R, n, p.mx);
   }
 }
 
 class PhaserDev extends Dev {
   constructor() { super(); this.st = [new Float32Array(6), new Float32Array(6)]; this.fbv = [0, 0]; this.ph = 0; }
+  // the all-pass frequency follows the LFO, worked out every 8 samples (the LFO is 4 Hz at most)
   process(L, R, n) {
-    const p = this.p, inc = TAU * p.ra / RATE;
+    const p = this.p, inc = TAU * p.ra / RATE, fb = p.fb;
     this.keepDry(L, R, n);
-    for (let i = 0; i < n; i++) {
-      this.ph += inc; if (this.ph > TAU) this.ph -= TAU;
+    for (let i = 0; i < n; i += 8) {
+      const e = i + 8 < n ? i + 8 : n;
       for (let ch = 0; ch < 2; ch++) {
-        const m = (1 + Math.sin(this.ph + ch * 0.6)) / 2;
+        const m = (1 + Math.sin(this.ph + inc * (e - i) / 2 + ch * 0.6)) / 2;
         const f = 200 * Math.pow(30, m * p.de);
         const t = Math.tan(Math.PI * Math.min(f, RATE * 0.45) / RATE), a = (t - 1) / (t + 1);
         const s = this.st[ch], X = ch ? R : L;
-        let x = X[i] + this.fbv[ch] * p.fb;
-        for (let k = 0; k < 6; k++) { const y = a * x + s[k]; s[k] = x - a * y; x = y; }
-        this.fbv[ch] = x;
-        X[i] = x;
+        let v = this.fbv[ch];
+        for (let j = i; j < e; j++) {
+          let x = X[j] + v * fb;
+          for (let k = 0; k < 6; k++) { const y = a * x + s[k]; s[k] = x - a * y; x = y; }
+          v = x;
+          X[j] = x;
+        }
+        this.fbv[ch] = v;
       }
+      this.ph += inc * (e - i); if (this.ph > TAU) this.ph -= TAU;
     }
     this.mix(L, R, n, p.mx);
   }

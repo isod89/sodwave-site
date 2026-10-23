@@ -8,11 +8,12 @@ import { beatsToSeconds } from './engine-core.js';
 const WORKLET = new URL('./worklet.js', import.meta.url);
 
 export async function loadEngines() {
-  const modules = {}, lib = {};
+  const modules = {}, lib = {}, bytes = {};
   for (const name of ['clipper', 'sloop']) {
     const res = await fetch(new URL(`../engines/${name}.wasm`, import.meta.url));
     if (!res.ok) throw new Error(`${name}.wasm: HTTP ${res.status}`);
-    modules[name] = await WebAssembly.compile(await res.arrayBuffer());
+    bytes[name] = await res.arrayBuffer();
+    modules[name] = await WebAssembly.compile(bytes[name]);
     const w = new WebAssembly.Instance(modules[name], {}).exports;
     w.k_init(0);
     const n = w.k_catalog();
@@ -20,6 +21,7 @@ export async function loadEngines() {
   }
   const res = await fetch(new URL('../engines/categories.json', import.meta.url));
   buildLibrary(lib, res.ok ? await res.json() : { kinds: [], sounds: [] });
+  Object.defineProperty(modules, 'bytes', { value: bytes });     // (for a browser that cannot hand a compiled module to the audio thread)
   return { modules, lib };
 }
 
@@ -58,17 +60,41 @@ export class Audio {
     this.node = null;
   }
   async start() {
-    this.ctx = new AudioContext({ sampleRate: RATE, latencyHint: 'interactive' });
+    // iPhone, iPad: sound even with the silent switch on (a music app, not a notification sound)
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* */ }
+    this.ctx?.close?.().catch?.(() => {});                       // (a start tried before: let its context go)
+    try { this.ctx = new AudioContext({ sampleRate: RATE, latencyHint: 'interactive' }); } catch { this.ctx = new AudioContext({ latencyHint: 'interactive' }); }
+    if (this.ctx.sampleRate !== RATE) throw new Error(`this browser runs audio at ${this.ctx.sampleRate} Hz only; Kraken needs ${RATE} Hz`);
+    if (!this.ctx.audioWorklet) throw new Error('this browser has no AudioWorklet (use a recent Chrome, Edge, Firefox or Safari)');
     await this.ctx.audioWorklet.addModule(WORKLET);
     this.makeNode();
     if (this.ctx.state !== 'running') await this.ctx.resume();
+    if (this.woken) return;
+    this.woken = true;
+    // after a phone call, the screen locked, another app playing: back as soon as the person touches Kraken again
+    const wake = () => { if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume().catch(() => {}); };
+    for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, wake, true);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
   }
+  // the engines go to the audio thread compiled; a browser that cannot pass a compiled module there gets the bytes
+  options(extra = {}) { return this.useBytes ? { wasm: this.modules.bytes, ...extra } : { modules: this.modules, ...extra }; }
   makeNode() {
-    this.node = new AudioWorkletNode(this.ctx, 'kraken', {
-      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
-      processorOptions: { modules: this.modules },
-    });
-    this.node.port.onmessage = ({ data }) => { for (const h of this.handlers) h(data); };
+    const make = () => new AudioWorkletNode(this.ctx, 'kraken', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: this.options() });
+    try { this.node = make(); } catch (e) {
+      if (this.useBytes || !this.modules.bytes) throw e;
+      this.useBytes = true;
+      this.node = make();
+    }
+    this.lastTick = 0;
+    // the audio thread could not start the engines it was sent (a browser that passes the compiled module but cannot
+    // use it there): once, again with the bytes, compiled on that thread; the app then sends the project again
+    this.node.onprocessorerror = () => {
+      if (this.useBytes || !this.modules.bytes) return;
+      this.useBytes = true;
+      this.restart();
+      this.onRestart?.();
+    };
+    this.node.port.onmessage = ({ data }) => { if (data.t === 'tick') this.lastTick = performance.now(); for (const h of this.handlers) h(data); };
     this.node.connect(this.ctx.destination);
     if (this.input) this.input.connect(this.node);
   }
@@ -103,7 +129,7 @@ export class Audio {
     await ctx.audioWorklet.addModule(WORKLET);
     const node = new AudioWorkletNode(ctx, 'kraken', {
       numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
-      processorOptions: { modules: this.modules, project: structuredClone(project), offline: true, soloTrack, freezeTrack, assets, start },
+      processorOptions: this.options({ project: structuredClone(project), offline: true, soloTrack, freezeTrack, assets, start }),
     });
     node.connect(ctx.destination);
     const buf = await ctx.startRendering(), exact = Math.min(frames, Math.round(seconds * RATE));   // to the sample (a loop exports seamless)

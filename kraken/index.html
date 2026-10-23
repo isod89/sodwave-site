@@ -323,6 +323,41 @@ canvas { display: block; }
 .top-logo { height: 38px; width: auto; border-radius: 7px; display: block; }
 #boot p { margin: 0 auto; max-width: 44ch; font: 500 12px/1.55 var(--f-ui); color: var(--ink-2); }
 #boot .key { justify-self: center; height: 44px; padding: 0 22px; font-size: 11px; background: var(--ink); color: var(--chassis-hi); border-color: var(--ink); }
+#boot-choices { display: grid; gap: 8px; justify-items: center; }
+#boot-choices .key.alt { background: var(--chassis-hi); color: var(--ink); border-color: var(--edge); }
+#cpu-cell.hot #cpu { color: #ff5b3a; }
+#save-banner { position: fixed; left: 50%; top: calc(62px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 95; max-width: min(720px, calc(100vw - 24px));
+  display: flex; gap: 12px; align-items: center; padding: 10px 12px 10px 16px; border-radius: 10px; background: #ffc21a; color: #111; box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  font: 600 11px/1.4 var(--f-ui); }
+#save-banner .x { flex: none; width: 28px; height: 28px; border: 0; background: none; font: 700 16px/1 var(--f-ui); color: #111; cursor: pointer; }
+#save-banner .key { flex: none; height: 32px; padding: 0 12px; background: #111; color: #ffc21a; border-color: #111; font-size: 10px; }
+.recover-list { display: grid; gap: 6px; max-height: min(60vh, 520px); overflow: auto; }
+.recover-row { display: grid !important; grid-template-columns: 1fr auto; gap: 2px 12px; height: auto !important; padding: 9px 12px !important; text-align: left; }
+.recover-row b { font: 700 11px/1.3 var(--f-ui); letter-spacing: 0.06em; }
+.recover-row span { font: 500 10px/1.3 var(--f-mono); color: var(--dim); text-align: right; }
+.recover-row em { grid-column: 1 / -1; font: 500 10px/1.3 var(--f-ui); font-style: normal; color: var(--dim); }
+.diag { display: grid; gap: 4px; max-height: min(60vh, 520px); overflow: auto; }
+.diag-row { display: grid; grid-template-columns: 16px minmax(90px, auto) 1fr; gap: 8px; align-items: baseline; font: 500 11px/1.4 var(--f-ui); padding: 4px 0; border-bottom: 1px solid var(--line); }
+.diag-row i { font-style: normal; font-weight: 800; color: #1fb46a; }
+.diag-row.warn i { color: #ffc21a; } .diag-row.bad i { color: #ff4f4f; }
+.diag-row b { font: 700 9px/1.6 var(--f-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.rep-check { display: flex; gap: 8px; align-items: flex-start; font: 500 11px/1.4 var(--f-ui); color: var(--text); cursor: pointer; }
+.rep-check input { margin-top: 2px; }
+.modal textarea { background: var(--screen-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 8px; font: 500 12px/1.4 var(--f-ui); }
+.modal.wel { width: min(620px, 100%); }
+.wel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.wel-card { display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--screen-2); color: var(--text); cursor: pointer; }
+.wel-card:hover, .wel-card:focus-visible { border-color: var(--accent); }
+.wel-card b { font: 700 12px/1.2 var(--f-ui); letter-spacing: 0.08em; text-transform: uppercase; }
+.wel-card.starter b { color: var(--accent); }
+.wel-card span { font: 500 10.5px/1.35 var(--f-ui); color: var(--dim); }
+.tour { position: fixed; inset: 0; z-index: 120; pointer-events: none; }
+.tour-hole { position: fixed; border-radius: 10px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); border: 2px solid var(--accent); transition: all 0.25s ease; pointer-events: none; }
+.tour-tip { position: fixed; pointer-events: auto; background: var(--screen); color: var(--text); border: 1px solid var(--line-2); border-radius: 10px; padding: 14px; box-shadow: 0 16px 50px #000a; display: grid; gap: 8px; box-sizing: border-box; }
+.tour-tip small { font: 700 9px/1 var(--f-ui); letter-spacing: 0.16em; color: var(--accent); }
+.tour-tip p { margin: 0; font: 500 12.5px/1.5 var(--f-ui); }
+.tour-tip .row { display: flex; gap: 8px; justify-content: flex-end; }
+.modal .hint { font: 500 11px/1.45 var(--f-ui); color: var(--dim); margin: 0 0 4px; }
 #boot .stats { display: flex; gap: 22px; justify-content: center; font: 400 11px/1.2 var(--f-lcd); color: var(--ink); flex-wrap: wrap; }
 #boot .stats span { display: grid; gap: 4px; }
 #boot .stats small { font: 700 8px/1 var(--f-ui); letter-spacing: 0.16em; color: var(--ink-2); }
@@ -535,6 +570,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   .pal-item { padding: 10px 8px; }
   .menu-list button { padding: 12px 10px; font-size: 12px; }
   .modal { max-width: calc(100vw - 24px); }
+  #save-banner { top: calc(58px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; transform: none; max-width: none; flex-wrap: wrap; justify-content: space-between; }
   #learn-banner { top: auto; bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
   .head { column-gap: 5px; }
   .device .module .knobs { --cols: 4 !important; }
@@ -553,6 +589,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   </div>
   <p id="boot-msg">Loading the SLOOP and Clipper engines…</p>
   <button class="key" id="boot-go" hidden>Start Kraken</button>
+  <div id="boot-choices" hidden></div>
 </div>
 
 <div id="app" class="no-lib">
@@ -583,6 +620,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <span class="cell hide-s hide-l"><b>MIDI</b><span id="midi">—</span></span>
       <span class="cell hide-xs"><b>OUT</b><span class="meter-h" id="mmeter"><i></i><i></i></span></span>
       <span class="cell hide-s" title="Loudness (EBU R128): momentary · integrated since play"><b>LUFS</b><span id="lufs">—</span></span>
+      <span class="cell hide-s" id="cpu-cell" title="How busy the audio engine is. Over 80 %: freeze heavy tracks (INSTRUMENT tab > FREEZE TRACK) to lighten it"><b>CPU</b><span id="cpu">—</span></span>
     </div>
     <div class="spacer"></div>
     <div class="group">
@@ -596,10 +634,13 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
         <div class="menu-list" id="filemenu" hidden>
           <button data-act="transport" class="phone-only">Metronome, count-in, punch…</button>
           <button data-act="rename" class="phone-only">Rename the project</button>
-          <button data-act="new">New project</button>
+          <button data-act="starter">Start a song in a style…</button>
+          <button data-act="new">New empty project</button>
           <button data-act="demo">Open demo song</button>
           <button data-act="open">Open… <kbd>Ctrl O</kbd></button>
           <button data-act="save">Save project <kbd>Ctrl S</kbd></button>
+          <button data-act="saveas">Save as… <kbd>Ctrl ⇧ S</kbd></button>
+          <button data-act="recover">Earlier versions…</button>
           <hr>
           <button data-act="export">Export audio… <kbd>WAV FLAC OPUS</kbd></button>
           <button data-act="stems">Export stems…</button>
@@ -610,6 +651,9 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
           <button data-act="install">Install the app (offline)</button>
           <button data-act="palette">Command palette <kbd>Ctrl K</kbd></button>
           <button data-act="help">Help <kbd>KEYS · MOUSE · FINGERS</kbd></button>
+          <button data-act="tour">Show me around</button>
+          <button data-act="check">Check this device</button>
+          <button data-act="report">Report a problem…</button>
         </div>
       </div>
     </div>
@@ -679,6 +723,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 </div>
 <div id="toast" hidden></div>
 <div id="learn-banner" hidden></div>
+<div id="save-banner" role="alert" hidden></div>
 <input type="file" id="openfile" accept=".json,.zip,.sloopsong,application/json,application/zip" hidden>
 <input type="file" id="sloopfile" hidden>
 <input type="file" id="midifile" accept=".mid,.midi,audio/midi" hidden>

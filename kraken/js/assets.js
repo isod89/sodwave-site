@@ -2,6 +2,7 @@
 // Audio assets: files people import or record. Decoded once to 44.1 kHz stereo floats, kept in
 // memory and in IndexedDB (they outlive a reload), drawn from a peak summary.
 import { RATE } from './engine-core.js';
+import { tx } from './vault.js';
 
 export const PEAK = 256;                       // frames per peak
 
@@ -24,39 +25,9 @@ export async function decode(ctx, bytes) {
 }
 
 // ------------------------------------------------------------------ IndexedDB ---
-let dbp = null;
-function db() {
-  if (!dbp) {
-    dbp = new Promise((resolve) => {
-      try {
-        const r = indexedDB.open('kraken', 2);
-        r.onupgradeneeded = () => {
-          if (!r.result.objectStoreNames.contains('assets')) r.result.createObjectStore('assets');
-          if (!r.result.objectStoreNames.contains('projects')) r.result.createObjectStore('projects');
-        };
-        r.onsuccess = () => resolve(r.result);
-        r.onerror = () => resolve(null);
-      } catch { resolve(null); }
-    });
-  }
-  return dbp;
-}
-const tx = async (mode, fn, store = 'assets') => {
-  const d = await db();
-  if (!d) return null;
-  return new Promise((resolve) => {
-    try {
-      const t = d.transaction(store, mode), req = fn(t.objectStore(store));
-      t.oncomplete = () => resolve(req?.result ?? null);
-      t.onerror = () => resolve(null);
-    } catch { resolve(null); }
-  });
-};
+// (vault.js holds the database: the projects, their earlier versions and these audio files)
 export const storeAsset = (id, a) => tx('readwrite', (s) => s.put({ L: a.L, R: a.R, name: a.name }, id));
 export const loadAsset = (id) => tx('readonly', (s) => s.get(id));
-// the autosaved project (and the one before it: a crash while saving never loses both)
-export const saveProject = async (key, json) => { const prev = await tx('readonly', (s) => s.get(key), 'projects'); if (prev) await tx('readwrite', (s) => s.put(prev, key + '.prev'), 'projects'); return tx('readwrite', (s) => s.put(json, key), 'projects'); };
-export const loadProject = (key) => tx('readonly', (s) => s.get(key), 'projects');
 
 // --------------------------------------------------------------- tempo ---
 // the tempo of a loop or a song: an onset envelope (spectral-ish flux of 512-frame energy),

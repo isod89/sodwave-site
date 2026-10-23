@@ -4,8 +4,16 @@
 // the audio engine and the views.
 
 import { isFolder, shiftFolder } from './comp.js';
+import { DEVICES } from './fx.js';
+import { NOTE_FX } from './notefx.js';
+import { MODS } from './mods.js';
 
+// FORMAT: the project file's own version. It goes up only when a saved project must be changed to be read by the
+// new Kraken; MIGRATIONS[n] turns a format-n project into format n + 1. Every format ever saved keeps a reference
+// file in tests/fixtures/projects that the newest Kraken must open and play (tests/projects_test.mjs).
 export const FORMAT = 1;
+export const APP_VERSION = '0.6.0';
+const MIGRATIONS = {};
 export const SCENES = 8;
 export const COLORS = ['#ff5b14', '#3d6bff', '#1fb46a', '#ffc21a', '#e8e8e8', '#ff4f8b', '#8a5cff', '#22c5d6'];
 
@@ -176,25 +184,160 @@ export class Store {
   track(id) { return this.p.tracks.find((t) => t.id === id); }
 }
 
+// a project from a file or a save, made safe to open: from an older format, the steps up to this one; whatever a
+// damaged or hand-edited file holds, repaired or left out, so the app and the engine only ever see what they expect.
+// Throws (with a sentence for the person) only when there is nothing to open.
+export function migrate(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p) || !('kraken' in p)) throw new Error('This file is not a Kraken project.');
+  const f = Number(p.kraken);
+  if (!Number.isInteger(f) || f < 1) throw new Error('This file is not a Kraken project.');
+  if (f > FORMAT) throw new Error(`This project was saved by a newer Kraken${p.savedWith ? ` (${p.savedWith})` : ''}. Reload the page to get the latest version, then open it again.`);
+  for (let v = f; v < FORMAT; v++) { p = MIGRATIONS[v](p); p.kraken = v + 1; }
+  return p;
+}
+const KINDS = new Set(['synth', 'drum', 'audio', 'sampler', 'external', 'group']);
+const num = (x, d) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
+const clampN = (x, a, b, d) => Math.max(a, Math.min(b, num(x, d)));
+const str = (x, d, max = 64) => (typeof x === 'string' ? x.slice(0, max) : typeof x === 'number' ? String(x) : d);
+const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : null);
+const arr = (x) => (Array.isArray(x) ? x : []);
+const COLOR = /^#[0-9a-f]{3,8}$/i;
+// automation points: finite, in time order
+const points = (list) => arr(list).filter((q) => obj(q) && Number.isFinite(q.t) && Number.isFinite(q.v)).map((q) => ({ t: Math.max(0, q.t), v: q.v })).sort((a, b) => a.t - b.t);
+// a device's knobs: only its own, each a number in range (a missing one: its default)
+function knobs(spec, values, sidechain = false) {
+  const o = obj(values) || {}, out = {};
+  for (const pr of spec.params) {
+    if (sidechain && pr.k === 'sc') { out.sc = typeof o.sc === 'string' ? o.sc : ''; continue; }   // (a compressor's key: a track id)
+    out[pr.k] = clampN(o[pr.k], Math.min(pr.min, pr.max), Math.max(pr.min, pr.max), pr.def);
+  }
+  return out;
+}
+const devices = (list, table, prefix) => {
+  const seen = new Set();
+  return arr(list).filter((d) => obj(d) && table[d.type]).map((d) => {
+    let id = str(d.id, '', 40); if (!id || seen.has(id)) id = uid(prefix); seen.add(id);
+    return { ...d, id, on: d.on !== false, p: knobs(table[d.type], d.p, table === DEVICES && d.type === 'comp') };
+  });
+};
+function note(nt) {
+  if (!obj(nt) || !Number.isFinite(nt.t) || !Number.isFinite(nt.d) || !(nt.d > 0) || !(nt.n >= 0 && nt.n <= 127)) return null;
+  const o = { ...nt, t: Math.max(0, nt.t), d: Math.min(nt.d, 1e5), n: Math.round(nt.n), v: Math.round(clampN(nt.v, 1, 127, 100)) };
+  delete o.p; delete o.r; delete o.m; delete o.l;
+  if (Number.isFinite(nt.p) && nt.p < 1) o.p = Math.max(0, nt.p);           // chance
+  if (Number.isFinite(nt.r) && nt.r > 1) o.r = Math.min(16, Math.round(nt.r));   // ratchet
+  if (Number.isFinite(nt.m) && nt.m) o.m = Math.max(-1, Math.min(1, nt.m));  // nudge (beats)
+  const l = obj(nt.l);                                                       // parameter locks
+  if (l) { const ll = {}; for (const k in l) if (/^\d+$/.test(k) && Number.isFinite(l[k])) ll[k] = l[k]; if (Object.keys(ll).length) o.l = ll; }
+  return o;
+}
+// a clip of the arrangement (start) or of the session (no start)
+function clip(c, slot) {
+  if (!obj(c)) return null;
+  const len = num(c.len, 0);
+  if (!(len > 0.001)) return null;
+  const o = { ...c, id: str(c.id, '', 40) || uid('c'), name: str(c.name, 'CLIP', 40), len: Math.min(len, 1e5) };
+  if (slot) delete o.start; else o.start = Math.max(0, num(c.start, NaN));
+  if (!slot && !Number.isFinite(o.start)) return null;
+  if (o.loop != null) o.loop = num(o.loop, 0) > 0.001 ? Math.min(o.loop, 1e5) : o.len;
+  if (c.src != null || c.takes != null) {                   // audio
+    o.src = str(c.src, null, 80); o.offset = Math.max(0, num(c.offset, 0)); o.gain = clampN(c.gain, -60, 24, 0);
+    o.fadeIn = Math.max(0, num(c.fadeIn, 0.005)); o.fadeOut = Math.max(0, num(c.fadeOut, 0.01));
+    if (c.takes != null) {
+      o.takes = arr(c.takes).filter((k) => obj(k) && typeof k.src === 'string').map((k) => ({ ...k, at: num(k.at, o.start || 0), offset: Math.max(0, num(k.offset, 0)), name: str(k.name, 'TAKE', 40) }));
+      o.comp = arr(c.comp).filter((x) => obj(x) && Number.isFinite(x.a) && Number.isFinite(x.b) && x.b > x.a && Number.isInteger(x.k) && x.k >= 0 && x.k < o.takes.length);
+      if (!o.takes.length) { delete o.takes; delete o.comp; }
+    }
+    if (!o.src && !o.takes) return null;
+    delete o.notes;
+  } else {
+    o.notes = arr(c.notes).map(note).filter(Boolean);
+    if (o.loop == null) o.loop = o.len;
+  }
+  return o;
+}
+
 export function validate(p) {
-  if (!p || p.kraken !== FORMAT || !Array.isArray(p.tracks)) throw new Error('This file is not a Kraken project.');
+  p = migrate(p);
+  if (!Array.isArray(p.tracks)) throw new Error('This file is not a Kraken project: it has no tracks.');
   const d = newProject();
-  p.loop ??= d.loop; p.master ??= d.master; p.returns ??= d.returns; p.sig ??= 4; p.assets ??= {};
-  p.scenes ??= d.scenes; p.launchQ ??= 4; p.tempo ??= []; p.swing ??= 0; p.countIn ??= false; p.punch ??= d.punch; p.markers ??= [];
-  // repairs: what a damaged or hand-edited file may hold
-  const num = (x, d) => (Number.isFinite(x) ? x : d);
-  p.bpm = Math.max(20, Math.min(300, num(p.bpm, 120)));
-  for (const t of p.tracks) {
-    t.vol = num(t.vol, -6); t.pan = Math.max(-1, Math.min(1, num(t.pan, 0)));
-    t.clips = (t.clips || []).filter((c) => c && Number.isFinite(c.start) && c.len > 0.001).map((c) => { c.start = Math.max(0, c.start); if (c.notes) c.notes = c.notes.filter((n) => n && Number.isFinite(n.t) && n.d > 0 && n.n >= 0 && n.n <= 127); return c; });
+  p.name = str(p.name, 'Untitled', 40) || 'Untitled';
+  p.bpm = clampN(p.bpm, 20, 300, 120);
+  p.sig = Math.round(clampN(p.sig, 1, 16, 4));
+  p.swing = clampN(p.swing, 0, 1, 0);
+  p.launchQ = clampN(p.launchQ, 0, 64, 4);
+  p.countIn = !!p.countIn;
+  const span = (x, def) => { const o = obj(x); const a = Math.max(0, num(o?.a, def.a)), b = num(o?.b, def.b); return { ...(o || {}), on: o ? !!o.on : def.on, a, b: b > a ? b : a + 4 }; };
+  p.loop = span(p.loop, d.loop);
+  p.punch = span(p.punch, d.punch);
+  p.tempo = points(p.tempo).map((q) => ({ t: q.t, v: Math.max(20, Math.min(300, q.v)) }));
+  p.markers = arr(p.markers).filter((m) => obj(m) && Number.isFinite(m.t)).map((m) => ({ id: str(m.id, '', 40) || uid('k'), t: Math.max(0, m.t), name: str(m.name, 'MARKER', 40) }));
+  p.scenes = arr(p.scenes).filter(obj).map((s, i) => ({ ...s, id: str(s.id, '', 40) || uid('s'), name: str(s.name, `SCENE ${i + 1}`, 24) }));
+  if (!p.scenes.length) p.scenes = d.scenes;
+  p.assets = obj(p.assets) || {};
+  for (const k of Object.keys(p.assets)) if (!obj(p.assets[k])) delete p.assets[k];
+  p.master = obj(p.master) || d.master;
+  p.master.vol = clampN(p.master.vol, -60, 12, 0);
+  p.master.fx = devices(p.master.fx, DEVICES, 'f');
+  p.returns = (Array.isArray(p.returns) ? p.returns : d.returns).filter(obj);
+  p.returns.forEach((r, i) => {
+    r.id = str(r.id, '', 40) || uid('r'); r.name = str(r.name, `RETURN ${i + 1}`, 24);
+    r.type ??= i === 0 ? 'reverb' : i === 1 ? 'delay' : 'none';
+    if (!['reverb', 'delay', 'none'].includes(r.type)) r.type = 'none';
+    r.vol = clampN(r.vol, -60, 12, -4); r.mute = !!r.mute; r.fx = devices(r.fx, DEVICES, 'f');
+    if (r.type === 'reverb') { r.size = clampN(r.size, 0, 1, 0.82); r.damp = clampN(r.damp, 0, 1, 0.35); r.pre = clampN(r.pre, 0, 0.5, 0.02); }
+    if (r.type === 'delay') { r.time = clampN(r.time, 0.01, 8, 0.75); r.fb = clampN(r.fb, 0, 0.98, 0.42); r.tone = clampN(r.tone, 0, 1, 0.55); }
+  });
+  // the tracks: unknown kinds and broken entries left out, every field in shape
+  const ids = new Set();
+  p.tracks = p.tracks.filter((t) => obj(t) && KINDS.has(t.kind));
+  for (const [i, t] of p.tracks.entries()) {
+    let id = str(t.id, '', 40); if (!id || ids.has(id)) id = uid('t'); ids.add(id); t.id = id;
+    t.name = str(t.name, `TRACK ${i + 1}`, 24) || `TRACK ${i + 1}`;
+    t.color = typeof t.color === 'string' && COLOR.test(t.color) ? t.color : COLORS[i % COLORS.length];
+    t.vol = clampN(t.vol, -60, 12, -6); t.pan = clampN(t.pan, -1, 1, 0);
+    t.mute = !!t.mute; t.solo = !!t.solo; t.arm = !!t.arm;
+    t.sends = arr(t.sends).map((x) => clampN(x, 0, 1, 0)); while (t.sends.length < p.returns.length) t.sends.push(0);
+    t.sendPre = arr(t.sendPre).map(Boolean);
+    if (t.kind === 'synth') { t.bank = t.bank === 'sloop' ? 'sloop' : 'clipper'; }
+    if (t.kind === 'drum') t.bank = 'sloop';
+    t.engine = Math.max(0, Math.round(num(t.engine, 0))); t.preset = Math.max(0, Math.round(num(t.preset, 0))); t.kit = Math.max(0, Math.round(num(t.kit, 15)));
+    t.rev = Math.round(num(t.rev, 0));
+    const pa = obj(t.params) || {}; t.params = {};
+    for (const k in pa) if (/^\d+$/.test(k) && Number.isFinite(pa[k])) t.params[k] = Math.round(pa[k]);
+    t.clips = arr(t.clips).map((c) => clip(c, false)).filter(Boolean);
+    if (t.kind === 'group') t.clips = [];
+    t.slots = arr(t.slots).slice(0, p.scenes.length).map((c) => (c ? clip(c, true) : null));
+    while (t.slots.length < p.scenes.length) t.slots.push(null);
+    const au = obj(t.auto) || {}; t.auto = {};
+    for (const k in au) { const pts = points(au[k]); if (pts.length) t.auto[k] = pts; }
+    t.fx = devices(t.fx, DEVICES, 'f');
+    t.nfx = devices(t.nfx, NOTE_FX, 'n');
+    t.mods = devices(t.mods, MODS, 'm').map((m) => ({ ...m, to: arr(m.to).filter((x) => obj(x) && typeof x.key === 'string').map((x) => ({ ...x, amt: clampN(x.amt, -1, 1, 0) })) }));
+    t.midiCh = Math.round(clampN(t.midiCh, 0, 16, 0));
+    t.out = typeof t.out === 'string' ? t.out : 'master';
+    if (t.kind === 'sampler') {
+      const s = obj(t.sample) || {};
+      t.sample = { ...s, src: typeof s.src === 'string' ? s.src : null, name: str(s.name, '', 80), root: Math.round(clampN(s.root, 0, 127, 60)), mode: s.mode === 'slice' ? 'slice' : 'keys',
+        slices: Math.round(clampN(s.slices, 1, 64, 16)), start: clampN(s.start, 0, 1, 0), end: clampN(s.end, 0, 1, 1), att: clampN(s.att, 0, 5000, 2), rel: clampN(s.rel, 0, 10000, 150),
+        gain: clampN(s.gain, -60, 24, 0), loop: !!s.loop, tune: clampN(s.tune, -100, 100, 0) };
+      if (t.sample.end <= t.sample.start) { t.sample.start = 0; t.sample.end = 1; }
+    }
+    if (t.kind === 'external') { const e = obj(t.ext) || {}; t.ext = { ...e, port: str(e.port, '', 200), ch: Math.round(clampN(e.ch, 1, 16, 1)), latency: clampN(e.latency, -500, 500, 0) }; }
+    if (t.frozen && !(obj(t.frozen) && typeof t.frozen.src === 'string')) delete t.frozen;
   }
-  p.returns.forEach((r, i) => { r.id ??= uid('r'); r.type ??= i === 0 ? 'reverb' : i === 1 ? 'delay' : 'none'; });
+  // routing: a track goes to the master or to a group that exists, never into itself or round in a circle
+  const groups = new Map(p.tracks.filter((t) => t.kind === 'group').map((t) => [t.id, t]));
+  for (const t of p.tracks) if (t.out !== 'master' && (!groups.has(t.out) || t.out === t.id)) t.out = 'master';
   for (const t of p.tracks) {
-    t.auto ??= {}; t.params ??= {}; t.sends ??= [0, 0]; t.sendPre ??= []; t.clips ??= []; t.fx ??= []; t.nfx ??= []; t.mods ??= []; t.midiCh ??= 0; t.out ??= 'master';
-    t.slots ??= []; while (t.slots.length < p.scenes.length) t.slots.push(null);
+    const seen = new Set([t.id]);
+    for (let g = groups.get(t.out); g; g = groups.get(g.out)) { if (seen.has(g.id)) { t.out = 'master'; break; } seen.add(g.id); }
   }
-  for (const r of p.returns) r.fx ??= [];
-  p.master.fx ??= [];
+  // a compressor's sidechain and a follower's source: a track that exists
+  for (const t of p.tracks) {
+    for (const f of t.fx) if (f.type === 'comp' && f.p.sc && !ids.has(f.p.sc)) f.p.sc = '';
+    for (const m of t.mods) if (m.type === 'follow' && !ids.has(m.src)) m.src = t.id;
+  }
   return p;
 }
 

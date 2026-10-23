@@ -4,12 +4,15 @@
 import { KrakenEngine } from './engine-core.js';
 
 const CHUNK = 8192;
+const now = globalThis.performance?.now ? () => globalThis.performance.now() : () => Date.now();   // (ms; Date: averaged, it is fine)
 
 class KrakenProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const o = options.processorOptions;
-    this.engine = new KrakenEngine(o.modules, (m) => this.port.postMessage(m));
+    // the engines compiled here when the page could only send their bytes
+    const modules = o.modules || Object.fromEntries(Object.entries(o.wasm || {}).map(([k, b]) => [k, new WebAssembly.Module(b)]));
+    this.engine = new KrakenEngine(modules, (m) => this.port.postMessage(m));
     this.engine.offline = !!o.offline;
     for (const [id, a] of Object.entries(o.assets || {})) this.engine.assets.set(id, a);
     this.L = new Float32Array(128);
@@ -23,6 +26,7 @@ class KrakenProcessor extends AudioWorkletProcessor {
     this.quiet = 0;                  // frames of silence while stopped: past 3 s the engine sleeps
     this.sleeping = false;
     this.failed = false;
+    this.busy = 0; this.done = 0;
     this.port.onmessage = ({ data: m }) => {
       const e = this.engine;
       this.sleeping = false; this.quiet = 0;
@@ -91,7 +95,13 @@ class KrakenProcessor extends AudioWorkletProcessor {
       }
     }
     if (this.L.length !== n) { this.L = new Float32Array(n); this.R = new Float32Array(n); }
+    const t0 = now();
     this.engine.render(this.L, this.R);
+    this.busy += now() - t0; this.done += n;
+    if (this.done >= 22050 && !this.engine.offline) {                 // twice a second: how busy the engine is
+      this.port.postMessage({ t: 'load', v: this.busy / (this.done / 44.1) });
+      this.busy = 0; this.done = 0;
+    }
     if (this.cap && (this.engine.pos < this.cap.start || !this.engine.punchOpen())) {   // the loop wrapped, or the punch closed: one take
       const keep = this.capWanted && this.engine.pos < this.cap.start; this.endCapture(); this.capWanted = keep;
     }
