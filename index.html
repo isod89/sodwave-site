@@ -72,24 +72,24 @@
   .about .hl{color:var(--fg)}
 
   /* projects */
-  .projects{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-  .proj{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column}
+  .projects{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .proj{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column;transition:.15s}
+  .proj:hover{transform:translateY(-2px)}
+  .proj.sloop:hover{border-color:var(--green)} .proj.clipper:hover{border-color:var(--orange)} .proj.kraken:hover{border-color:var(--yellow)}
   .proj .logo{height:40px;display:flex;align-items:center;margin-bottom:16px}
   .proj .logo img{max-height:38px;width:auto}
   .proj .logo .txt{font-family:var(--mono);font-weight:700;font-size:26px;letter-spacing:.02em}
   .proj .tag{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
-  .proj.sloop .tag{color:var(--green)} .proj.clipper .tag{color:var(--orange)}
-  .proj h3{font-size:19px;margin-bottom:10px}
-  .proj p{color:var(--dim);font-size:15.5px;margin:0 0 16px}
-  .proj .stats{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 18px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  .proj .stat b{font-family:var(--mono);font-size:19px;display:block}
-  .proj .stat span{font-size:11.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
-  .proj.sloop .stat b{color:var(--green)} .proj.clipper .stat b{color:var(--orange)}
-  .proj .links{display:flex;flex-wrap:wrap;gap:9px;margin-top:auto}
-  .proj .links a{font-family:var(--mono);font-size:12.5px;text-decoration:none;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
-  .proj .links a:hover{border-color:var(--faint)}
-  .proj .links a.pri{border-color:currentColor}
-  .proj.sloop .links a.pri{color:var(--green)} .proj.clipper .links a.pri{color:var(--orange)}
+  .proj.sloop .tag{color:var(--green)} .proj.clipper .tag{color:var(--orange)} .proj.kraken .tag{color:var(--yellow)}
+  .proj h3{font-size:18px;margin-bottom:10px}
+  .proj p{color:var(--dim);font-size:15px;margin:0 0 16px}
+  .proj .stats{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 18px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .proj .stat b{font-family:var(--mono);font-size:18px;display:block}
+  .proj .stat span{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+  .proj.sloop .stat b{color:var(--green)} .proj.clipper .stat b{color:var(--orange)} .proj.kraken .stat b{color:var(--yellow)}
+  .proj .go{display:block;text-align:center;font-family:var(--mono);font-size:13.5px;font-weight:700;text-decoration:none;padding:12px 14px;border-radius:9px;margin-top:auto}
+  .proj.sloop .go{background:var(--green);color:#042313} .proj.clipper .go{background:var(--orange);color:#200a02} .proj.kraken .go{background:var(--yellow);color:#1a1400}
+  .proj.sloop .go:hover{background:#3ad683} .proj.clipper .go:hover{background:#ff7a3d} .proj.kraken .go:hover{background:#ffd34d}
   .based{color:var(--faint);font-size:13px;margin-top:22px;text-align:center}
   .based a{color:var(--dim)}
 
@@ -146,6 +146,7 @@
     <nav class="main" id="nav">
       <a href="#about"><span class="en">About</span><span class="fr">À propos</span></a>
       <a href="#projects"><span class="en">Projects</span><span class="fr">Projets</span></a>
+      <a href="/kraken/">Kraken</a>
       <a href="#skills"><span class="en">What I do</span><span class="fr">Savoir-faire</span></a>
       <a href="#work"><span class="en">Work</span><span class="fr">Réalisations</span></a>
       <a href="#contact"><span class="en">Contact</span><span class="fr">Contact</span></a>
@@ -198,9 +199,10 @@
 <section id="projects">
   <div class="wrap">
     <div class="sec-h"><span class="no">02</span><h2><span class="en">Projects</span><span class="fr">Projets</span></h2></div>
+
     <p class="lead2">
-      <span class="en">Two free, open-source firmware for the M-VAVE FM-1 — a $60 MIDI keyboard turned into a real instrument, installed from the browser in a minute.</span>
-      <span class="fr">Deux firmware libres et open-source pour le M-VAVE FM-1 — un clavier MIDI à 60&nbsp;$ transformé en véritable instrument, installé depuis le navigateur en une minute.</span>
+      <span class="en">Three things I build around the M-VAVE FM-1 and its engines — two free firmware that turn a $60 MIDI keyboard into a real instrument, and a full DAW that runs in your browser. Open each one for details.</span>
+      <span class="fr">Trois projets autour du M-VAVE FM-1 et de ses moteurs — deux firmware libres qui transforment un clavier MIDI à 60&nbsp;$ en véritable instrument, et un DAW complet qui tourne dans ton navigateur. Ouvre chacun pour les détails.</span>
     </p>
     <div class="projects">
 
@@ -209,20 +211,15 @@
         <div class="tag"><span class="en">Live groovebox firmware</span><span class="fr">Firmware de groovebox live</span></div>
         <h3><span class="en">A four-track groovebox you play with your hands.</span><span class="fr">Un groovebox quatre pistes qui se joue aux mains.</span></h3>
         <p>
-          <span class="en">Three synths and a drum machine, twelve sound engines, a step sequencer, song mode and a full web editor — no computer needed to perform. Shaped release after release with its community.</span>
-          <span class="fr">Trois synthés et une boîte à rythmes, douze moteurs de son, un séquenceur, un mode song et un éditeur web complet — aucun ordinateur pour jouer. Façonné version après version avec sa communauté.</span>
+          <span class="en">Three synths and a drum machine, twelve engines, a step sequencer, song mode and a full web editor — no computer needed to perform.</span>
+          <span class="fr">Trois synthés et une boîte à rythmes, douze moteurs, un séquenceur, un mode song et un éditeur web complet — aucun ordinateur pour jouer.</span>
         </p>
         <div class="stats">
           <div class="stat"><b>3,000+</b><span><span class="en">followers</span><span class="fr">abonnés</span></span></div>
           <div class="stat"><b>12</b><span><span class="en">engines</span><span class="fr">moteurs</span></span></div>
-          <div class="stat"><b>GPL-3.0</b><span><span class="en">open source</span><span class="fr">open source</span></span></div>
+          <div class="stat"><b>GPL-3.0</b><span><span class="en">open</span><span class="fr">libre</span></span></div>
         </div>
-        <div class="links">
-          <a class="pri" href="https://isod89.github.io/sloop-fm1/"><span class="en">Install</span><span class="fr">Installer</span></a>
-          <a href="https://github.com/isod89/sloop-fm1">GitHub</a>
-          <a href="https://github.com/isod89/sloop-fm1/blob/HEAD/GUIDE.md"><span class="en">Guide</span><span class="fr">Guide</span></a>
-          <a href="https://ko-fi.com/sodwave">Ko-fi</a>
-        </div>
+        <a class="go" href="/sloop/"><span class="en">Discover SLOOP →</span><span class="fr">Découvrir SLOOP →</span></a>
       </div>
 
       <div class="proj clipper">
@@ -230,23 +227,35 @@
         <div class="tag"><span class="en">Deep synthesizer firmware</span><span class="fr">Firmware de synthé profond</span></div>
         <h3><span class="en">A deep synthesizer, 23 engines, 407 sounds.</span><span class="fr">Un synthé profond, 23 moteurs, 407 sons.</span></h3>
         <p>
-          <span class="en">The synth side taken all the way: virtual analog, FM, wavetable, vector and wave sequencing, physical models — plus HYBRID, a voice of three oscillators, two filters and a modulation matrix, editable in the browser. Grew out of SLOOP.</span>
-          <span class="fr">Le versant synthé poussé à fond : analogique virtuel, FM, wavetable, vectoriel et wave sequencing, modèles physiques — et HYBRID, une voix à trois oscillateurs, deux filtres et une matrice de modulation, éditable dans le navigateur. Né de SLOOP.</span>
+          <span class="en">The synth side taken all the way: virtual analog, FM, wavetable, vector, physical models — plus HYBRID, a deep voice editable in the browser. Grew out of SLOOP.</span>
+          <span class="fr">Le versant synthé poussé à fond : analogique virtuel, FM, wavetable, vectoriel, modèles physiques — et HYBRID, une voix profonde éditable dans le navigateur. Né de SLOOP.</span>
         </p>
         <div class="stats">
           <div class="stat"><b>23</b><span><span class="en">engines</span><span class="fr">moteurs</span></span></div>
           <div class="stat"><b>407</b><span><span class="en">sounds</span><span class="fr">sons</span></span></div>
-          <div class="stat"><b>GPL-3.0</b><span><span class="en">open source</span><span class="fr">open source</span></span></div>
+          <div class="stat"><b>GPL-3.0</b><span><span class="en">open</span><span class="fr">libre</span></span></div>
         </div>
-        <div class="links">
-          <a class="pri" href="https://isod89.github.io/clipper-fm1/webapp/installer/"><span class="en">Install</span><span class="fr">Installer</span></a>
-          <a href="https://github.com/isod89/clipper-fm1">GitHub</a>
-          <a href="https://isod89.github.io/clipper-fm1/webapp/editor/"><span class="en">Editor</span><span class="fr">Éditeur</span></a>
+        <a class="go" href="/clipper/"><span class="en">Discover Clipper →</span><span class="fr">Découvrir Clipper →</span></a>
+      </div>
+
+      <div class="proj kraken">
+        <div class="logo"><img src="assets/kraken-logo.svg" alt="Kraken"></div>
+        <div class="tag"><span class="en">New · a DAW in your browser</span><span class="fr">Nouveau · un DAW dans ton navigateur</span></div>
+        <h3><span class="en">A full DAW in the browser, on the real engines.</span><span class="fr">Un DAW complet dans le navigateur, sur les vrais moteurs.</span></h3>
+        <p>
+          <span class="en">Built on the real SLOOP and Clipper engines: arrange, sequence, mix and export complete songs — free, installable, works offline. Nothing to install to try it.</span>
+          <span class="fr">Bâti sur les vrais moteurs de SLOOP et Clipper : arrange, séquence, mixe et exporte des chansons complètes — libre, installable, hors ligne. Rien à installer pour l'essayer.</span>
+        </p>
+        <div class="stats">
+          <div class="stat"><b>SLOOP</b><span><span class="en">+ Clipper</span><span class="fr">+ Clipper</span></span></div>
+          <div class="stat"><b>PWA</b><span><span class="en">offline</span><span class="fr">hors ligne</span></span></div>
+          <div class="stat"><b>WASM</b><span><span class="en">in browser</span><span class="fr">navigateur</span></span></div>
         </div>
+        <a class="go" href="/kraken/"><span class="en">Open Kraken →</span><span class="fr">Ouvrir Kraken →</span></a>
       </div>
 
     </div>
-    <p class="based"><span class="en">Both are built on</span><span class="fr">Les deux sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span></p>
+    <p class="based"><span class="en">SLOOP and Clipper are built on</span><span class="fr">SLOOP et Clipper sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span></p>
   </div>
 </section>
 
