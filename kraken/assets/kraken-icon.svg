@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="Kraken">
+<rect width="240" height="240" fill="#000"/>
+<path d="M49.29 190.71 A100 100 0 1 1 190.71 190.71" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round"/>
+<path d="M102.00 112.00 C96.00 146.00 50.00 124.00 46.00 158.00 A19 19 0 0 0 84.00 160.00 A9.5 9.5 0 0 0 65.00 158.00" fill="none" stroke="#FF621A" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M113.00 118.00 C113.00 150.00 104.00 176.00 104.00 196.00 A12 12 0 0 1 80.00 196.00 A6 6 0 0 1 92.00 196.00" fill="none" stroke="#FFC618" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M127.00 118.00 C127.00 150.00 136.00 176.00 136.00 196.00 A12 12 0 0 0 160.00 196.00 A6 6 0 0 0 148.00 196.00" fill="none" stroke="#1ECC70" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M138.00 112.00 C144.00 146.00 190.00 124.00 194.00 158.00 A19 19 0 0 1 156.00 160.00 A9.5 9.5 0 0 1 175.00 158.00" fill="none" stroke="#287CFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M90.00 104.00 L90.00 82.00 A30 44 0 0 1 150.00 82.00 L150.00 104.00 Q150.00 120.00 134.00 120.00 L106.00 120.00 Q90.00 120.00 90.00 104.00 Z" fill="#F2F2F2"/>
+<path d="M100.00 92.00 L114.00 98.00 L112.00 104.00 Q101.00 104.00 100.00 92.00 Z" fill="#000"/>
+<path d="M140.00 92.00 L126.00 98.00 L128.00 104.00 Q139.00 104.00 140.00 92.00 Z" fill="#000"/>
+</svg>

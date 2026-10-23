@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 260" width="790" height="260" role="img" aria-label="Kraken">
+<rect width="790" height="260" fill="#000"/>
+<path d="M59.29 200.71 A100 100 0 1 1 200.71 200.71" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round"/>
+<path d="M112.00 122.00 C106.00 156.00 60.00 134.00 56.00 168.00 A19 19 0 0 0 94.00 170.00 A9.5 9.5 0 0 0 75.00 168.00" fill="none" stroke="#FF621A" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M123.00 128.00 C123.00 160.00 114.00 186.00 114.00 206.00 A12 12 0 0 1 90.00 206.00 A6 6 0 0 1 102.00 206.00" fill="none" stroke="#FFC618" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.00 128.00 C137.00 160.00 146.00 186.00 146.00 206.00 A12 12 0 0 0 170.00 206.00 A6 6 0 0 0 158.00 206.00" fill="none" stroke="#1ECC70" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M148.00 122.00 C154.00 156.00 200.00 134.00 204.00 168.00 A19 19 0 0 1 166.00 170.00 A9.5 9.5 0 0 1 185.00 168.00" fill="none" stroke="#287CFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M100.00 114.00 L100.00 92.00 A30 44 0 0 1 160.00 92.00 L160.00 114.00 Q160.00 130.00 144.00 130.00 L116.00 130.00 Q100.00 130.00 100.00 114.00 Z" fill="#F2F2F2"/>
+<path d="M110.00 102.00 L124.00 108.00 L122.00 114.00 Q111.00 114.00 110.00 102.00 Z" fill="#000"/>
+<path d="M150.00 102.00 L136.00 108.00 L138.00 114.00 Q149.00 114.00 150.00 102.00 Z" fill="#000"/>
+<path d="M290 68 L290 160 M326 104 L290 136 M304 124 L328 160" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M358 104 L358 160 M358 134 A30 30 0 0 1 392 102" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="452" cy="130" r="30" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><path d="M482 100 L482 160" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M512 68 L512 160 M548 104 L512 136 M526 124 L550 160" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M580 130 L640 130 A30 30 0 1 0 631.21 151.21" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M670 104 L670 160 M670 130 A30 30 0 0 1 730 130 L730 160" fill="none" stroke="#F2F2F2" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
