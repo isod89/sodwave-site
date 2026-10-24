@@ -2,6 +2,8 @@
 // The sound library: one list of every factory sound (SLOOP and Clipper together), by type or by
 // engine, and the drum kits. Click: load it on the selected track and hear it. + TRACK: a new track.
 import { h } from './kit.js';
+import { listPresets } from '../presets.js';
+import { useSoundPreset, newTrackFromPreset } from './presets.js';
 
 const KIND_NAME = { BASS: 'BASS', KEYS: 'KEYS & PIANOS', ORGAN: 'ORGANS', PAD: 'PADS & STRINGS', LEAD: 'LEADS', PLUCK: 'PLUCKS & BELLS', STAB: 'STABS & CHORDS', FX: 'FX & TEXTURES' };
 
@@ -21,12 +23,20 @@ export class Library {
       });
     }
     this.search.addEventListener('input', () => this.render());
+    this.ph = `Search ${app.lib.sounds.length} sounds…`;
     this.search.addEventListener('keydown', (e) => e.stopPropagation());
     this.search.placeholder = `Search ${app.lib.sounds.length} sounds…`;
     app.store.on(() => this.mark());
+    this.mine = [];
     this.render();
+    this.loadMine();
   }
-  render() {
+  // your track presets (★ MY SOUNDS at the top of the list)
+  async loadMine() { this.mine = (await listPresets()).filter((x) => x.kind === 'track' && ['synth', 'drum', 'sampler'].includes(x.type)); if (this.mode !== 'samples') this.render(); }
+  render(fresh = false) {
+    if (fresh) { this.loadMine(); return; }
+    this.search.placeholder = this.mode === 'samples' ? 'Search your samples…' : this.ph;
+    if (this.mode === 'samples') { this.app.samples.render(); return; }
     const app = this.app, lib = app.lib, q = this.search.value.trim().toUpperCase();
     const t = app.store.track(app.view.selTrack);
     const kids = [];
@@ -41,6 +51,18 @@ export class Library {
       const groups = this.mode === 'type'
         ? lib.kinds.map((k) => [k, KIND_NAME[k], lib.sounds.filter((s) => s.kind === k)])
         : lib.engineNames.map((e) => [e, e, lib.byEngine[e]]);
+      const mine = this.mine.filter((x) => !q || x.name.toUpperCase().includes(q));
+      if (mine.length && this.mode === 'type') {
+        const open = q || !this.open.has('mine-closed');
+        kids.push(h('div', { class: 'eng-h' + (open ? ' open' : ''), role: 'button', tabindex: 0, onclick: () => { this.open.has('mine-closed') ? this.open.delete('mine-closed') : this.open.add('mine-closed'); this.render(); } },
+          h('span', { text: `${open ? '▾' : '▸'} ★ MY SOUNDS` }), h('span', { text: String(mine.length) })));
+        if (open) for (const x of mine) {
+          const add = h('span', { class: 'tag plus', role: 'button', title: 'New track with this sound', text: '+ TRACK' });
+          const el = h('button', { class: 'item mine' }, h('span', { text: x.name.toUpperCase() }), h('span', { class: 'tag', text: x.type.toUpperCase() }), add);
+          el.addEventListener('click', (e) => (e.target === add || e.altKey ? newTrackFromPreset(app, x) : useSoundPreset(app, x)));
+          kids.push(el);
+        }
+      }
       for (const [key, label, all] of groups) {
         const hits = all.filter((s) => !q || s.name.includes(q) || s.eng.includes(q) || label.includes(q));
         if (!hits.length) continue;
@@ -86,8 +108,9 @@ export class Library {
   }
   mark() {
     const t = this.app.store.track(this.app.view.selTrack);
+    if (this.mode === 'samples') return;
     if (this.foot) this.footer();
-    for (const el of this.list.querySelectorAll('.item')) {
+    for (const el of this.list.querySelectorAll('.item[data-snd]')) {
       const s = JSON.parse(el.dataset.snd);
       el.classList.toggle('cur', !!t && (s.kit != null ? t.kind === 'drum' && t.kit === s.kit
         : t.kind === 'synth' && t.bank === s.bank && t.engine === s.engine && t.preset === s.preset));

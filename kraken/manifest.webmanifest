@@ -18,6 +18,6 @@
     { "src": "assets/kraken-icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ],
   "file_handlers": [
-    { "action": "./", "accept": { "application/json": [".json"], "application/zip": [".zip"], "audio/midi": [".mid", ".midi"], "application/x-sloopsong": [".sloopsong"] } }
+    { "action": "./", "accept": { "application/json": [".json"], "application/zip": [".zip"], "audio/midi": [".mid", ".midi"], "application/x-sloopsong": [".sloopsong"], "application/x-dawproject": [".dawproject"] } }
   ]
 }

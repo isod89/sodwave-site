@@ -3,6 +3,9 @@ AddType application/wasm .wasm
 AddType application/manifest+json .webmanifest
 AddType text/javascript .js .mjs
 <IfModule mod_headers.c>
+  # several cores for the audio (multi-core playback): the page isolated from other sites' windows
+  Header set Cross-Origin-Opener-Policy "same-origin"
+  Header set Cross-Origin-Embedder-Policy "credentialless"
   # the app updates itself: these three must never be served stale
   <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest)$">
     Header set Cache-Control "no-cache"

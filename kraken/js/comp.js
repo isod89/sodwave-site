@@ -85,3 +85,28 @@ export function renderFolder(c, assets, bpm, rate = 44100) {
   }
   return { L, R };
 }
+
+// ------------------------------------------------------------------- MIDI takes ---
+// A MIDI clip recorded over and over in a loop keeps each pass as a take: clip.mtakes = [{ name, notes }], and the
+// same comp as audio ({ a, b, k }, beats in the clip's loop). clip.notes is always what the comp plays.
+export const isMidiFolder = (c) => !!(c && Array.isArray(c.mtakes) && c.mtakes.length && Array.isArray(c.comp));
+export function compNotes(c) {
+  const out = [];
+  for (const s of c.comp || []) {
+    const tk = c.mtakes?.[s.k];
+    if (!tk) continue;
+    for (const n of tk.notes) if (n.t >= s.a - 1e-9 && n.t < s.b - 1e-9) out.push({ ...n });
+  }
+  return out.sort((x, y) => x.t - y.t || x.n - y.n);
+}
+// a new pass recorded into a clip: a take of its own (the notes there before: take 1), playing where it was recorded
+export function addMidiTake(c, a, b, name) {
+  const loop = c.loop || c.len;
+  if (!isMidiFolder(c)) {
+    c.mtakes = c.notes?.length ? [{ name: 'TAKE 1', notes: c.notes.map((n) => ({ ...n })) }] : [];
+    c.comp = c.mtakes.length ? [{ a: 0, b: loop, k: 0 }] : [];
+  }
+  const k = c.mtakes.push({ name: name || `TAKE ${c.mtakes.length + 1}`, notes: [] }) - 1;
+  c.comp = setComp(c.comp, Math.max(0, a), Math.min(loop, b), k);
+  return k;
+}

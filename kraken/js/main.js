@@ -1,22 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken: a free DAW in the browser, with the SLOOP and Clipper engines of the M-VAVE FM-1 firmwares.
 import { loadEngines, Audio } from './audio.js';
-import { Store, demoProject, newProject, newTrack, newClip, newAudioClip, newReturn, validate, uid, COLORS, cutRange, APP_VERSION } from './project.js';
+import { Store, demoProject, newProject, newTrack, newClip, newAudioClip, newReturn, validate, uid, COLORS, cutRange, APP_VERSION, trackSources, envAt } from './project.js';
 import { peaks, decode, storeAsset, loadAsset, detectBpm, stretch } from './assets.js';
 import { autosaves, writeAutosave, emergencySave, addSnapshot, listSnapshots, getSnapshot, claimAutosave, askPersist, storageInfo } from './vault.js';
 import { encodeWav } from './wav.js';
 import { encodeFlac } from './flac.js';
 import { encodeOpus, opusSupported } from './opus.js';
-import { isFolder, addTake, renderFolder, setComp } from './comp.js';
+import { encodeMp3Off, mp3Rate } from './mp3.js';
+import { isFolder, addTake, renderFolder, setComp, isMidiFolder, compNotes, addMidiTake, expandFolder } from './comp.js';
+import { split, join, copyRange, pasteRange, clearRange, deleteTime, insertTime, moveClips, reversed } from './edit.js';
 import { saveFile, zip, unzip, exportMidi, parseMidi, hostedSave } from './io.js';
 import { importSloopSong, presetDefaults } from './sloopsong.js';
-import { RATE } from './engine-core.js';
+import { exportDawproject, importDawproject } from './dawproject.js';
+import { stretchWarp, detectTransients, beatAt, autoMarkers, cleanMarkers } from './warp.js';
+import { meterList, barOf, barStart, floorBar, posLabel, barLabel, DENOMS } from './meter.js';
+import { RATE, crossfaded } from './engine-core.js';
 import { h } from './ui/kit.js';
 import { Arrange } from './ui/arrange.js';
 import { Editor } from './ui/editor.js';
 import { Device } from './ui/device.js';
 import { Mixer } from './ui/mixer.js';
 import { Library } from './ui/library.js';
+import { resample } from './resample.js';
+import { Samples } from './ui/samples.js';
+import { saveTemplate, managePresets, newTrackFromPreset } from './ui/presets.js';
+import { AutoRec } from './ui/autorec.js';
+import { Collab } from './collab.js';
+import { collabDialog, collabMarks } from './ui/collab.js';
+import { WamLive } from './wam-host.js';
+import { wamDialog } from './ui/wam.js';
+import { zonesFromNames } from './sampler.js';
 import { Input, typing } from './input.js';
 import { Control } from './control.js';
 import { Controllers } from './ui/controllers.js';
@@ -24,8 +38,10 @@ import { Session } from './ui/session.js';
 import { Palette } from './ui/palette.js';
 import { Keys } from './ui/keys.js';
 import { diagnose, diagnosisText } from './ui/diagnostic.js';
+import { MultiCore, mcMode, mcSupported } from './multicore.js';
 import { reportDialog } from './ui/report.js';
 import { welcome, startTour } from './ui/welcome.js';
+import { initI18n, toggleLang } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const BOOTING = 'kraken.booting';        // set while a project opens: still there at the next start, it did not
@@ -43,6 +59,7 @@ function logAct(what) { app.actions.push({ t: Date.now(), what }); if (app.actio
 app.logAct = logAct;
 // every error is kept for a report and said once in a while; the work is saved anyway
 function noteError(msg, stack = '') {
+  if (/ResizeObserver loop/.test(String(msg))) return;           // (a browser notice that a layout settled a frame later: harmless)
   app.errors.push({ t: Date.now(), msg: String(msg).slice(0, 300), stack: String(stack || '').slice(0, 1200) });
   if (app.errors.length > 30) app.errors.shift();
   if (app.store && performance.now() - (noteError.last || -1e9) > 30000) {
@@ -77,6 +94,9 @@ async function start() {
   try {
     app.audio = new Audio(app.modules);
     await app.audio.start();
+    // multi-core playback: helper threads play ahead the tracks that need not react at once (multicore.js)
+    app.mc = app.audio.mc = new MultiCore(app.audio, { stopped: () => !app.playing && !app.recording, toast: (m) => app.toast(m) });
+    app.mc.onChange = () => cpuTitle();
   } catch (err) {
     $('boot-msg').textContent = `Audio could not start: ${err.message}`;
     $('boot-go').disabled = false;
@@ -149,11 +169,21 @@ async function openUi(project) {
   app.editor = new Editor(app, $('v-edit'));
   app.device = new Device(app, $('v-device'));
   app.mixer = new Mixer(app, $('v-mixer'));
+  app.samples = new Samples(app);
+  app.autorec = new AutoRec(app);
+  app.collab = new Collab(app);
+  app.collab.onChange = () => collabMarks(app);
+  app.store.on(() => { if (app.collab.live) setTimeout(() => collabMarks(app), 0); });
   app.library = new Library(app);
   app.control = new Control(app);
   app.input = new Input(app);
   app.controllers = new Controllers(app, $('v-ctl'));
   app.control.start();
+  // plugins (WAM): made, kept in step with the project, routed into the engine
+  app.wam = new WamLive(app);
+  app.wamChanged = () => app.device.refresh(true);
+  app.audio.onWarn = (msg) => toast(msg);
+  app.store.on((p) => app.wam.sync(p));
   app.audio.on(onAudio);
   app.store.on(onChange);
   bindTop();
@@ -208,6 +238,7 @@ function onChange(p, why) {
   const t = app.store.track(v.selTrack);
   if (v.selClip && !p.tracks.some((tr) => tr.clips.some((c) => c.id === v.selClip) || tr.slots?.some((c) => c?.id === v.selClip))) v.selClip = null;
   if (why === 'load') syncFull = true;
+  syncMonitor();
   if (!syncQueued) {
     syncQueued = true;
     requestAnimationFrame(() => { syncQueued = false; const f = syncFull; syncFull = false; syncEngine(f); });
@@ -223,12 +254,27 @@ function onChange(p, why) {
   $('bpm').previousElementSibling.textContent = p.tempo?.length ? 'BPM · MAP' : 'BPM';
   $('loop').classList.toggle('on', p.loop.on);
   $('countin').classList.toggle('on', !!p.countIn); $('punch').classList.toggle('on', !!p.punch?.on);
+  $('takesbtn').classList.toggle('on', p.recTakes !== false);
   if ($('swing') !== document.activeElement) $('swing').value = String(p.swing || 0);
   $('undo').disabled = !app.store.past.length; $('redo').disabled = !app.store.future.length;
   const clip = t?.clips.find((c) => c.id === v.selClip);
   $('tab-info').replaceChildren(...(t ? [h('span', { class: 'dot', '--c': t.color }), `${t.name}${clip ? ' · ' + clip.name : ''}`] : []));
   if (why === 'load' || why === 'history') app.arrange.redraw();
 }
+
+// ------------------------------------------------------------ monitoring ---
+// the armed audio tracks: their input channels, metered, and heard through the track (MONITOR AUTO or IN)
+let monitorSig = '';
+function syncMonitor() {
+  if (!app.audio?.input) { if (monitorSig) { monitorSig = ''; app.audio?.send({ t: 'monitor', tracks: [] }); } return; }
+  const list = app.store.p.tracks.filter((t) => t.kind === 'audio' && (t.arm || t.monitor === 'in')).map((t) => ({ id: t.id, a: t.input?.a ?? 0, b: t.input?.b === undefined ? 1 : t.input.b, listen: t.monitor !== 'off' }));
+  const sig = JSON.stringify(list);
+  if (sig !== monitorSig) {
+    monitorSig = sig; app.audio.send({ t: 'monitor', tracks: list });
+    if (list.some((x) => x.listen) && !syncMonitor.told) { syncMonitor.told = true; toast('You hear the input through the armed track. With speakers and a built-in mic: headphones, or MONITOR OFF (the track\'s INSTRUMENT tab), to avoid feedback.'); }
+  }
+}
+app.syncMonitor = () => { monitorSig = ''; syncMonitor(); };
 
 // ------------------------------------------------------------ the autosave ---
 const projectJson = () => JSON.stringify({ ...app.store.p, savedWith: APP_VERSION });
@@ -286,16 +332,25 @@ function syncEngine(full = false) {
   else if (n || top !== sync.top || order.join() !== sync.order) app.audio.send({ t: 'patch', top: topObj, tracks: changed, order });
   sync.top = top; sync.order = order.join();
 }
-function resyncAll() { sync.top = ''; sync.tracks.clear(); for (const [id, a] of app.assets) app.audio.send({ t: 'asset', id, L: a.L, R: a.R }); syncEngine(true); }
+function resyncAll() { sync.top = ''; sync.tracks.clear(); for (const [id, a] of app.assets) app.audio.send({ t: 'asset', id, L: a.L, R: a.R }); syncEngine(true); app.wam?.restart(); }
 app.restartAudioQuiet = () => resyncAll();
 app.restartAudio = () => { app.audio.restart(); resyncAll(); app.playing = false; $('play').classList.remove('on'); toast('Audio engine restarted.'); };
 
+// the CPU readout's tooltip: what it means, and how many cores play
+function cpuTitle() {
+  const cell = $('cpu-cell');
+  if (!cell) return;
+  cell.dataset.title ||= cell.title;
+  cell.title = app.mc ? `${cell.dataset.title}\n${app.mc.describe()}` : cell.dataset.title;
+}
 function onAudio(m) {
   if (m.t === 'tick') {
+    if (m.inputs) for (const id in m.inputs) { const x = m.inputs[id], tr = (m.tracks ||= {})[id] || [0, 0]; m.tracks[id] = [Math.max(tr[0], x), Math.max(tr[1], x)]; }   // (an armed track: its input level)
     if ((m.seq ?? 0) < (app.seekSeq || 0) && performance.now() - app.seekAt < 500) return;   // sent before our last seek reached the engine
     app.pos = m.pos;
     if (app.playing !== m.playing) { app.playing = m.playing; $('play').classList.toggle('on', m.playing); app.control.feedbackSoon(); }
     if (app.playing && app.view.follow) app.arrange.follow(m.pos);
+    if (app.autorec.mode !== 'read') app.autorec.tick(m.pos);
     showPos();
     app.arrange.redraw();
     app.arrange.meters(m.tracks);
@@ -310,6 +365,7 @@ function onAudio(m) {
   } else if (m.t === 'load') {
     const v = Math.round(m.v * 100), cell = $('cpu-cell');
     $('cpu').textContent = `${v} %`;
+    cpuTitle();
     cell.classList.toggle('hot', v >= 80);
     if (v >= 90 && app.playing && performance.now() - (onAudio.hotAt || -1e9) > 120000) {
       onAudio.hotAt = performance.now();
@@ -318,6 +374,8 @@ function onAudio(m) {
   } else if (m.t === 'params') {
     app.params.set(m.track, m.values);
     if (m.track === app.view.selTrack) app.device.refresh(true);
+  } else if (m.t === 'recctl') {
+    recordCtl(m.track, m.ev);
   } else if (m.t === 'rec') {
     if (m.slot != null) recordSlotNote(m.track, m.slot, m.note); else recordNote(m.track, m.note);
   } else if (m.t === 'slot') {
@@ -325,9 +383,12 @@ function onAudio(m) {
   } else if (m.t === 'ext') {
     app.control.external(m.ev);
   } else if (m.t === 'cap') {
-    (app.take ||= []).push([m.L, m.R]);
+    app.takes ||= new Map();
+    const k = m.track || app.takeTrack;
+    if (!app.takes.has(k)) app.takes.set(k, []);
+    app.takes.get(k).push([m.L, m.R]);
   } else if (m.t === 'capEnd') {
-    finishTake(m.start);
+    finishTake(m.start, m.track || app.takeTrack);
   } else if (m.t === 'crash') {
     console.error(m.message);
     modal('The audio engine stopped', [h('p', { text: 'Something in the audio thread failed, so Kraken muted it to protect your ears and your project. Your project is safe. Restart the engine to play again.' }),
@@ -340,10 +401,11 @@ function onAudio(m) {
 }
 
 function showPos() {
-  const p = app.store.p, sig = p.sig, pos = app.pos + 1e-6;
+  const p = app.store.p, pos = app.pos + 1e-6;
   if (pos < 0) { $('pos').textContent = `COUNT ${Math.ceil(-pos)}`; return; }
-  const bar = Math.floor(pos / sig) + 1, beat = Math.floor(pos % sig) + 1, six = Math.floor((pos % 1) * 4) + 1;
-  $('pos').textContent = `${String(bar).padStart(3, '0')}.${beat}.${six}`;
+  $('pos').textContent = posLabel(p, app.pos);
+  const b = barOf(p, pos), sg = `${b.n}/${b.d}`;
+  if ($('sig').textContent !== sg) $('sig').textContent = sg;
 }
 // loudness (LUFS: momentary, integrated) and the tempo the map is at
 function showMeters(m) {
@@ -384,22 +446,56 @@ function closeSessionTake(trackId, end) {
 function closeAllSessionTakes() { for (const id of [...sessRec.keys()]) closeSessionTake(id, app.pos); }
 
 // a note played while recording lands in the clip under it, or in a new clip
+// a controller played while recording (sustain, wheels, pressure): a point in the clip's lane there
+function recordCtl(trackId, ev) {
+  const t = app.store.track(trackId); if (!t || t.kind === 'audio' || (t.kind === 'group' || t.kind === 'vca')) return;
+  const key = ev.st === 0xe0 ? 'pb' : ev.st === 0xd0 ? 'cp' : `cc:${ev.d1}`;
+  const v = ev.st === 0xe0 ? ((ev.d2 << 7) | ev.d1) - 8192 : ev.st === 0xd0 ? ev.d1 : ev.d2;
+  app.store.change((p) => {
+    const tr = p.tracks.find((x) => x.id === trackId);
+    let clip = tr.clips.find((c) => ev.t >= c.start - 1e-6 && ev.t < c.start + c.len);
+    if (!clip) {
+      const inLoop = p.loop.on && ev.t >= p.loop.a && ev.t < p.loop.b, b = barOf(p, ev.t);
+      const start = inLoop ? p.loop.a : b.start;
+      clip = newClip(start, inLoop ? p.loop.b - p.loop.a : barStart(p, b.bar + 4) - b.start, 'TAKE');
+      tr.clips.push(clip);
+    }
+    const loop = clip.loop || clip.len, local = ((ev.t - clip.start) % loop + loop) % loop;
+    clip.ctl ||= {};
+    const pts = (clip.ctl[key] ||= []);
+    const near = pts.findIndex((q) => Math.abs(q.t - local) < 1 / 96);   // (a dense stream: one point per 1/96 beat)
+    if (near >= 0) pts[near].v = v; else { pts.push({ t: local, v }); pts.sort((a, b) => a.t - b.t); }
+  }, 'rec');
+}
 function recordNote(trackId, n) {
   const t = app.store.track(trackId); if (!t) return;
   app.store.change((p) => {
     const tr = p.tracks.find((x) => x.id === trackId);
     let clip = tr.clips.find((c) => n.t >= c.start - 1e-6 && n.t < c.start + c.len);
     if (!clip) {
-      const sig = p.sig, inLoop = p.loop.on && n.t >= p.loop.a && n.t < p.loop.b;
-      const start = inLoop ? p.loop.a : Math.floor(n.t / sig) * sig;
-      clip = newClip(start, inLoop ? p.loop.b - p.loop.a : sig * 4, 'TAKE');
+      const inLoop = p.loop.on && n.t >= p.loop.a && n.t < p.loop.b, b = barOf(p, n.t);
+      const start = inLoop ? p.loop.a : b.start;
+      clip = newClip(start, inLoop ? p.loop.b - p.loop.a : barStart(p, b.bar + 4) - b.start, 'TAKE');
       tr.clips.push(clip);
       app.view.selClip = clip.id;
     }
     const loop = clip.loop || clip.len;
     const local = ((n.t - clip.start) % loop + loop) % loop;
     const g = app.view.snap && app.recQuantize ? app.view.snap : 0;
-    clip.notes.push({ t: g ? Math.round(local / g) * g % loop : local, d: Math.min(n.d, loop), n: n.n, v: n.v });
+    const note = { t: g ? Math.round(local / g) * g % loop : local, d: Math.min(n.d, loop), n: n.n, v: n.v };
+    // looping, TAKES on (not on a drum track: its patterns build up): each pass a take of its own, to comp afterwards
+    if (p.recTakes !== false && tr.kind !== 'drum' && p.loop.on && n.pass != null) {
+      const key = `${clip.id}:${app.recSession}:${n.pass}`;
+      let k = app.recTakes?.get(key);
+      if (k == null || !clip.mtakes?.[k]) {
+        let a = Math.max(0, p.loop.a - clip.start), b = Math.min(loop, p.loop.b - clip.start);
+        if (!(b > a)) { a = 0; b = loop; }
+        k = addMidiTake(clip, a, b);
+        (app.recTakes ||= new Map()).set(key, k);
+      }
+      clip.mtakes[k].notes.push(note);
+      clip.notes = compNotes(clip);
+    } else clip.notes.push(note);
   }, 'rec');
 }
 
@@ -411,6 +507,26 @@ function addAsset(id, a, persist = true) {
   if (persist) storeAsset(id, asset).then((ok) => { if (ok === null) toast(`${a.name || 'This audio'} could not be kept in the browser (storage full?): PROJECT > Save keeps it in the project's .zip.`); });
   return asset;
 }
+// audio files by id into this session (from this browser's storage), for presets and templates: -> how many are missing
+app.ensureAssets = async (ids, quiet = false) => {
+  let missing = 0;
+  for (const id of ids) {
+    if (app.assets.has(id)) continue;
+    const a = await loadAsset(id);
+    if (a?.L && a.R) addAsset(id, a, false); else missing++;
+  }
+  if (missing && !quiet) toast(missingText(missing));
+  return missing;
+};
+// WAV files that come with presets: kept under their ids (one already here stays)
+app.addAssetFiles = async (files) => {
+  for (const f of files) {
+    if (app.assets.has(f.id) || (await loadAsset(f.id))) continue;
+    try { addAsset(f.id, { ...(await decode(app.audio.ctx, f.data.slice().buffer)), name: f.id }); } catch { /* not audio: skipped */ }
+  }
+};
+app.addAudio = (id, a) => addAsset(id, a);
+app.restoreAssets = (p) => restoreAssets(p);
 async function restoreAssets(p) {
   let missing = 0;
   for (const id of Object.keys(p.assets || {})) {
@@ -425,11 +541,7 @@ const missingText = (n) => `${n} audio file${n > 1 ? 's are' : ' is'} missing fr
 function usedAssets(p) {
   const out = {};
   const use = (id) => { const a = id && app.assets.get(id); if (a) out[id] = { L: a.L, R: a.R }; };
-  for (const t of p.tracks) {
-    for (const c of t.clips) { use(c.src); for (const k of c.takes || []) use(k.src); }
-    for (const c of t.slots || []) use(c?.src);
-    use(t.sample?.src); use(t.frozen?.src);
-  }
+  for (const t of p.tracks) for (const id of trackSources(t)) use(id);
   return out;
 }
 // audio files onto a track (or a new one), one after the other from beat
@@ -468,7 +580,7 @@ async function importMidiFile(file, beat = 0) {
   const KIND = (pg) => (pg < 8 ? 'KEYS' : pg < 16 ? 'PLUCK' : pg < 24 ? 'ORGAN' : pg < 32 ? 'PLUCK' : pg < 40 ? 'BASS' : pg < 56 ? 'PAD' : pg < 64 ? 'STAB' : pg < 80 ? 'LEAD' : pg < 88 ? 'LEAD' : pg < 96 ? 'PAD' : pg < 104 ? 'FX' : 'PLUCK');
   const fresh = !app.store.p.tracks.some((t) => t.clips.length);
   app.store.change((p) => {
-    if (fresh) p.bpm = Math.max(40, Math.min(240, m.bpm));
+    if (fresh) { p.bpm = Math.max(40, Math.min(240, m.bpm)); if (m.tempo?.length) p.tempo = m.tempo.map((q) => ({ t: q.t + beat, v: Math.max(20, Math.min(300, q.v)) })); if (m.meters?.length) { p.meters = m.meters.filter((x) => [1, 2, 4, 8, 16].includes(x.d)); p.sig = meterList(p)[0].len; } }
     for (const mt of m.tracks) {
       const drum = mt.ch === 9;
       const snd = drum ? null : app.lib.sounds.find((s) => s.kind === KIND(mt.program)) || app.lib.sounds[0];
@@ -478,6 +590,7 @@ async function importMidiFile(file, beat = 0) {
       const len = Math.max(p.sig, Math.ceil(end / p.sig) * p.sig);
       const c = newClip(beat, len, mt.name.toUpperCase().slice(0, 18) || 'MIDI');
       c.notes = mt.notes.map((n) => ({ t: n.t, d: n.d, n: n.n, v: n.v }));
+      if (mt.ctl) { c.ctl = {}; for (const k in mt.ctl) c.ctl[k] = mt.ctl[k].map((q) => ({ t: q.t, v: q.v })); }   // (sustain, wheels, bend, pressure)
       t.clips.push(c);
       p.tracks.push(t);
     }
@@ -504,37 +617,104 @@ async function openSloopSong(file, json = null) {
 }
 const isSloopSong = (f) => /\.sloopsong$/i.test(f.name);
 
+// a DAWproject (Bitwig, Studio One, Cubase, Reaper with the extension…): a project of its own, its audio decoded
+async function openDawproject(entries) {
+  let r;
+  try { r = importDawproject(entries, { lib: app.lib }); } catch (e) { toast(e.message); return; }
+  const p = r.project, warnings = [...r.warnings];
+  const go = async () => {
+    for (const m of r.media) {
+      try {
+        const a = await decode(app.audio.ctx, m.bytes.slice().buffer), name = m.path.split('/').pop();
+        addAsset(m.id, { ...a, name });
+        p.assets[m.id] ||= { name, frames: a.L.length };
+      } catch { warnings.push(`${m.path}: this audio could not be read.`); }
+    }
+    load(p);
+    await restoreAssets(app.store.p);
+    for (const w of r.warp) warpClip(w.track, w.clip, 'stretch', { bpm: w.bpm, ...(w.markers ? { markers: w.markers, keepLen: true } : {}) });
+    toast(`${p.name}: ${p.tracks.length} tracks${r.kraken ? ', as it was in Kraken' : ''}.${warnings.length ? ' ' + warnings.slice(0, 3).join(' ') + (warnings.length > 3 ? ` (+${warnings.length - 3} more)` : '') : ''}`);
+  };
+  if (app.store.p.tracks.some((t) => t.clips.length || t.slots?.some(Boolean))) confirmBox('Open the DAWproject', `Open "${p.name}" in place of the current project? Ctrl+Z (or ↶) brings yours back.`, 'Open it', go);
+  else await go();
+}
+app.openDawproject = openDawproject;
+
 // ------------------------------------------------------------------ warp ---
 const findClip = (p, trackId, clipId) => { const t = p.tracks.find((x) => x.id === trackId); return t?.clips.find((c) => c.id === clipId) || t?.slots?.find((c) => c && c.id === clipId); };
 // OFF: as recorded · RE-PITCH: follows the tempo like tape · STRETCH: follows it, pitch kept (WSOLA)
-function warpClip(trackId, clipId, mode, opts = {}) {
+// warping work in a worker (a long file never freezes the screen); in place where workers are missing
+let warpWorker = null, warpSeq = 0;
+const warpWaits = new Map();
+function warpJob(op, L, R, opts = {}) {
+  if (warpWorker === null) {
+    try { warpWorker = new Worker(new URL('./warp-worker.js', import.meta.url), { type: 'module' }); warpWorker.onmessage = ({ data }) => { const w = warpWaits.get(data.id); warpWaits.delete(data.id); if (w) (data.error ? w.no(new Error(data.error)) : w.ok(data)); }; warpWorker.onerror = () => { warpWorker = false; for (const w of warpWaits.values()) w.no(new Error('worker')); warpWaits.clear(); }; }
+    catch { warpWorker = false; }
+  }
+  if (!warpWorker) return Promise.resolve(op === 'stretch' ? stretchWarp(L, R, opts) : { t: detectTransients(L, R) });
+  const id = ++warpSeq;
+  return new Promise((ok, no) => { warpWaits.set(id, { ok, no }); warpWorker.postMessage({ id, op, L: L.slice(), R: (R || L).slice(), opts }); })
+    .catch(() => (op === 'stretch' ? stretchWarp(L, R, opts) : { t: detectTransients(L, R) }));
+}
+const transientCache = new Map();
+async function transientsOf(assetId) {
+  if (!transientCache.has(assetId)) {
+    const a = app.assets.get(assetId);
+    transientCache.set(assetId, a ? warpJob('transients', a.L, a.R).then((r) => r.t) : Promise.resolve([]));
+  }
+  return transientCache.get(assetId);
+}
+app.transientsOf = transientsOf;
+// OFF: as recorded · RE-PITCH: follows the tempo like tape · STRETCH: follows it, pitch kept, along its warp markers
+const warpLatest = new Map();
+async function warpClip(trackId, clipId, mode, opts = {}) {
   const p = app.store.p, c = findClip(p, trackId, clipId);
   if (!c) return;
   const origId = c.orig || c.src, a0 = app.assets.get(origId);
   if (!a0) { toast('The audio of this clip is missing.'); return; }
   const srcSec = a0.L.length / RATE, bpm = opts.bpm ?? c.bpm ?? p.bpm, st = opts.st ?? c.st ?? 0;
+  const markers = cleanMarkers(opts.markers ?? c.wm ?? []);
   let newSrc = origId, extra = {};
+  const seq = (warpLatest.get(clipId) || 0) + 1;
+  warpLatest.set(clipId, seq);
   if (mode === 'stretch') {
-    const { L, R } = stretch(a0.L, a0.R, bpm / p.bpm, st);
+    const tr = await transientsOf(origId);
+    const songBpm = app.store.p.bpm;
+    const { L, R } = await warpJob('stretch', a0.L, a0.R, { bpm, songBpm, markers, semis: st, transients: tr });
+    if (warpLatest.get(clipId) !== seq || !findClip(app.store.p, trackId, clipId)) return;   // (a newer change came in, or it is gone)
     newSrc = uid('a');
-    addAsset(newSrc, { L, R, name: `${a0.name} ${bpm}>${p.bpm}` }, false);
-    extra = { orig: origId, stretchBpm: p.bpm, st };
+    addAsset(newSrc, { L, R, name: `${a0.name} ${bpm}>${songBpm}` }, false);
+    extra = { orig: origId, stretchBpm: songBpm, st };
   }
+  const fileBeats = beatAt(srcSec, markers, bpm);
   app.store.change((pp) => {
-    const x = findClip(pp, trackId, clipId);
-    delete x.orig; delete x.stretchBpm; delete x.st;
+    const x = findClip(pp, trackId, clipId), was = x.stretchBpm;
+    if (opts.keepLen && mode === 'stretch' && was && extra.stretchBpm && was !== extra.stretchBpm) x.offset = (x.offset || 0) * was / extra.stretchBpm;   // (the same beat of the audio)
+    delete x.orig; delete x.stretchBpm; delete x.st; delete x.wm;
     Object.assign(x, { warp: mode, bpm, src: newSrc, ...extra });
+    if (markers.length && mode === 'stretch') x.wm = markers;
     if (mode === 'stretch') pp.assets[newSrc] = { name: `${a0.name} (stretched)`, frames: app.assets.get(newSrc).L.length, derived: origId };
-    if (mode !== 'off' || opts.bpm == null) { x.offset = 0; x.len = srcSec * (mode === 'off' ? pp.bpm : bpm) / 60; if (x.start === undefined) x.loop = x.len; }
-  });
+    if (!opts.keepLen && (mode !== 'off' || opts.bpm == null)) { x.offset = 0; x.len = mode === 'stretch' ? fileBeats : srcSec * (mode === 'off' ? pp.bpm : bpm) / 60; if (x.start === undefined) x.loop = x.len; }
+  }, opts.tag || null);
 }
+// AUTO WARP: the clip's tempo found, markers on the attacks that fall near its beats
+async function autoWarp(trackId, clipId) {
+  const c = findClip(app.store.p, trackId, clipId), id0 = c && (c.orig || c.src), a = id0 && app.assets.get(id0);
+  if (!a) return;
+  const bpm = c.bpm || detectBpm(a.L, a.R) || app.store.p.bpm;
+  const markers = autoMarkers(await transientsOf(id0), bpm);
+  if (markers.length < 2) { toast('Not enough clear attacks in this audio to warp it.'); return; }
+  await warpClip(trackId, clipId, 'stretch', { bpm, markers });
+  toast(`${markers.length} warp markers on the attacks: the audio follows the beat. Drag one to move a beat; double-click to add or remove one.`);
+}
+app.autoWarp = autoWarp;
 // stretched clips follow tempo changes
 let restretchTimer = 0;
 function restretchSoon() {
   clearTimeout(restretchTimer);
   restretchTimer = setTimeout(() => {
     const p = app.store.p;
-    for (const t of p.tracks) for (const c of [...t.clips, ...(t.slots || []).filter(Boolean)]) if (c.warp === 'stretch' && c.stretchBpm !== p.bpm) warpClip(t.id, c.id, 'stretch');
+    for (const t of p.tracks) for (const c of [...t.clips, ...(t.slots || []).filter(Boolean)]) if (c.warp === 'stretch' && c.stretchBpm !== p.bpm) warpClip(t.id, c.id, 'stretch', { keepLen: true });
   }, 700);
 }
 function detectClipBpm(trackId, clipId) {
@@ -555,10 +735,10 @@ function clipToSampler(trackId, clipId) {
 }
 
 // a recorded take: chunks from the worklet, placed where it was heard (latency compensated)
-function finishTake(start) {
-  const chunks = app.take || []; app.take = null;
+function finishTake(start, trackId) {
+  const chunks = app.takes?.get(trackId) || []; app.takes?.delete(trackId);
   const n = chunks.reduce((a, [L]) => a + L.length, 0);
-  const t = app.store.track(app.takeTrack);
+  const t = app.store.track(trackId);
   if (!n || !t) return;
   const L = new Float32Array(n), R = new Float32Array(n);
   let o = 0; for (const [a, b] of chunks) { L.set(a, o); R.set(b, o); o += a.length; }
@@ -588,6 +768,11 @@ function finishTake(start) {
 // the comp of a take folder rendered into one plain clip
 function flattenComp(trackId, clipId) {
   const t = app.store.track(trackId), c = t?.clips.find((x) => x.id === clipId);
+  if (isMidiFolder(c)) {                                         // MIDI: the comp's notes stay, the takes go
+    app.store.change((p) => { const x = p.tracks.find((q) => q.id === trackId).clips.find((q) => q.id === clipId); x.notes = compNotes(x); delete x.mtakes; delete x.comp; });
+    toast('Comp flattened: its notes are the clip now. Undo brings the takes back.');
+    return;
+  }
   if (!isFolder(c)) return;
   const { L, R } = renderFolder(c, app.assets, app.store.p.bpm, RATE);
   const id = uid('a'), name = `${t.name} comp`;
@@ -609,10 +794,110 @@ Object.assign(app, {
     app.view.selBus = null;
     app.store.emit('select');
   },
-  selectClip(id, trackId) {
+  // add: Shift-click, the clip joins (or leaves) the selection; else it is the only one
+  selectClip(id, trackId, add = false) {
     if (trackId) app.view.selTrack = trackId;
-    app.view.selClip = id;
+    const v = app.view; v.sel ||= new Set();
+    if (add && id) { if (v.sel.has(id) && v.sel.size > 1) { v.sel.delete(id); id = [...v.sel].at(-1); } else v.sel.add(id); }
+    else { v.sel.clear(); if (id) v.sel.add(id); }
+    if (v.selClip && !v.sel.has(v.selClip) && v.sel.size) v.selClip = [...v.sel].at(-1);
+    v.selClip = id ?? null;
     app.store.emit('select');
+  },
+  // the selected arrangement clips: [{ t, c }]
+  selected() {
+    const ids = app.view.sel?.size ? app.view.sel : new Set(app.view.selClip ? [app.view.selClip] : []);
+    return app.store.p.tracks.flatMap((t) => t.clips.filter((c) => ids.has(c.id)).map((c) => ({ t, c })));
+  },
+  // split at the playhead: the selected clips, or (none) every clip of the selected track under it
+  splitAt(at = app.pos) {
+    const sel = app.selected().filter(({ c }) => c.start < at - 1e-6 && c.start + c.len > at + 1e-6);
+    const t = app.store.track(app.view.selTrack);
+    if (!sel.length && !t?.clips.some((c) => c.start < at - 1e-6 && c.start + c.len > at + 1e-6)) { toast('No clip under the playhead to split: put the playhead over a clip.'); return; }
+    let made = [];
+    app.store.change((p) => { made = sel.length ? split(p, at, { ids: sel.map(({ c }) => c.id) }) : split(p, at, { tracks: [t.id] }); });
+    toast(`Split in ${made.length * 2} part${made.length > 1 ? 's' : 's'}. Ctrl+J joins them back.`);
+  },
+  // join the selected MIDI clips of a track (Ctrl+J); audio: consolidated into one file
+  joinSelected() {
+    const sel = app.selected(), t = sel[0]?.t;
+    if (sel.length < 2 || sel.some((x) => x.t.id !== t.id)) { toast('Select two clips or more on one track (Shift-click), then join them.'); return; }
+    if (t.kind === 'audio') { app.consolidate(t.id, sel.map(({ c }) => c.id)); return; }
+    let id = null;
+    app.store.change((p) => { id = join(p, t.id, sel.map(({ c }) => c.id)); });
+    if (id) { app.selectClip(id, t.id); toast('Joined into one clip.'); }
+  },
+  // audio clips of a track rendered into one file and one clip (what they play, with their fades and gains)
+  consolidate(trackId, ids) {
+    const t = app.store.track(trackId), cs = t.clips.filter((c) => ids.includes(c.id)).sort((a, b) => a.start - b.start);
+    const start = cs[0].start, end = Math.max(...cs.map((c) => c.start + c.len)), spb = 60 / app.store.p.bpm;
+    const n = Math.round((end - start) * spb * RATE), L = new Float32Array(n), R = new Float32Array(n);
+    // as they play: take folders by their comp, crossfades overlapping, envelopes, re-pitched clips at their rate
+    const flat = [];
+    for (const c of cs) flat.push(...(isFolder(c) ? expandFolder(c, spb) : [c]));
+    for (const s of crossfaded(flat, spb)) {
+      const a = app.assets.get(s.src); if (!a) continue;
+      const rate = s.warp === 'repitch' && s.bpm ? app.store.p.bpm / s.bpm : 1;
+      const g = Math.pow(10, (s.gain || 0) / 20), f0 = Math.round((s.start - start) * spb * RATE), m = Math.round(s.len * spb * RATE), base = (s.offset || 0) * RATE;
+      const fin = Math.max(1, (s.fadeIn ?? 0.005) * RATE), fout = Math.max(1, (s.fadeOut ?? 0.005) * RATE), AL = a.L, AR = a.R || a.L, per = Math.max(1, AL.length - 1 - base);
+      for (let i = 0; i < m && f0 + i < n; i++) {
+        if (f0 + i < 0) continue;
+        let sp = base + i * rate;
+        if (s.aloop) sp = base + ((i * rate) % per);
+        const j = Math.floor(sp), fr = sp - j;
+        if (j < 0 || j + 1 >= AL.length) continue;
+        let k = g;                                                // (the fades as the engine makes them)
+        if (i < fin) k *= i / fin;
+        if (m - i < fout) k *= Math.max(0, (m - i) / fout);
+        if (s.env) k *= Math.pow(10, envAt(s.env, i / RATE / spb - (s.envOff || 0)) / 20);
+        L[f0 + i] += (AL[j] + (AL[j + 1] - AL[j]) * fr) * k; R[f0 + i] += (AR[j] + (AR[j + 1] - AR[j]) * fr) * k;
+      }
+    }
+    const id = uid('a');
+    addAsset(id, { L, R, name: `${t.name} consolidated` });
+    app.store.change((p) => {
+      p.assets[id] = { name: `${t.name} consolidated`, frames: n };
+      const tr = p.tracks.find((x) => x.id === trackId);
+      tr.clips = tr.clips.filter((c) => !ids.includes(c.id));
+      tr.clips.push(newAudioClip(start, end - start, id, cs[0].name));
+    });
+    toast('Consolidated into one audio file.');
+  },
+  rangeSheet() {
+    const p = app.store.p, bars = `${barOf(p, p.loop.a).bar + 1}–${barOf(p, p.loop.b - 1e-6).bar + 1}`;
+    sheet(`The loop range · bars ${bars}`, [
+      ['COPY IT (every track) · Ctrl+Shift+C', () => app.rangeAction('copy')], ['CUT IT · Ctrl+Shift+X', () => app.rangeAction('cut')],
+      ...(rangeClip ? [['PASTE THE RANGE AT THE PLAYHEAD · Ctrl+Shift+V', () => app.rangeAction('paste')]] : []),
+      ['DELETE THE TIME (what follows moves back)', () => app.rangeAction('delete'), 'danger'],
+      ['INSERT TIME HERE (the length of the loop)', () => app.rangeAction('insert')],
+      ['CLEAR IT (leave the gap)', () => app.rangeAction('clear')],
+      ['SPLIT EVERY CLIP AT ITS EDGES', () => app.store.change((pp) => { split(pp, pp.loop.a); split(pp, pp.loop.b); })],
+    ]);
+  },
+  // the loop range as a time selection, on every track
+  rangeAction(act) {
+    const p = app.store.p, a = p.loop.a, b = p.loop.b;
+    if (!(b > a)) return;
+    const bars = `${barOf(p, a).bar + 1}–${barOf(p, b - 1e-6).bar + 1}`;
+    if (act === 'copy' || act === 'cut') { rangeClip = copyRange(p, a, b); if (act === 'cut') app.store.change((pp) => clearRange(pp, a, b)); toast(`${act === 'cut' ? 'Cut' : 'Copied'}: the loop range (bars ${bars}) of every track. Ctrl+Shift+V pastes it at the playhead.`); }
+    else if (act === 'paste') { if (!rangeClip) { toast('Copy a range first (the loop range: PROJECT menu or Ctrl+Shift+C).'); return; } const at = floorBar(p, app.pos); app.store.change((pp) => pasteRange(pp, rangeClip, at)); toast(`Pasted ${rangeClip.len} beats at bar ${barOf(p, at).bar + 1}.`); }
+    else if (act === 'delete') app.store.change((pp) => deleteTime(pp, a, b));
+    else if (act === 'insert') app.store.change((pp) => insertTime(pp, a, b - a));
+    else if (act === 'clear') app.store.change((pp) => clearRange(pp, a, b));
+  },
+  // an audio clip played backwards (a reversed copy of its file)
+  reverseClip(trackId, clipId) {
+    const c = app.store.track(trackId)?.clips.find((x) => x.id === clipId), a = c && app.assets.get(c.src);
+    if (!a || isFolder(c)) { toast('Reverse works on a plain audio clip (flatten a take folder first).'); return; }
+    const id = uid('a'), r = reversed(a), secs = c.len * 60 / app.store.p.bpm;
+    addAsset(id, r);
+    app.store.change((p) => {
+      p.assets[id] = { name: r.name, frames: r.L.length };
+      const x = p.tracks.find((q) => q.id === trackId).clips.find((q) => q.id === clipId);
+      x.offset = Math.max(0, a.L.length / RATE - (x.offset || 0) - secs); x.src = id; x.reversed = !x.reversed;
+      [x.fadeIn, x.fadeOut] = [x.fadeOut, x.fadeIn];
+      if (x.env) x.env = x.env.map((q) => ({ ...q, t: x.len - q.t })).reverse();   // (the envelope turned round with the audio)
+    });
   },
   showTab(name) {
     if (name !== app.view.tab) logAct(`tab: ${name}`);
@@ -648,13 +933,13 @@ Object.assign(app, {
   stopAll() { app.audio.send({ t: 'stopAll' }); },
   // PUNCH: on, the zone is brought into view (the loop, or 4 bars from the playhead) and explained
   togglePunch() {
-    const p = app.store.p, sig = p.sig, on = !p.punch.on;
+    const p = app.store.p, on = !p.punch.on;
     let { a, b } = p.punch;
     if (on) {
       const ar = app.arrange, [w] = ar.ruler.size(), v0 = ar.beat(0), v1 = ar.beat(w);
       if (!(b > v0 && a < v1) || b <= a) {
         if (p.loop.on && p.loop.a >= v0 && p.loop.b <= v1 && p.loop.b - p.loop.a < v1 - v0) ({ a, b } = p.loop);   // a loop in view
-        else { a = Math.floor(app.pos / sig) * sig; b = a + 4 * sig; }
+        else { const bb = barOf(p, app.pos); a = bb.start; b = barStart(p, bb.bar + 4); }
       }
     }
     app.store.change((pp) => { pp.punch = { on, a, b }; });
@@ -667,7 +952,7 @@ Object.assign(app, {
     const name = names.find((n) => !used.has(n)) || `MARKER ${(p.markers || []).length + 1}`;
     if ((p.markers || []).some((m) => Math.abs(m.t - at) < 1e-6)) return;
     app.store.change((pp) => { pp.markers ||= []; pp.markers.push({ id: uid('k'), t: at, name }); pp.markers.sort((a, b) => a.t - b.t); });
-    toast(`Marker ${name} at bar ${+(at / p.sig + 1).toFixed(2)}. ${matchMedia('(pointer: coarse)').matches ? 'Double-tap' : 'Double-click'} it to rename it.`);
+    toast(`Marker ${name} at bar ${barLabel(p, at)}. ${matchMedia('(pointer: coarse)').matches ? 'Double-tap' : 'Double-click'} it to rename it.`);
   },
   renameMarker(id) {
     const m = app.store.p.markers.find((x) => x.id === id);
@@ -684,34 +969,47 @@ Object.assign(app, {
     if (m) { app.seek(m.t); toast(m.name); }
   },
   punchHint() {
-    const p = app.store.p, bar = (x) => +(x / p.sig + 1).toFixed(2);
+    const p = app.store.p, bar = (x) => barLabel(p, x);
     toast(`PUNCH ON, bar ${bar(p.punch.a)} to bar ${bar(p.punch.b)}: press REC and play, only what falls inside the red zone is recorded. Drag the zone's ends in the ruler to move them.`);
   },
   async setRecord(on) {
     const target = app.playTarget();
-    if (on && target?.kind === 'audio') {
+    // every armed audio track records at once, each from its own input channels
+    const armedAudio = app.store.p.tracks.filter((t) => t.arm && t.kind === 'audio');
+    const recAudio = armedAudio.length ? armedAudio : target?.kind === 'audio' ? [target] : [];
+    if (on && recAudio.length) {
       try { await app.audio.enableInput(); } catch (err) { toast(`Recording needs an audio input: ${err.message || 'access refused'}.`); return; }
-      app.takeTrack = target.id; app.take = null;
-      app.audio.send({ t: 'capture', on: true });
+      app.takeTrack = recAudio[0].id; app.takes = new Map();
+      app.audio.send({ t: 'capture', on: true, tracks: recAudio.map((t) => ({ id: t.id, a: t.input?.a ?? 0, b: t.input?.b === undefined ? 1 : t.input.b })) });
     } else if (!on) app.audio.send({ t: 'capture', on: false });
     if (!on) closeAllSessionTakes();
     app.recording = on;
+    if (on) { app.recSession = (app.recSession || 0) + 1; app.recTakes = new Map(); }   // (each loop pass: a take)
     $('rec').classList.toggle('on', on);
     app.audio.send({ t: 'rec', on });
     app.store.endGesture();
     if (on) for (const [id, st] of Object.entries(app.session.state)) if (st.slot >= 0) sessRec.set(id, { slot: st.slot, at: app.pos });
     if (on && !app.playing) app.play(true, app.store.p.countIn);
   },
+  // arm a track: audio tracks can be armed together (each records its own input); an instrument track alone
+  async armTrack(id) {
+    const t = app.store.track(id); if (!t) return;
+    const on = !t.arm;
+    app.store.change((p) => { for (const y of p.tracks) { if (y.id === id) y.arm = on; else if (on && (t.kind !== 'audio' || y.kind !== 'audio')) y.arm = false; } });
+    if (on && t.kind === 'audio' && !app.audio.input) {
+      try { await app.audio.enableInput(); app.syncMonitor(); app.device.refresh(true); } catch (err) { toast(`No audio input: ${err.message || 'access refused'}.`); }
+    }
+  },
   playTarget() {
     const p = app.store.p;
     return p.tracks.find((t) => t.arm) || app.store.track(app.view.selTrack) || null;
   },
   // an external track sends its live notes straight out (lowest latency), unless note effects must shape them first
-  noteOn(trackId, n, v = 100) { const t = app.store.track(trackId), direct = t?.kind === 'external' && !t.nfx?.some((d) => d.on !== false); if (direct) app.control.externalLive(t, true, n, v); app.audio.send({ t: 'note', track: trackId, n, v, on: true, silent: direct }); },
+  noteOn(trackId, n, v = 100, live = false, preview = false) { if (live && app.editor?.step.on && app.editor.ctx?.t.id === trackId && !app.playing) app.editor.stepNote(n, v); const t = app.store.track(trackId), direct = t?.kind === 'external' && !t.nfx?.some((d) => d.on !== false); if (direct) app.control.externalLive(t, true, n, v); app.audio.send({ t: 'note', track: trackId, n, v, on: true, silent: direct, preview }); },
   noteOff(trackId, n) { const t = app.store.track(trackId), direct = t?.kind === 'external' && !t.nfx?.some((d) => d.on !== false); if (direct) app.control.externalLive(t, false, n, 0); app.audio.send({ t: 'note', track: trackId, n, v: 0, on: false, silent: direct }); },
   audition(trackId, notes, ms = 450) {
     setTimeout(() => {                                         // after the new sound reaches the engine
-      for (const n of notes) app.noteOn(trackId, n, 96);
+      for (const n of notes) app.noteOn(trackId, n, 96, false, true);
       setTimeout(() => { for (const n of notes) app.noteOff(trackId, n); }, ms);
     }, 60);
   },
@@ -732,6 +1030,7 @@ Object.assign(app, {
     if (!t) return;
     toast(`Freezing ${t.name}…`);
     try {
+      await app.wam?.captureAll();                               // (a plugin's latest settings, in the render)
       const [L, R] = await app.audio.render(app.store.p, { freezeTrack: id, assets: usedAssets(app.store.p) });
       const aid = uid('a');
       addAsset(aid, { L, R, name: `${t.name} frozen` });
@@ -740,6 +1039,8 @@ Object.assign(app, {
     } catch (err) { toast(`Freeze failed: ${err.message}`); }
   },
   unfreeze(id) { app.store.change((p) => { delete p.tracks.find((x) => x.id === id).frozen; }); },
+  // several tracks frozen together: their renders side by side, one per spare core (Audio.render)
+  freezeMany(ids) { return Promise.all(ids.map((id) => app.freeze(id))); },
   async loadSampleFile(f) {
     try {
       const { L, R } = await decode(app.audio.ctx, await f.arrayBuffer());
@@ -748,6 +1049,53 @@ Object.assign(app, {
       app.store.change((p) => { p.assets[id] = { name, frames: L.length }; });
       return id;
     } catch { toast(`${f.name}: this file could not be read as audio.`); return null; }
+  },
+  // several files as project audio in one step: -> their ids (null for a file that is not audio)
+  async loadSampleFiles(files) {
+    const got = [];
+    for (const f of files) {
+      try { const { L, R } = await decode(app.audio.ctx, await f.arrayBuffer()); got.push({ id: uid('a'), name: f.name.replace(/\.[^.]+$/, '').slice(0, 40), L, R }); }
+      catch { got.push(null); toast(`${f.name}: this file could not be read as audio.`); }
+    }
+    for (const g of got) if (g) addAsset(g.id, { L: g.L, R: g.R, name: g.name });
+    if (got.some(Boolean)) app.store.change((p) => { for (const g of got) if (g) p.assets[g.id] = { name: g.name, frames: g.L.length }; });
+    return got.map((g) => g?.id || null);
+  },
+  // a sample onto a drum track's pad (note): it plays instead of the kit's sound
+  async setPadSample(trackId, note, file) {
+    const [id] = await app.loadSampleFiles([file]);
+    if (!id) return;
+    const name = app.assets.get(id).name;
+    app.store.change((p) => { const t = p.tracks.find((x) => x.id === trackId); t.pads ||= {}; t.pads[note] = { ...(t.pads[note] || {}), src: id, name, start: 0, end: 1 }; });
+    app.audition(trackId, [note], 300);
+  },
+  clearPad(trackId, note) { app.store.change((p) => { const t = p.tracks.find((x) => x.id === trackId); if (t.pads) { delete t.pads[note]; if (!Object.keys(t.pads).length) delete t.pads; } }); },
+  // files into the sampler: one -> its sample; several -> zones (roots from their names: Piano_C4.wav, Pad-60.wav...)
+  async setSamplerFiles(trackId, files) {
+    const ids = await app.loadSampleFiles(files), ok = files.map((f, i) => ({ src: ids[i], name: app.assets.get(ids[i])?.name || f.name })).filter((x) => x.src);
+    if (!ok.length) return;
+    if (ok.length === 1) {
+      app.store.change((p) => { const s = p.tracks.find((x) => x.id === trackId).sample; s.src = ok[0].src; s.name = ok[0].name.toUpperCase().slice(0, 18); s.start = 0; s.end = 1; delete s.zones; });
+      app.audition(trackId, [60], 500);
+      return;
+    }
+    let zones = zonesFromNames(ok);
+    const named = new Set(zones.map((z) => z.src)), rest = ok.filter((x) => !named.has(x.src));
+    if (rest.length) {           // names without a note: one a key from C3, after the named ones
+      const from = zones.length ? Math.min(127, Math.max(...zones.map((z) => z.root)) + 1) : 48;
+      rest.forEach((x, i) => { const n = Math.min(127, from + i); zones.push({ src: x.src, name: x.name, root: n, lo: n, hi: n, vlo: 1, vhi: 127, gain: 0, tune: 0 }); });
+      if (!named.size) toast(`No note in the file names: ${rest.length} samples, one a key from C3.`);
+    }
+    app.store.change((p) => { const s = p.tracks.find((x) => x.id === trackId).sample; s.zones = zones; s.src = zones[0].src; s.name = `${zones.length} ZONES`; s.mode = 'keys'; s.start = 0; s.end = 1; });
+    toast(`${zones.length} zones mapped across the keyboard.`);
+    app.audition(trackId, [60], 500);
+  },
+  // USE (the SAMPLES list): on the selected track, where it fits
+  async useSample(files) {
+    const t = app.store.track(app.view.selTrack);
+    if (t?.kind === 'sampler') return app.setSamplerFiles(t.id, files);
+    if (t?.kind === 'drum') { const lib = app.lib.sloop, n = app.view.padSel ?? lib.laneNotes[0]; await app.setPadSample(t.id, n, files[0]); toast(`${files[0].name} on pad ${lib.lanes[lib.laneNotes.indexOf(n)] || n}.`); return; }
+    return importAudio(files, { trackId: t?.kind === 'audio' ? t.id : null, beat: app.pos });
   },
   setKit(trackId, kit) { app.store.change((p) => { p.tracks.find((x) => x.id === trackId).kit = kit; }); },
   addTrack(kind, opts = {}) {
@@ -770,6 +1118,56 @@ Object.assign(app, {
       || `${t.name}: new track. ${matchMedia('(pointer: coarse)').matches ? 'Double-tap' : 'Double-click'} its lane to write a clip.`);
     return t;
   },
+  // BOUNCE: the track with its effects (before its fader) rendered to a new audio track; the original muted
+  async bounceTrack(id) {
+    const t = app.store.track(id);
+    if (!t || t.kind === 'vca') return;
+    toast(`Bouncing ${t.name}…`);
+    try {
+      const p = app.store.p, [L, R] = await app.audio.render(p, { bounceTrack: id, assets: usedAssets(p), tail: 4 });
+      let n = L.length; while (n > 44100 && Math.abs(L[n - 1]) < 1e-4 && Math.abs(R[n - 1]) < 1e-4) n--;   // (the silence after it trimmed)
+      const aid = uid('a'), name = `${t.name} BOUNCE`.slice(0, 40), L2 = L.slice(0, n), R2 = R.slice(0, n);
+      addAsset(aid, { L: L2, R: R2, name });
+      const nt = newTrack('audio', p.tracks.length, { name: uniqueName(p, `${t.name.slice(0, 9)} BNC`), color: t.color, sends: [...t.sends], out: t.out });
+      nt.vol = t.vol; nt.pan = t.pan; if (t.vca) nt.vca = t.vca;
+      nt.clips = [newAudioClip(0, n / 44100 * p.bpm / 60, aid, name)];
+      app.store.change((pp) => {
+        pp.assets[aid] = { name, frames: n };
+        const i = pp.tracks.findIndex((x) => x.id === id);
+        pp.tracks.splice(i + 1, 0, nt);
+        pp.tracks[i].mute = true;
+      });
+      app.selectTrack(nt.id);
+      toast(`${t.name} bounced to audio (its effects in, its fader and sends kept on the new track). The original is muted.`);
+    } catch (err) { toast(`Bounce failed: ${err.message}`); }
+  },
+  // AUDIO TO MIDI: a clip's melody (one note at a time) or its beat (kick, snare, hat) as a MIDI clip on a new track
+  async audioToMidi(trackId, clipId, mode) {
+    const t = app.store.track(trackId), c = t?.clips.find((x) => x.id === clipId), a = c && app.assets.get(c.src);
+    if (!a) { toast('This clip\'s audio is missing.'); return; }
+    toast(mode === 'drums' ? 'Listening for the hits…' : 'Listening for the melody…');
+    await new Promise((r) => setTimeout(r, 30));
+    const p = app.store.p, spb = 60 / p.bpm, rate = c.warp === 'repitch' && c.bpm ? p.bpm / c.bpm : 1;
+    const s0 = Math.floor((c.offset || 0) * 44100), s1 = Math.min(a.L.length, s0 + Math.ceil(c.len * spb * rate * 44100));
+    const { melodyToNotes, drumsToNotes } = await import('./audio2midi.js');
+    const found = (mode === 'drums' ? drumsToNotes : melodyToNotes)(a.L.subarray(s0, s1), a.R.subarray(s0, s1));
+    const notes = found.map((n) => ({ t: n.t / rate / spb, d: Math.max(1 / 16, n.d / rate / spb), n: n.n, v: n.v })).filter((n) => n.t < c.len);
+    if (!notes.length) { toast(mode === 'drums' ? 'No hit found in this clip.' : 'No clear melody found (one note at a time works best).'); return; }
+    const nt = app.addTrack(mode === 'drums' ? 'drum' : 'synth', mode === 'drums' ? { kit: app.lib.sloop.kits.indexOf('909'), name: `${t.name.slice(0, 10)} MIDI` } : { name: `${t.name.slice(0, 10)} MIDI` });
+    const clip = newClip(c.start, c.len, `${c.name.slice(0, 14)} MIDI`);
+    clip.loop = c.len; clip.notes = notes;
+    app.store.change((pp) => { const x = pp.tracks.find((q) => q.id === nt.id); x.clips.push(clip); }, 'a2m');
+    app.selectClip(clip.id, nt.id); app.showTab('edit');
+    toast(`${notes.length} ${mode === 'drums' ? 'hits' : 'notes'} found: a new track plays them.`);
+  },
+  // a VCA: one fader that moves (and mutes) the faders of the tracks given to it, without mixing their audio
+  addVca() {
+    const p = app.store.p, sel = app.store.track(app.view.selTrack);
+    const v = newTrack('vca', p.tracks.length, { scenes: p.scenes.length, color: '#c9ccc9', name: uniqueName(p, 'VCA') });
+    app.store.change((pp) => { pp.tracks.push(v); if (sel && sel.kind !== 'vca') pp.tracks.find((x) => x.id === sel.id).vca = v.id; });
+    toast(sel && sel.kind !== 'vca' ? `${sel.name} now follows ${v.name}. Give it more tracks from their menu (VCA…).` : `${v.name}: give it tracks from their menu (VCA…).`);
+  },
+  setVca(trackId, vcaId) { app.store.change((p) => { const t = p.tracks.find((x) => x.id === trackId); if (vcaId) t.vca = vcaId; else delete t.vca; }); },
   // a group (bus) above the selected track, which it now feeds
   addGroup() {
     const p = app.store.p, sel = app.store.track(app.view.selTrack);
@@ -792,6 +1190,7 @@ Object.assign(app, {
   compTake(trackId, clipId, k, a = null, b = null, tag) {
     app.store.change((p) => {
       const c = p.tracks.find((x) => x.id === trackId)?.clips.find((x) => x.id === clipId);
+      if (isMidiFolder(c) && c.mtakes[k]) { c.comp = setComp(c.comp, a ?? 0, b ?? (c.loop || c.len), k); c.notes = compNotes(c); return; }
       if (!isFolder(c) || !c.takes[k]) return;
       c.comp = setComp(c.comp, a ?? 0, b ?? c.len, k);
     }, tag);
@@ -812,7 +1211,7 @@ Object.assign(app, {
     const go = () => {
       for (let n = 0; n < 128; n++) app.noteOff(id, n);
       const i = app.store.p.tracks.findIndex((x) => x.id === id);
-      app.store.change((p) => { for (const x of p.tracks) if (x.out === id) x.out = t.out || 'master'; p.tracks = p.tracks.filter((x) => x.id !== id); });
+      app.store.change((p) => { for (const x of p.tracks) { if (x.out === id) x.out = t.out || 'master'; if (x.vca === id) delete x.vca; } p.tracks = p.tracks.filter((x) => x.id !== id); });
       const next = app.store.p.tracks[Math.min(i, app.store.p.tracks.length - 1)];
       app.view.selTrack = next?.id ?? null; app.view.selClip = null; app.view.autoOpen.delete(id);
       app.store.emit('select');
@@ -879,8 +1278,34 @@ function bindTop() {
   addMenu.addEventListener('click', (e) => { if (e.target.closest('button')) addMenu.hidden = true; });
   $('add-sampler').onclick = () => app.addTrack('sampler', { sends: [0.1, 0] });
   $('add-ext').onclick = () => app.addTrack('external', { sends: [0, 0] });
+  $('add-wam').onclick = () => wamDialog(app, { instrument: true });
   $('add-group').onclick = () => app.addGroup();
   $('add-return').onclick = () => app.addReturn();
+  $('add-macros').onclick = () => app.showMacroLane(0);
+  $('add-preset').onclick = () => newTrackFromPreset(app);
+  $('add-vca').onclick = () => app.addVca();
+  $('livebadge').onclick = () => collabDialog(app);
+  app.syncAutoButton = () => { const b = $('autobtn'), m = app.autorec.mode; b.textContent = m === 'read' ? 'AUTO' : m.toUpperCase(); b.classList.toggle('on', m !== 'read'); };
+  $('autobtn').onclick = () => { app.autorec.cycle(); toast({ read: 'Automation: READ (it plays, your moves are not recorded).', touch: 'Automation: TOUCH. While playing, hold any knob, fader or send: its moves are recorded.', latch: 'Automation: LATCH. Like TOUCH, and it keeps its last value until you stop.' }[app.autorec.mode]); };
+  app.syncAutoButton();
+  // the top bar on one row: the least needed things leave first while it does not fit (they stay in the menus)
+  const FIT = ['#midi-cell', '#oct-cell', '.title-field', '#top > .sep', '#swing-cell', '#install', '#lufs-cell', '#sigbtn', '#countin', '#takesbtn', '#snap-cell', '#autobtn', '#learn', '#punch', '#click'];
+  const top = $('top'), one = () => { const ys = [...top.children].filter((e) => e.offsetParent && e.offsetWidth).map((e) => e.offsetTop + e.offsetHeight / 2); return !ys.length || Math.max(...ys) - Math.min(...ys) < 12; };
+  let fitting = false;
+  const fitTop = (fresh = true) => {
+    if (fitting) return;
+    fitting = true;
+    if (fresh) for (const el of top.querySelectorAll('.fit-hide')) el.classList.remove('fit-hide');
+    if (!matchMedia('(max-width: 700px)').matches) for (const sel of FIT) { if (one()) break; for (const el of top.querySelectorAll(sel)) el.classList.add('fit-hide'); }
+    fitting = false;
+  };
+  app.fitTop = fitTop;
+  let fitT = 0;
+  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fitTop, 60); });
+  document.fonts?.ready.then(() => fitTop());
+  // (a readout growing, a button appearing: if it wraps, more leave)
+  new ResizeObserver(() => requestAnimationFrame(() => { if (!fitting && !one()) fitTop(false); })).observe(top);
+  fitTop();
   $('add-tempo').onclick = () => { app.view.tempoLane = true; if (!app.store.p.tempo.length) app.store.change((p) => { p.tempo = [{ t: 0, v: p.bpm }]; }); app.arrange.renderHeads(); app.arrange.redraw(); app.setMode('arrange'); };
   $('countin').onclick = () => app.store.change((p) => { p.countIn = !p.countIn; });
   $('punch').onclick = () => app.togglePunch();
@@ -924,6 +1349,7 @@ function bindTop() {
       if (isSloopSong(f)) { await openSloopSong(f); return; }
       if (bytes[0] === 0x50 && bytes[1] === 0x4b) {                // a .zip: project.json + the audio
         const entries = await unzip(bytes);
+        if (entries.some((x) => x.name === 'project.xml')) { await openDawproject(entries); return; }   // a DAWproject
         const pj = entries.find((x) => x.name.endsWith('project.json'));
         if (!pj) throw new Error('This ZIP holds no Kraken project.');
         const p = validate(JSON.parse(new TextDecoder().decode(pj.data)));
@@ -944,6 +1370,9 @@ function bindTop() {
 }
 
 app.load = (p) => load(p);
+app.modal = (...a) => modal(...a);
+// the macros' automation lane, on macro i
+app.showMacroLane = (i = 0) => { app.view.macroLane = true; app.view.autoTarget.__macros = `m${i}`; app.setMode('arrange'); app.arrange.renderHeads(); app.arrange.redraw(); app.arrange.scrollTo?.(app.view.sx, 0); };
 function load(p) {
   const cur = app.store.p;                                       // the project replaced: an earlier version to go back to
   if (cur.tracks.some((t) => t.clips.length || t.slots?.some(Boolean))) addSnapshot(projectJson(), { name: cur.name, why: `Before opening ${p.name}`, tracks: cur.tracks.length });
@@ -991,6 +1420,28 @@ async function recoverDialog() {
   const m = modal('Earlier versions', [h('p', { class: 'hint', text: 'Kraken keeps the last 40 in this browser. Opening one keeps what you have now one Ctrl+Z away.' }), h('div', { class: 'recover-list' }, rows)], [['Close', null, true]]);
 }
 
+// a time signature from the bar holding `beat` on (the bars before it keep theirs; the notes stay where they are)
+function signatureDialog(beat = app.pos) {
+  const p = app.store.p, L = meterList(p), b = barOf(p, Math.max(0, beat), L);
+  const here = L.find((m) => Math.abs(m.t - b.start) < 1e-9);
+  const num = h('select', { 'aria-label': 'Beats in a bar' }, [...Array(16)].map((_, i) => h('option', { value: i + 1, selected: i + 1 === b.n ? true : null }, String(i + 1))));
+  const den = h('select', { 'aria-label': 'Beat unit' }, DENOMS.filter((d) => d >= 2).map((d) => h('option', { value: d, selected: d === b.d ? true : null }, String(d))));
+  const apply = (n, d) => app.store.change((pp) => {
+    const list = meterList(pp).filter((m) => Math.abs(m.t - b.start) > 1e-9).map(({ t, n: nn, d: dd }) => ({ t, n: nn, d: dd }));
+    if (n) list.push({ t: b.start, n, d });
+    pp.meters = list.sort((x, y) => x.t - y.t);
+    if (b.start < 1e-9 && n) pp.sig = (n * 4) / d;
+    const L2 = meterList(pp);
+    pp.sig = L2[0].len;
+  });
+  const buttons = [['Cancel']];
+  if (here && b.start > 0) buttons.push(['Remove this change', () => apply(null)]);
+  buttons.push([`From bar ${b.bar + 1}`, () => { apply(+num.value, +den.value); toast(`${num.value}/${den.value} from bar ${b.bar + 1}. The notes stay where they are; the bar lines follow.`); }, true]);
+  modal('Time signature', [h('p', { class: 'hint', text: `Bar ${b.bar + 1} is in ${b.n}/${b.d}. The new signature runs from this bar until the next change.` }),
+    h('div', { class: 'row', style: { gap: '8px', alignItems: 'center' } }, num, h('span', { text: '/' }), den)], buttons);
+}
+app.signatureDialog = signatureDialog;
+
 // what this device can do for Kraken, measured
 async function checkDialog() {
   const wait = modal('Checking this device…', [h('p', { class: 'hint', text: 'Audio, engine speed, storage, MIDI, export: a few seconds.' })], []);
@@ -1000,14 +1451,24 @@ async function checkDialog() {
   const text = diagnosisText(rows);
   const list = h('div', { class: 'diag' }, rows.map((r) => h('div', { class: `diag-row ${r.s}` }, h('i', { text: r.s === 'ok' ? '✓' : r.s === 'warn' ? '!' : '✗' }), h('b', { text: r.k }), h('span', { text: r.v }))));
   const bad = rows.filter((r) => r.s !== 'ok').length;
-  modal('This device', [h('p', { class: 'hint', text: bad ? `${bad} thing${bad > 1 ? 's' : ''} to know below.` : 'Everything Kraken needs is here.' }), list],
+  // the multi-core setting (multicore.js): Auto or Off ('on', forced, is kept when it was set by hand)
+  const mode = mcMode(), mcNow = h('p', { class: 'ctl-note', text: app.mc?.describe() || '' });
+  const mcSel = h('select', { 'aria-label': 'Multi-core playback', disabled: mcSupported() ? null : true, onchange: (e) => { app.mc?.setMode(e.target.value); setTimeout(() => { mcNow.textContent = app.mc?.describe() || ''; }, 2500); } },
+    [['auto', 'Auto'], ['off', 'Off'], ...(mode === 'on' ? [['on', 'On (forced)']] : [])].map(([v, l]) => h('option', { value: v, selected: v === mode ? true : null }, l)));
+  const mc = h('div', { class: 'mc-setting' }, h('label', { class: 'exp-row' }, h('span', { text: 'MULTI-CORE' }), mcSel),
+    h('p', { class: 'ctl-note', text: 'Plays the tracks that need not react at once on the other cores of the processor, 64 ms ahead of the playhead, so bigger songs play without crackles. What you play live, an armed track and plugins stay instant; a knob on a track played ahead is heard 64 ms later. Auto: on with 4 cores or more. Off: everything on one core.' }), mcNow);
+  modal('This device', [h('p', { class: 'hint', text: bad ? `${bad} thing${bad > 1 ? 's' : ''} to know below.` : 'Everything Kraken needs is here.' }), list, mc],
     [['Copy the report', () => { navigator.clipboard?.writeText(text).then(() => toast('Report copied.'), () => toast('Could not copy: select the text instead.')); }], ['Close', null, true]]);
 }
 
 async function fileAction(act) {
   logAct(`project: ${act}`);
-  const p = app.store.p, base = (p.name || 'kraken').replace(/[^\w\- ]+/g, '').trim() || 'kraken';
+  if (act === 'lang') return toggleLang().then(() => { app.store.emit('select'); app.fitTop?.(); });   // (the views draw again, in the other language)
+  const p = app.store.p, base = (p.name || 'kraken').normalize('NFD').replace(/\p{M}+/gu, '').replace(/[^\w\- ]+/g, '').trim() || 'kraken';   // (Démo été: Demo ete)
   if (act === 'transport') return transportSheet();
+  if (act === 'template') return saveTemplate(app);
+  if (act === 'collab') return collabDialog(app);
+  if (act === 'presets') return managePresets(app);
   if (act === 'rename') {
     const inp = h('input', { value: p.name, maxlength: 40, style: { width: '100%' }, 'aria-label': 'Project name' });
     const ok = () => { const v = inp.value.trim().slice(0, 40); if (v) app.store.change((pp) => { pp.name = v; }); };
@@ -1025,11 +1486,13 @@ async function fileAction(act) {
     else if (act === 'save' || act === 'saveas') await saveProjectFile(act === 'saveas', base);
     else if (act === 'recover') await recoverDialog();
     else if (act === 'check') await checkDialog();
+    else if (act === 'signature') signatureDialog(app.pos);
     else if (act === 'starter') welcome(app, { modal });
     else if (act === 'tour') startTour(app);
     else if (act === 'report') await reportDialog(app, { modal, toast });
     else if (act === 'sloop') { const inp = $('sloopfile'); inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) openSloopSong(f); }; inp.click(); }
     else if (act === 'importmidi') { const inp = $('midifile'); inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) importMidiFile(f).catch((e2) => toast(e2.message)); }; inp.click(); }
+    else if (act === 'dawexport') { const name = await saveFile(`${base}.dawproject`, zip(exportDawproject(p, { assets: app.assets, lib: app.lib })), { zipWhenHosted: true }); toast(`Saved ${name}: it opens in Bitwig, Studio One, Cubase and the other DAWs that read DAWproject.`); }
     else if (act === 'midi') { const name = await saveFile(`${base}.mid`, exportMidi(p), { zipWhenHosted: true }); toast(`Saved ${name}`); }
     else if (act === 'wav' || act === 'stems' || act === 'export') await exportDialog(act === 'stems', base);
     else if (act === 'help') help();
@@ -1042,8 +1505,9 @@ async function fileAction(act) {
 }
 
 // export: the format, the mix alone or with stems, the whole song or the loop
-const FORMATS = [['wav24', 'WAV · 24 bit', 'wav'], ['wav16', 'WAV · 16 bit (CD)', 'wav'], ['flac24', 'FLAC · 24 bit (lossless, smaller)', 'flac'],
-  ['flac16', 'FLAC · 16 bit', 'flac'], ['opus', 'OPUS · 192 kbps (small, to share)', 'opus']];
+const FORMATS = [['wav24', 'WAV · 24 bit', 'wav'], ['wav16', 'WAV · 16 bit (CD)', 'wav'], ['wav32', 'WAV · 32 bit float (for mastering)', 'wav'], ['flac24', 'FLAC · 24 bit (lossless, smaller)', 'flac'],
+  ['flac16', 'FLAC · 16 bit', 'flac'], ['mp3', 'MP3 · 320 kbps (plays everywhere)', 'mp3'], ['mp3192', 'MP3 · 192 kbps (smaller)', 'mp3'],
+  ['opus', 'OPUS · 192 kbps (small, to share)', 'opus']];
 async function exportDialog(stems, base) {
   const p = app.store.p;
   if (!p.tracks.some((t) => t.clips.length)) { toast('Nothing to export yet: add a clip first.'); return; }
@@ -1052,39 +1516,54 @@ async function exportDialog(stems, base) {
   const sel = (label, opts, value) => h('label', { class: 'exp-row' }, h('span', { text: label }),
     h('select', { 'aria-label': label }, opts.map(([v, l, , off]) => h('option', { value: v, selected: v === value ? true : null, disabled: off ? true : null }, l))));
   const fmt = sel('FORMAT', FORMATS.map((f) => (f[0] === 'opus' && !opusOk ? [f[0], `${f[1]}: not in this browser`, f[2], true] : f)), last.format && (last.format !== 'opus' || opusOk) ? last.format : 'wav24');
-  const what = sel('WHAT', [['mix', 'The mix'], ['stems', 'The mix and one file a track (stems)']], stems ? 'stems' : 'mix');
-  const range = sel('RANGE', [['song', 'The whole song (and its tail)'], ['loop', `The loop: bars ${+(p.loop.a / p.sig + 1).toFixed(2)} to ${+(p.loop.b / p.sig + 1).toFixed(2)}, no tail`]], last.range || 'song');
-  modal('Export', [fmt, what, range, h('p', { class: 'ctl-note', text: 'Rendered by the same engines you hear, faster than real time.' })],
+  const what = sel('WHAT', [['mix', 'The mix'], ['stems', 'The mix and one file a track (stems)'], ['stems+', 'The mix, the tracks dry, and each return (stems that add up to the mix)']], stems ? (last.what === 'stems+' ? 'stems+' : 'stems') : 'mix');
+  const rate = sel('SAMPLE RATE', [['44100', '44.1 kHz (as played)'], ['48000', '48 kHz (video)'], ['88200', '88.2 kHz'], ['96000', '96 kHz']], String(last.rate || 44100));
+  const range = sel('RANGE', [['song', 'The whole song (and its tail)'], ['loop', `The loop: bars ${barLabel(p, p.loop.a)} to ${barLabel(p, p.loop.b)}, no tail`]], last.range || 'song');
+  modal('Export', [fmt, what, range, rate, h('p', { class: 'ctl-note', text: 'Rendered by the same engines you hear, faster than real time. Opus is always 48 kHz; MP3 is 44.1 or 48 kHz.' })],
     [['Cancel'], ['Export', () => {
-      const o = { format: fmt.querySelector('select').value, stems: what.querySelector('select').value === 'stems', range: range.querySelector('select').value };
-      try { localStorage.setItem('kraken.export', JSON.stringify({ format: o.format, range: o.range })); } catch { /* storage blocked */ }
+      const w = what.querySelector('select').value;
+      const o = { format: fmt.querySelector('select').value, stems: w !== 'mix', returns: w === 'stems+', range: range.querySelector('select').value, rate: +rate.querySelector('select').value };
+      try { localStorage.setItem('kraken.export', JSON.stringify({ format: o.format, range: o.range, rate: o.rate, what: w })); } catch { /* storage blocked */ }
       exportAudio(o, base);
     }, true]]);
 }
-async function exportAudio({ format = 'wav24', stems = false, range = 'song' } = {}, base) {
+async function exportAudio({ format = 'wav24', stems = false, returns = false, range = 'song', rate = RATE } = {}, base) {
+  await app.wam?.captureAll();                                   // (the plugins' latest settings, in the render)
   const p = structuredClone(app.store.p);
   const bar = h('div', { class: 'progress' }, h('i'));
   const msg = h('p', { text: 'Rendering the mix with the same engines you hear…' });
   const box = modal('Export', [msg, bar], []);
   const step = (i, n, what) => { bar.style.setProperty('--v', (i / n).toFixed(3)); msg.textContent = `Rendering ${what} (${i + 1}/${n})…`; };
   const ext = FORMATS.find((f) => f[0] === format)?.[2] || 'wav';
-  const encode = async (L, R) => {
-    if (format === 'wav16' || format === 'wav24') return encodeWav([L, R], RATE, format === 'wav16' ? 16 : 24, format === 'wav16');
-    if (format === 'flac16' || format === 'flac24') return encodeFlac([L, R], RATE, format === 'flac16' ? 16 : 24, format === 'flac16');
+  const mp3 = ext === 'mp3';
+  const out = format === 'opus' ? RATE : mp3 ? mp3Rate(rate) : rate;
+  const encode = async (L, R, onProgress) => {
+    if (out !== RATE) { L = resample(L, RATE, out); R = resample(R, RATE, out); }
+    if (format === 'wav16' || format === 'wav24' || format === 'wav32') return encodeWav([L, R], out, format === 'wav16' ? 16 : format === 'wav32' ? 32 : 24, format === 'wav16');
+    if (format === 'flac16' || format === 'flac24') return encodeFlac([L, R], out, format === 'flac16' ? 16 : 24, format === 'flac16');
+    if (mp3) return encodeMp3Off(L, R, out, format === 'mp3192' ? 192 : 320, { title: p.name, onProgress });
     return encodeOpus(L, R, RATE, 192000);
   };
   try {
     const t0 = performance.now();
-    const jobs = [{ name: 'MIX', solo: null }, ...(stems ? p.tracks.map((t, i) => ({ name: `${String(i + 1).padStart(2, '0')} ${t.name}`, solo: t.id })) : [])];
+    const jobs = [{ name: 'MIX', solo: null }, ...(stems ? p.tracks.filter((t) => t.kind !== 'vca').map((t, i) => ({ name: `${String(i + 1).padStart(2, '0')} ${t.name}`, solo: t.id })) : []),
+      ...(returns ? p.returns.map((r, i) => ({ name: `R${i + 1} ${r.name}`, ret: i })) : [])];
     const span = range === 'loop' ? { start: p.loop.a, end: p.loop.b, tail: 0 } : {};
-    const files = [];
-    for (let i = 0; i < jobs.length; i++) {
-      step(i, jobs.length, jobs[i].name);
-      const [L, R] = await app.audio.render(p, { soloTrack: jobs[i].solo, assets: usedAssets(p), ...span });
-      msg.textContent = `Encoding ${jobs[i].name} (${ext.toUpperCase()})…`;
-      await new Promise((r) => setTimeout(r, 0));
-      files.push({ name: `${base} - ${jobs[i].name}.${ext}`, data: await encode(L, R) });
-    }
+    // each stem in its own offline render, several at once (one per spare core: Audio.render shares them out)
+    const files = new Array(jobs.length), assets = usedAssets(p);
+    let next = 0, done = 0;
+    const one = async () => {
+      while (next < jobs.length) {
+        const i = next++;
+        const [L, R] = await app.audio.render(p, { soloTrack: jobs[i].solo, soloReturn: jobs[i].ret ?? null, assets, ...span });
+        msg.textContent = `Encoding ${jobs[i].name} (${ext.toUpperCase()}${out !== RATE ? `, ${out / 1000} kHz` : ''})…`;
+        await new Promise((r) => setTimeout(r, 0));
+        files[i] = { name: `${base} - ${jobs[i].name}.${ext}`, data: await encode(L, R, jobs.length === 1 ? (v) => bar.style.setProperty('--v', v.toFixed(3)) : null) };
+        if (++done < jobs.length) step(done, jobs.length, jobs.filter((j, k) => !files[k]).map((j) => j.name).slice(0, 3).join(', '));
+      }
+    };
+    step(0, jobs.length, jobs[0].name);
+    await Promise.all(Array.from({ length: Math.min(jobs.length, app.audio.renderSlots(app.audio.renderSeconds(p, span))) }, one));
     bar.style.setProperty('--v', 1);
     msg.textContent = `Rendered in ${((performance.now() - t0) / 1000).toFixed(1)} s. Saving…`;
     const name = stems ? await saveFile(`${base} - stems.zip`, zip(files)) : await saveFile(files[0].name, files[0].data, { zipWhenHosted: true });
@@ -1143,7 +1622,10 @@ function transportSheet() {
   sheet('Transport & grid', [
     [`METRONOME · ${on(app.click)}`, () => $('click').click()],
     [`COUNT-IN · ${on(p.countIn)}`, () => $('countin').click()],
+    [`TIME SIGNATURE · ${barOf(p, Math.max(0, app.pos)).n}/${barOf(p, Math.max(0, app.pos)).d}`, () => signatureDialog(app.pos)],
+    [`LOOP RECORDING · ${p.recTakes === false ? 'OVERDUB' : 'TAKES'}`, () => $('takesbtn').click()],
     [`PUNCH IN / OUT · ${on(p.punch?.on)}`, () => app.togglePunch()],
+    [`AUTOMATION · ${app.autorec.mode.toUpperCase()}`, () => $('autobtn').click()],
     ['BACK TO START', () => $('home').click()],
     ['REDO', () => app.store.redo()],
     [`GRID · ${$('snap').selectedOptions[0]?.text}`, () => { const s = $('snap'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change')); toast(`Grid: ${s.selectedOptions[0].text}`); }],
@@ -1204,6 +1686,10 @@ function help() {
     ['Tab', 'Arrangement / session · in the session: click a clip to launch it, ▶ a scene, ■ to stop'],
     ['Esc', 'All notes off, deselect'],
     ['Ctrl K', 'Command palette: every action, track, sound, kit, effect and marker'],
+    ['Ctrl E · Ctrl J', 'Split the selected clips (or the track) at the playhead · join (MIDI) or consolidate (audio) the selected'],
+    ['Shift click · Shift drag', 'Add a clip to the selection · a box around clips. Drag one of them: they all move; Delete, Ctrl C, Ctrl D'],
+    ['Right-click the LOOP band', 'The loop range as a time selection: copy, cut, paste, delete or insert time on every track'],
+    ['Audio clips', 'The white squares at the top corners: the fades. Right-click: split here, reverse, loop the audio'],
     ['Ctrl S · Ctrl Shift S', 'Save to a file (Chrome, Edge: the same file again) · save as. Kraken also saves by itself'],
     ['PROJECT menu', 'Earlier versions (your work every 5 minutes) · Check this device · Report a problem · Show me around'],
     ['Ctrl L · LEARN', 'MIDI Learn: click any knob, fader, button or action, then move a control (or press a key)'],
@@ -1211,11 +1697,22 @@ function help() {
     ['Clip editor', 'The strip above the notes: drag the white handle for the clip length, the orange one for the loop'],
     ['Sound tab', 'NOTE FX before the sound · MODULATORS: pick a target or MAP and click a knob · EFFECTS after it'],
     ['Takes', 'Record over audio: each pass is a take. The TAKES badge opens the lanes: click or swipe a take to comp it'],
+    ['Automation', 'A: the lane · ✎ PENCIL draws · Alt-drag a line: curve · right-click: curves, clear · AUTO (top bar): TOUCH or LATCH records what you move while playing'],
+    ['Piano roll', 'KEY and SCALE light the song\'s notes, FOLD keeps only them · GHOST: another track behind · STEP: type notes in · QUANTIZE ▾: strength, swing, humanize'],
+    ['Audio clips', 'Fade handle at a seam between two clips: a crossfade · ENVELOPE (clip editor): the clip\'s own volume line'],
+    ['Track menu', 'Colour, height (or drag a head\'s bottom edge), VCA, bounce to audio, save or load a preset · a group folds with ▾'],
+    ['Sounds', 'SAMPLES: your folders, click to hear, drag onto the arrangement, a drum pad or the sampler · ★ MY SOUNDS: your track presets'],
+    ['Effects', '☰ on an effect: factory and your presets · CHAIN PRESETS: a whole chain · + TRACK > From a preset'],
+    ['Play together', 'PROJECT > Play together: invite someone with a code, live, browser to browser'],
   ];
   const grid = (title, rows) => [h('h4', { style: { margin: '6px 0 0', font: '700 9px/1 var(--f-ui)', letterSpacing: '0.16em', color: 'var(--dim)' }, text: title }),
     h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(70px, auto) 1fr', gap: '6px 14px', font: '500 11px/1.4 var(--f-ui)' } },
       rows.flatMap(([k, v]) => [h('span', { style: { font: '500 10px/1.4 var(--f-mono)', color: 'var(--accent)' }, text: k }), h('span', { text: v })]))];
-  const hm = modal('Help', touch ? [...grid('FINGERS', TOUCH), ...grid('KEYBOARD & MOUSE', KEYS)] : [...grid('KEYBOARD & MOUSE', KEYS), ...grid('FINGERS (PHONE, TABLET)', TOUCH)], [['Close', null, true]]);
+  const lnk = (href, text) => h('a', { href, target: '_blank', rel: 'noopener', text, style: { color: 'var(--accent)' } });
+  const credits = [h('h4', { style: { margin: '10px 0 0', font: '700 9px/1 var(--f-ui)', letterSpacing: '0.16em', color: 'var(--dim)' }, text: 'CREDITS' }),
+    h('p', { class: 'help-credits', style: { font: '500 11px/1.5 var(--f-ui)', margin: '4px 0 0' } },
+      h('span', { text: 'Kraken is free software by Sodwave (GPL-3.0). Sound engines: SLOOP and Clipper, and Felucca by Leo Kuroshita (Hügelton Instruments). MP3: LAME, through lamejs (LGPL-3.0). Plugins: the Web Audio Modules SDK (MIT).' }), ' ', lnk('https://lame.sourceforge.io', 'lame.sourceforge.io'), ' · ', lnk('https://github.com/zhuker/lamejs', 'github.com/zhuker/lamejs'))];
+  const hm = modal('Help', [...(touch ? [...grid('FINGERS', TOUCH), ...grid('KEYBOARD & MOUSE', KEYS)] : [...grid('KEYBOARD & MOUSE', KEYS), ...grid('FINGERS (PHONE, TABLET)', TOUCH)]), ...credits], [['Close', null, true]]);
   hm.box.style.width = 'min(640px, 100%)';
 }
 let toastTimer = 0;
@@ -1228,7 +1725,7 @@ document.addEventListener('pointerdown', () => { const t = $('toast'); if (!t.hi
 app.toast = toast;
 
 // -------------------------------------------------------------- keys ---
-let clipboard = null;
+let clipboard = null, rangeClip = null;
 function bindKeys() {
   // a list or a button keeps no focus after use: Space, Delete and the piano keys go back to the music
   document.addEventListener('change', (e) => { if (e.target.tagName === 'SELECT' && !e.target.closest('.modal')) e.target.blur(); });
@@ -1245,6 +1742,30 @@ function bindKeys() {
     if (mod && k === 'l') { e.preventDefault(); app.control.setLearning(!app.control.learning); return; }
     if (mod && k === 'k') { e.preventDefault(); app.palette.open(); return; }
     const t = app.store.track(v.selTrack), clip = t?.clips.find((c) => c.id === v.selClip);
+    if (mod && k === 'e' && app.lastArea !== 'bot') { e.preventDefault(); app.splitAt(); return; }
+    if (mod && k === 'j') { e.preventDefault(); app.joinSelected(); return; }
+    if (mod && e.shiftKey && (k === 'c' || k === 'x' || k === 'v')) { e.preventDefault(); app.rangeAction(k === 'c' ? 'copy' : k === 'x' ? 'cut' : 'paste'); return; }
+    const many = app.selected();
+    if (mod && (k === 'c' || k === 'x') && many.length > 1 && app.lastArea !== 'bot') {   // several clips: copied together, where they are
+      e.preventDefault();
+      const a = Math.min(...many.map(({ c }) => c.start));
+      clipboard = { many: many.map(({ t: tt, c }) => ({ track: tt.id, kind: tt.kind, clip: { ...structuredClone(c), start: c.start - a } })), len: Math.max(...many.map(({ c }) => c.start + c.len)) - a };
+      if (k === 'x') app.store.change((pp) => { const ids = new Set(many.map(({ c }) => c.id)); for (const tt of pp.tracks) tt.clips = tt.clips.filter((c) => !ids.has(c.id)); });
+      toast(`${k === 'x' ? 'Cut' : 'Copied'} ${many.length} clips.`); return;
+    }
+    if (mod && k === 'v' && clipboard?.many && app.lastArea !== 'bot') {
+      e.preventDefault();
+      const at = floorBar(p, app.pos), ids = [];
+      app.store.change((pp) => { for (const x of clipboard.many) { const tt = pp.tracks.find((q) => q.id === x.track); if (!tt) continue; const c = { ...structuredClone(x.clip), id: uid('c'), start: at + x.clip.start }; tt.clips = cutRange(tt.clips, c.start, c.start + c.len, pp.bpm); tt.clips.push(c); ids.push(c.id); } });
+      v.sel = new Set(ids); v.selClip = ids.at(-1) ?? null; app.store.emit('select'); return;
+    }
+    if (mod && k === 'd' && many.length > 1 && app.lastArea !== 'bot') {
+      e.preventDefault();
+      const a = Math.min(...many.map(({ c }) => c.start)), len = Math.max(...many.map(({ c }) => c.start + c.len)) - a, ids = [];
+      app.store.change((pp) => { for (const { t: tt, c } of many) { const x = pp.tracks.find((q) => q.id === tt.id); const d = { ...structuredClone(c), id: uid('c'), start: c.start + len }; x.clips = cutRange(x.clips, d.start, d.start + d.len, pp.bpm); x.clips.push(d); ids.push(d.id); } });
+      v.sel = new Set(ids); v.selClip = ids.at(-1); app.store.emit('select'); return;
+    }
+    if (mod && k === 'a' && app.lastArea === 'arr') { e.preventDefault(); v.sel = new Set(p.tracks.flatMap((tt) => tt.clips.map((c) => c.id))); app.store.emit('select'); toast(`${v.sel.size} clips selected.`); return; }
     if (mod && k === 'c' && clip) { e.preventDefault(); clipboard = { kind: t.kind, clip: structuredClone(clip) }; toast(`Copied ${clip.name}`); return; }
     if (mod && k === 'v' && clipboard && v.mode === 'session' && v.selSlot) {      // into the selected session slot
       e.preventDefault();
@@ -1257,8 +1778,8 @@ function bindKeys() {
     }
     if (mod && k === 'v' && clipboard && t) {
       e.preventDefault();
-      if ((clipboard.kind === 'audio') !== (t.kind === 'audio') || (clipboard.kind === 'drum') !== (t.kind === 'drum') || t.kind === 'group') { toast(`That clip belongs on ${clipboard.kind === 'audio' ? 'an audio' : clipboard.kind === 'drum' ? 'a drum' : 'an instrument'} track.`); return; }
-      const c = { ...structuredClone(clipboard.clip), id: uid('c'), start: Math.floor(app.pos / p.sig) * p.sig };
+      if ((clipboard.kind === 'audio') !== (t.kind === 'audio') || (clipboard.kind === 'drum') !== (t.kind === 'drum') || (t.kind === 'group' || t.kind === 'vca')) { toast(`That clip belongs on ${clipboard.kind === 'audio' ? 'an audio' : clipboard.kind === 'drum' ? 'a drum' : 'an instrument'} track.`); return; }
+      const c = { ...structuredClone(clipboard.clip), id: uid('c'), start: floorBar(p, app.pos) };
       app.placeClip(t.id, c); app.selectClip(c.id, t.id); return;
     }
     if (mod && k === 'd' && clip) {
@@ -1294,12 +1815,19 @@ function bindKeys() {
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && t && t.slots?.some((c) => c && c.id === v.selClip)) {
       e.preventDefault();                                        // a session clip: out of its slot
       app.store.change((pp) => { const tr = pp.tracks.find((x) => x.id === t.id); tr.slots = tr.slots.map((c) => (c && c.id === v.selClip ? null : c)); });
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && app.selected().length > 1) {
+      e.preventDefault();                                        // several clips selected: they go
+      const ids = new Set(app.selected().map(({ c }) => c.id));
+      app.store.change((pp) => { for (const tr of pp.tracks) tr.clips = tr.clips.filter((c) => !ids.has(c.id)); });
+      v.sel.clear(); app.selectClip(null);
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && !clip && t) {
       e.preventDefault();
       app.deleteTrack(t.id);
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && clip) {
-      e.preventDefault();
-      app.store.change((pp) => { const tr = pp.tracks.find((x) => x.id === t.id); tr.clips = tr.clips.filter((c) => c.id !== clip.id); });
+      e.preventDefault();                                        // the selected clips (one or many)
+      const ids = new Set(app.selected().map(({ c }) => c.id)); ids.add(clip.id);
+      app.store.change((pp) => { for (const tr of pp.tracks) tr.clips = tr.clips.filter((c) => !ids.has(c.id)); });
+      v.sel?.clear();
     }
   });
 }
@@ -1335,6 +1863,8 @@ function setupPwa() {
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; $('install').hidden = false; });
   window.addEventListener('appinstalled', () => { $('install').hidden = true; installEvent = null; toast('Kraken is installed: open it from your apps, even offline.'); });
   $('install').onclick = () => installApp();
+  $('sigbtn').onclick = () => signatureDialog(app.pos);
+  $('takesbtn').onclick = () => { const on = app.store.p.recTakes === false; app.store.change((p) => { p.recTakes = on; }); toast(on ? 'Loop recording: each pass is a take; comp them in the take lanes (the TAKES badge on the clip).' : 'Loop recording: the passes add up (overdub).'); };
   // files opened with the installed app (projects, MIDI files)
   if ('launchQueue' in window) {
     window.launchQueue.setConsumer(async (params) => {
@@ -1351,6 +1881,7 @@ async function openPending() {
   for (const f of files) {
     if (/\.midi?$/i.test(f.name)) await importMidiFile(f).catch((e) => toast(e.message));
     else if (isSloopSong(f)) await openSloopSong(f);
+    else if (/\.dawproject$/i.test(f.name)) { try { await openDawproject(await unzip(new Uint8Array(await f.arrayBuffer()))); } catch (e) { toast(e.message); } }
     else { const dt = new DataTransfer(); dt.items.add(f); $('openfile').files = dt.files; $('openfile').dispatchEvent(new Event('change')); }
   }
 }
@@ -1372,4 +1903,4 @@ async function installApp() {
 }
 
 setupPwa();
-boot();
+initI18n().catch(() => {}).finally(boot);      // French on screen first when it is French (i18n.js)

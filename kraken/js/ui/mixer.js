@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The mixer: a strip per track (sends, pan, fader, meter, mute / solo), the two returns, the master.
+// The mixer: a strip per track (sends, pan, fader, meter, mute / solo), the two returns, the master (its limiter),
+// and the master's meters.
+import { macrosStrip } from './macros.js';
 import { h, knob, dragPointer } from './kit.js';
+import { MeterPanel } from './meters.js';
 
 export const dbToPos = (db) => (db <= -60 ? 0 : Math.pow((db + 60) / 66, 2));
 export const posToDb = (p) => (p <= 0.0005 ? -60 : Math.sqrt(p) * 66 - 60);
@@ -22,13 +25,22 @@ export class Mixer {
     root.append(this.wrap);
     this.strips = new Map();
     this.sig = '';
+    this.panel = new MeterPanel(app);
     app.store.on(() => this.refresh());
+    // the clip light on the top bar's OUT meter, whatever the view; a click puts it out
+    const mm = document.getElementById('mmeter');
+    if (mm) {
+      app.audio?.on((m) => { if (m.t === 'tick' && m.meter && !(performance.now() < this.panel.clipQuiet)) mm.classList.toggle('clip', m.meter.clip[0] || m.meter.clip[1]); });
+      mm.addEventListener('click', () => { if (mm.classList.contains('clip')) { this.panel.resetClip(); mm.classList.remove('clip'); } });
+    }
   }
   refresh() {
     const p = this.app.store.p;
-    const sig = p.tracks.map((t) => t.id + t.color + t.name + (t.fx?.length || 0) + t.out + JSON.stringify(t.sendPre || [])).join('|') + this.app.view.selTrack + p.returns.map((r) => r.id + r.name + (r.fx?.length || 0)).join() + (p.master.fx?.length || 0);
+    const sig = p.macros.map((m) => m.name + m.to.length).join() + p.tracks.map((t) => t.id + t.color + t.name + (t.fx?.length || 0) + t.out + (t.vca || '') + JSON.stringify(t.sendPre || [])).join('|') + p.returns.map((r) => r.id + r.name + (r.fx?.length || 0)).join() + (p.master.fx?.length || 0);
     if (sig !== this.sig) { this.sig = sig; this.build(); return; }
     for (const s of this.strips.values()) s.update?.();
+    // the selected track: marked, nothing rebuilt (a fader grabbed on another strip keeps its drag)
+    for (const t of p.tracks) this.strips.get(t.id)?.classList.toggle('sel', t.id === this.app.view.selTrack);
   }
   fader(get, set, label, learn) {
     const capEl = h('div', { class: 'cap' }), unity = h('div', { class: 'unity' });
@@ -60,6 +72,7 @@ export class Mixer {
     const app = this.app, p = app.store.p, store = app.store;
     this.strips.clear();
     const kids = [];
+    const ms = macrosStrip(app); kids.push(ms); this.strips.set('__macros', ms);
     const edit = (id, fn, tag) => store.change((pp) => fn(pp.tracks.find((t) => t.id === id)), tag);
     for (const t of p.tracks) {
       const id = t.id, cur = () => store.track(id);
@@ -90,8 +103,11 @@ export class Mixer {
       const m = h('button', { class: 'tb m', 'data-learn': `t:${id}:mute`, onclick: () => edit(id, (x) => { x.mute = !x.mute; }) }, 'M');
       const s = h('button', { class: 'tb s', 'data-learn': `t:${id}:solo`, onclick: () => edit(id, (x) => { x.solo = !x.solo; }) }, 'S');
       const strip = h('div', { class: 'strip' + (id === app.view.selTrack ? ' sel' : '') + (t.kind === 'group' ? ' grp' : ''), '--c': t.color, onpointerdown: () => app.selectTrack(id) },
-        h('div', { class: 'sname', text: t.name, title: t.name }), h('div', { class: 'kcol' }, panK, sendK), fader, db, h('div', { class: 'ms' }, m, s), outSel,
-        h('button', { class: 'add fxb', title: 'This track\'s effects', onclick: (e) => { e.stopPropagation(); app.selectTrack(id); app.showTab('device'); } }, `FX ${t.fx?.length || 0}`));
+        h('div', { class: 'sname', text: t.name, title: t.name + (t.vca ? ` · follows ${p.tracks.find((q) => q.id === t.vca)?.name}` : '') }),
+        t.kind === 'vca' ? h('div', { class: 'kcol vca-info', text: `VCA\n${p.tracks.filter((q) => q.vca === id).length} TRACKS` }) : h('div', { class: 'kcol' }, panK, sendK),
+        fader, db, h('div', { class: 'ms' }, m, t.kind === 'vca' ? null : s),
+        t.kind === 'vca' ? h('div', { class: 'out vca-tag', text: 'NO AUDIO' }) : outSel,
+        t.kind === 'vca' ? null : h('button', { class: 'add fxb', title: 'This track\'s effects', onclick: (e) => { e.stopPropagation(); app.selectTrack(id); app.showTab('device'); } }, t.vca ? `FX ${t.fx?.length || 0} · ${p.tracks.find((q) => q.id === t.vca)?.name || ''}` : `FX ${t.fx?.length || 0}`));
       strip.update = () => {
         const x = cur(); if (!x) return;
         fader.place(); db.textContent = x.auto?.vol?.length ? 'AUTO' : fmtDb(x.vol); db.title = x.auto?.vol?.length ? 'The volume follows its automation lane' : '';
@@ -128,25 +144,45 @@ export class Mixer {
       this.strips.set('ret' + i, strip);
       kids.push(strip);
     });
-    const mdb = h('span', { class: 'db' }), gr = h('span', { class: 'db', style: { color: 'var(--dim)' } });
+    const mdb = h('span', { class: 'db' }), gr = h('span', { class: 'db mgr', title: 'The limiter\'s gain reduction' });
     const mf = this.fader(() => store.p.master.vol, (v) => store.change((pp) => { pp.master.vol = v; }, 'mvol'), 'Master volume', 'master:vol');
-    const lufs = h('span', { class: 'db', style: { color: 'var(--warn)', fontSize: '9px' }, text: 'LUFS —' });
-    const master = h('div', { class: 'strip master', '--c': 'var(--accent)' }, h('div', { class: 'sname', text: 'MASTER' }), h('div', { class: 'kcol' }, h('span', { class: 'db', text: 'LIMIT', style: { color: 'var(--dim)', fontSize: '8px' } }), gr, lufs), mf, mdb, h('div', { class: 'ms' }),
+    // the master limiter: on (nothing passes its ceiling) or off (the mix as it is: the clip lights say when it goes over)
+    const lim = (fn, tag) => store.change((pp) => { pp.master.limit ||= { on: true, ceil: -0.3 }; fn(pp.master.limit); }, tag);
+    const limBtn = h('button', { class: 'tb lim', 'aria-label': 'Master limiter on / off', title: 'The master limiter: on, nothing goes over its ceiling; off, the mix passes as it is (watch the clip lights)',
+      onclick: () => lim((l) => { l.on = !l.on; }) }, 'LIMIT');
+    const ceilK = knob({ label: 'CEIL', min: -6, max: 0, step: 0.1, value: p.master.limit?.ceil ?? -0.3, def: -0.3, size: 26, color: 'var(--accent)',
+      format: (v) => v.toFixed(1), onChange: (v) => lim((l) => { l.ceil = Math.round(v * 10) / 10; }, 'mceil'), onEnd: () => store.endGesture() });
+    ceilK.title = 'The limiter\'s ceiling (dBFS): -1 leaves room for streaming encoders';
+    const master = h('div', { class: 'strip master', '--c': 'var(--accent)' }, h('div', { class: 'sname', text: 'MASTER' }), h('div', { class: 'kcol' }, limBtn, ceilK, gr), mf, mdb, h('div', { class: 'ms' }),
       h('button', { class: 'add fxb', onclick: () => { app.view.selBus = 'master'; app.showTab('device'); } }, `FX ${p.master.fx?.length || 0}`));
-    master.update = () => { mf.place(); mdb.textContent = fmtDb(store.p.master.vol); };
-    master.update(); master.meter = mf.meter; master.gr = gr; master.lufs = lufs;
+    master.update = () => {
+      const l = store.p.master.limit || { on: true, ceil: -0.3 };
+      mf.place(); mdb.textContent = fmtDb(store.p.master.vol);
+      limBtn.classList.toggle('on', l.on !== false); limBtn.setAttribute('aria-pressed', String(l.on !== false));
+      ceilK.setValue(l.ceil); ceilK.classList.toggle('off', l.on === false);
+      if (l.on === false) gr.textContent = 'OFF';
+      this.panel.limit(l);
+    };
+    master.update(); master.meter = mf.meter; master.gr = gr;
     this.strips.set('master', master);
-    kids.push(master);
+    kids.push(master, this.panel.el);
     this.wrap.replaceChildren(...kids);
   }
   meters(tick) {
     const lv = (x) => Math.min(1, Math.max(0, (20 * Math.log10(Math.max(1e-5, x)) + 60) / 63));
-    const set = (strip, l) => { if (!strip || !l) return; const [a, b] = strip.meter.children; a.style.setProperty('--v', lv(l[0]).toFixed(3)); b.style.setProperty('--v', lv(l[1]).toFixed(3)); };
-    for (const [id, l] of Object.entries(tick.tracks)) set(this.strips.get(id), l);
+    // peak, and inside it the RMS (smoothed to about 300 ms; a strip the engine gives no RMS shows its peak)
+    const set = (strip, l, rms, k = 0.12) => {
+      if (!strip || !l) return;
+      const [a, b] = strip.meter.children, r = (strip.ms ||= [0, 0]);
+      for (let c = 0; c < 2; c++) { const x = rms ? rms[c] : l[c]; r[c] += (x * x - r[c]) * (rms ? k : 1); }
+      a.style.setProperty('--v', lv(l[0]).toFixed(3)); b.style.setProperty('--v', lv(l[1]).toFixed(3));
+      a.style.setProperty('--r', lv(Math.sqrt(r[0])).toFixed(3)); b.style.setProperty('--r', lv(Math.sqrt(r[1])).toFixed(3));
+    };
+    for (const [id, l] of Object.entries(tick.tracks)) set(this.strips.get(id), l, l.length > 3 ? [l[2], l[3]] : null);
     tick.returns?.forEach((l, i) => set(this.strips.get('ret' + i), l));
     const m = this.strips.get('master');
-    set(m, tick.master);
-    if (m) m.gr.textContent = tick.master[2] > 0.01 ? `GR ${(20 * Math.log10(1 - tick.master[2])).toFixed(1)}` : 'GR 0.0';
-    if (m && tick.lufs) m.lufs.textContent = Number.isFinite(tick.lufs[2]) ? `${tick.lufs[2].toFixed(1)} LUFS` : 'LUFS —';
+    set(m, tick.master, tick.meter?.rms, 1);
+    if (m && this.app.store.p.master.limit?.on !== false) m.gr.textContent = tick.master[2] > 0.01 ? `GR ${(20 * Math.log10(1 - tick.master[2])).toFixed(1)}` : 'GR 0.0';
+    this.panel.tick(tick);
   }
 }

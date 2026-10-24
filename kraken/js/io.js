@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Files out: a save that works both inside claude.ai (the downloads capability) and on its own
 // (a plain download), a stored ZIP writer, and Standard MIDI Files.
-import { clipEvents } from './engine-core.js';
+import { clipEvents, ctlEvents } from './engine-core.js';
+import { meterList } from './meter.js';
 
 let downloads;
 async function downloadsCap() {
@@ -46,11 +47,11 @@ export function zip(files) {
     const name = enc.encode(f.name), data = typeof f.data === 'string' ? enc.encode(f.data) : f.data;
     const crc = crc32(data);
     const h = new DataView(new ArrayBuffer(30));
-    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(8, 0, true);
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);   // (names in UTF-8)
     h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, name.length, true);
     parts.push(new Uint8Array(h.buffer), name, data);
     const c = new DataView(new ArrayBuffer(46));
-    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true);
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
     c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
     c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
     central.push(new Uint8Array(c.buffer), name);
@@ -78,10 +79,17 @@ export function exportMidi(p) {
     bytes.push(0, 0xff, 0x2f, 0);
     return bytes;
   };
-  const tempo = Math.round(60000000 / p.bpm);
+  const setTempo = (beat, bpm) => { const us = Math.round(60000000 / bpm); return { tick: Math.round(beat * PPQ), order: 0, data: [0xff, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255] }; };
+  // the tempo map: each point, and its ramps in steps of a 16th
+  const tm = (p.tempo || []).filter((q) => Number.isFinite(q.t) && q.v > 0).sort((a, b) => a.t - b.t), tempos = [setTempo(0, tm.length ? tm[0].v : p.bpm)];
+  for (let i = 0; i < tm.length; i++) {
+    const a = tm[i], b = tm[i + 1];
+    if (a.t > 0) tempos.push(setTempo(a.t, a.v));
+    if (b && Math.abs(b.v - a.v) > 0.01) for (let t = a.t + 0.25; t < b.t - 1e-6; t += 0.25) tempos.push(setTempo(t, a.v + (b.v - a.v) * (t - a.t) / (b.t - a.t)));
+  }
   chunks.push(track([
-    { tick: 0, order: 0, data: [0xff, 0x51, 3, (tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255] },
-    { tick: 0, order: 1, data: [0xff, 0x58, 4, p.sig || 4, 2, 24, 8] },
+    ...tempos,
+    ...meterList(p).map((m) => ({ tick: Math.round(m.t * PPQ), order: 1, data: [0xff, 0x58, 4, m.n, Math.round(Math.log2(m.d)), 24, 8] })),
     ...(p.markers || []).map((m) => { const b = new TextEncoder().encode(m.name); return { tick: Math.round(m.t * PPQ), order: 2, data: [0xff, 0x06, ...vlq(b.length), ...b] }; }),
   ]));
   let next = 0;
@@ -91,7 +99,8 @@ export function exportMidi(p) {
     const c = t.kind === 'drum' ? 9 : chan();
     const name = new TextEncoder().encode(t.name);
     const ev = [{ tick: 0, order: 0, data: [0xff, 0x03, name.length, ...name] }];
-    const notes = []; for (const clip of t.clips) clipEvents(clip, notes);
+    const notes = [], ctl = []; for (const clip of t.clips) { clipEvents(clip, notes); ctlEvents(clip, ctl); }
+    for (const e of ctl) ev.push({ tick: Math.round(e.t * PPQ), order: 1.5, data: e.c[0] === 0xd0 ? [0xd0 | c, e.c[1]] : [e.c[0] | c, e.c[1], e.c[2]] });
     for (const n of notes) {
       ev.push({ tick: Math.round(n.t * PPQ), order: 2, data: [0x90 | c, n.n & 127, Math.max(1, n.v & 127)] });
       ev.push({ tick: Math.round((n.t + n.d) * PPQ), order: 1, data: [0x80 | c, n.n & 127, 0] });
@@ -135,7 +144,9 @@ export function parseMidi(bytes) {
   if (str(0) !== 'MThd') throw new Error('This is not a MIDI file.');
   const ntrk = v.getUint16(10), div = v.getUint16(12);
   if (div & 0x8000) throw new Error('SMPTE-timed MIDI files are not supported.');
+  const tempos = [];
   let o = 8 + v.getUint32(4), bpm = 120, sig = 4;
+  const meters = [];                                     // every time signature: [{ t: beat, n, d }]
   const out = [];
   for (let k = 0; k < ntrk && o < bytes.length; k++) {
     if (str(o) !== 'MTrk') break;
@@ -149,8 +160,8 @@ export function parseMidi(bytes) {
       if (st & 0x80) p++; else st = run;
       if (st === 0xff) {
         const type = bytes[p++], len = vlq();
-        if (type === 0x51 && len === 3) bpm = 60000000 / ((bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2]);
-        else if (type === 0x58) sig = bytes[p] || 4;
+        if (type === 0x51 && len === 3) { const b2 = 60000000 / ((bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2]); tempos.push({ t: tick / div, v: Math.round(b2 * 100) / 100 }); if (tick === 0 || tempos.length === 1) bpm = b2; }
+        else if (type === 0x58) { const n = bytes[p] || 4, d = 2 ** (bytes[p + 1] ?? 2); if (!meters.length && tick === 0) sig = n * 4 / d; meters.push({ t: tick / div, n, d }); }
         else if (type === 0x03) name = new TextDecoder().decode(bytes.subarray(p, p + len)).trim();
         p += len; continue;
       }
@@ -161,14 +172,19 @@ export function parseMidi(bytes) {
       const notes = byCh.get(ch) || { notes: [], program: 0 };
       byCh.set(ch, notes);
       if (type === 0xc0) notes.program = a;
+      else if (type === 0xb0 || type === 0xe0 || type === 0xd0) {        // controllers, bend, pressure: the clip's lanes
+        const key = type === 0xe0 ? 'pb' : type === 0xd0 ? 'cp' : `cc:${a}`, v = type === 0xe0 ? ((b << 7) | a) - 8192 : type === 0xd0 ? a : b;
+        ((notes.ctl ||= {})[key] ||= []).push({ t: tick / div, v });
+      }
       else if (type === 0x90 && b > 0) open.set(ch * 128 + a, { t: tick / div, n: a, v: b });
       else if (type === 0x80 || type === 0x90) {
         const s = open.get(ch * 128 + a);
         if (s) { open.delete(ch * 128 + a); notes.notes.push({ ...s, d: Math.max(1 / 64, tick / div - s.t) }); }
       }
     }
-    for (const [ch, x] of byCh) if (x.notes.length) out.push({ name: name || `TRACK ${k + 1}`, ch, program: x.program, notes: x.notes });
+    for (const [ch, x] of byCh) if (x.notes.length) out.push({ name: name || `TRACK ${k + 1}`, ch, program: x.program, notes: x.notes, ...(x.ctl ? { ctl: x.ctl } : {}) });
     o = end;
   }
-  return { bpm: Math.round(bpm * 100) / 100, sig, tracks: out };
+  tempos.sort((a, b) => a.t - b.t);
+  return { bpm: Math.round(bpm * 100) / 100, sig, meters, tracks: out, tempo: tempos.length > 1 ? tempos : [] };
 }

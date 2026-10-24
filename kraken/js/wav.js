@@ -15,8 +15,8 @@ export function encodeWav(channels, rate, bits = 24, dither = false) {
   let o = 44;
   for (let i = 0; i < frames; i++) {
     for (let c = 0; c < ch; c++) {
-      const x = Math.max(-1, Math.min(1, channels[c][i]));
-      if (bits === 32) { v.setFloat32(o, x, true); o += 4; }
+      const raw = channels[c][i], x = Math.max(-1, Math.min(1, raw));
+      if (bits === 32) { v.setFloat32(o, Number.isFinite(raw) ? raw : 0, true); o += 4; }   // (float: overs kept, for mastering)
       else if (bits === 24) {
         const s = Math.round(x * 8388607);
         v.setUint8(o, s & 255); v.setUint8(o + 1, (s >> 8) & 255); v.setUint8(o + 2, (s >> 16) & 255); o += 3;

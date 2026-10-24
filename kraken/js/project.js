@@ -7,33 +7,40 @@ import { isFolder, shiftFolder } from './comp.js';
 import { DEVICES } from './fx.js';
 import { NOTE_FX } from './notefx.js';
 import { MODS } from './mods.js';
+import { meterList, cleanMeters } from './meter.js';
+import { cleanPlugin, cleanWamFx } from './wam.js';
 
 // FORMAT: the project file's own version. It goes up only when a saved project must be changed to be read by the
 // new Kraken; MIGRATIONS[n] turns a format-n project into format n + 1. Every format ever saved keeps a reference
 // file in tests/fixtures/projects that the newest Kraken must open and play (tests/projects_test.mjs).
 export const FORMAT = 1;
-export const APP_VERSION = '0.6.0';
+export const APP_VERSION = '0.7.0';
 const MIGRATIONS = {};
 export const SCENES = 8;
+export const MACROS = 8;
 export const COLORS = ['#ff5b14', '#3d6bff', '#1fb46a', '#ffc21a', '#e8e8e8', '#ff4f8b', '#8a5cff', '#22c5d6'];
 
-let n = Date.now() % 100000;
-export const uid = (p = 'x') => `${p}${(n++).toString(36)}`;
+// ids: this browser's own random part, then a count (two people, two browsers, playing together: never the same)
+const SESSION = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0');
+let n = 0;
+export const uid = (p = 'x') => `${p}${SESSION}${(n++).toString(36)}`;
 
-const KIND_NAME = { drum: 'DRUMS', audio: 'AUDIO', group: 'GROUP', sampler: 'SAMPLER', external: 'EXT MIDI', synth: 'SYNTH' };
-// kinds: synth (SLOOP / Clipper engines), drum, audio, sampler, external (a MIDI device), group (a bus)
+const KIND_NAME = { drum: 'DRUMS', audio: 'AUDIO', group: 'GROUP', sampler: 'SAMPLER', external: 'EXT MIDI', synth: 'SYNTH', vca: 'VCA', wam: 'PLUGIN' };
+// kinds: synth (SLOOP / Clipper engines), drum, audio, sampler, external (a MIDI device), wam (a plugin instrument,
+// wam.js), group (a bus), vca (a fader that moves others)
 export function newTrack(kind, i, opts = {}) {
   const t = {
     id: uid('t'), name: opts.name || (kind === 'drum' ? 'DRUMS' : `${KIND_NAME[kind]} ${i + 1}`),
     color: opts.color || COLORS[i % COLORS.length], kind,
     bank: kind === 'drum' ? 'sloop' : (opts.bank || 'clipper'),
     engine: opts.engine ?? 0, preset: opts.preset ?? 0, kit: opts.kit ?? 15, params: {},
-    vol: opts.vol ?? (kind === 'group' ? 0 : -6), pan: opts.pan ?? 0, mute: false, solo: false, arm: false,
-    sends: opts.sends || [kind === 'group' ? 0 : 0.15, 0], sendPre: [], clips: [], slots: Array(opts.scenes || SCENES).fill(null),
+    vol: opts.vol ?? (kind === 'group' || kind === 'vca' ? 0 : -6), pan: opts.pan ?? 0, mute: false, solo: false, arm: false,
+    sends: opts.sends || [kind === 'group' || kind === 'vca' ? 0 : 0.15, 0], sendPre: [], clips: [], slots: Array(opts.scenes || SCENES).fill(null),
     auto: {}, rev: 0, fx: [], nfx: [], mods: [], midiCh: 0, out: opts.out || 'master',
   };
   if (kind === 'sampler') t.sample = { src: opts.src || null, name: opts.sampleName || '', root: 60, mode: opts.mode || 'keys', slices: 16, start: 0, end: 1, att: 2, rel: 150, gain: 0, loop: false, tune: 0 };
   if (kind === 'external') t.ext = { port: '', ch: 1, latency: 0 };
+  if (kind === 'wam') t.wam = cleanPlugin(opts.wam);              // { url, name, state }, or none chosen yet
   return t;
 }
 export const newReturn = (type, name) => ({ id: uid('r'), name, type, vol: -4, mute: false, fx: [],
@@ -41,9 +48,9 @@ export const newReturn = (type, name) => ({ id: uid('r'), name, type, vol: -4, m
 
 export function newProject() {
   return {
-    kraken: FORMAT, name: 'Untitled', bpm: 120, sig: 4,
+    kraken: FORMAT, name: 'Untitled', bpm: 120, sig: 4, meters: [],   // sig: beats in a bar; meters: signature changes
     loop: { on: true, a: 0, b: 16 },
-    master: { vol: 0, fx: [] },
+    master: { vol: 0, fx: [], limit: { on: true, ceil: -0.3 } },   // limit: the master's own limiter, its ceiling in dB
     returns: [{ ...newReturn('reverb', 'REVERB'), vol: -4 }, { ...newReturn('delay', 'DELAY'), vol: -6 }],
     tracks: [],
     scenes: [...Array(SCENES)].map((_, i) => ({ id: uid('s'), name: `SCENE ${i + 1}` })),
@@ -53,6 +60,8 @@ export function newProject() {
     countIn: false,
     punch: { on: false, a: 4, b: 12 },
     markers: [],             // arrangement markers: [{ id, t: beat, name }]
+    macros: [...Array(MACROS)].map((_, i) => ({ id: `m${i}`, name: `MACRO ${i + 1}`, v: 0, to: [] })),   // project macros
+    macroAuto: {},           // their automation: { m0: [{ t, v }] }
     assets: {},              // audio files: id -> { name, frames }; their samples live outside the JSON
   };
 }
@@ -195,7 +204,17 @@ export function migrate(p) {
   for (let v = f; v < FORMAT; v++) { p = MIGRATIONS[v](p); p.kraken = v + 1; }
   return p;
 }
-const KINDS = new Set(['synth', 'drum', 'audio', 'sampler', 'external', 'group']);
+// every audio file a track plays (clips, takes, slots, its sampler's zones, its pads, its frozen render)
+export function trackSources(t) {
+  const out = [];
+  for (const c of t.clips || []) { out.push(c.src, c.orig); for (const k of c.takes || []) out.push(k.src); }
+  for (const c of t.slots || []) if (c) out.push(c.src, c.orig);
+  out.push(t.sample?.src, t.frozen?.src);
+  for (const z of t.sample?.zones || []) out.push(z.src);
+  for (const pd of Object.values(t.pads || {})) out.push(pd?.src);
+  return [...new Set(out.filter((x) => typeof x === 'string'))];
+}
+const KINDS = new Set(['synth', 'drum', 'audio', 'sampler', 'external', 'group', 'vca', 'wam']);
 const num = (x, d) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
 const clampN = (x, a, b, d) => Math.max(a, Math.min(b, num(x, d)));
 const str = (x, d, max = 64) => (typeof x === 'string' ? x.slice(0, max) : typeof x === 'number' ? String(x) : d);
@@ -203,7 +222,7 @@ const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : null);
 const arr = (x) => (Array.isArray(x) ? x : []);
 const COLOR = /^#[0-9a-f]{3,8}$/i;
 // automation points: finite, in time order
-const points = (list) => arr(list).filter((q) => obj(q) && Number.isFinite(q.t) && Number.isFinite(q.v)).map((q) => ({ t: Math.max(0, q.t), v: q.v })).sort((a, b) => a.t - b.t);
+const points = (list) => arr(list).filter((q) => obj(q) && Number.isFinite(q.t) && Number.isFinite(q.v)).map((q) => (Number.isFinite(q.c) && Math.abs(q.c) >= 0.01 ? { t: Math.max(0, q.t), v: q.v, c: Math.max(-1, Math.min(1, q.c)) } : { t: Math.max(0, q.t), v: q.v })).sort((a, b) => a.t - b.t);
 // a device's knobs: only its own, each a number in range (a missing one: its default)
 function knobs(spec, values, sidechain = false) {
   const o = obj(values) || {}, out = {};
@@ -240,9 +259,16 @@ function clip(c, slot) {
   if (slot) delete o.start; else o.start = Math.max(0, num(c.start, NaN));
   if (!slot && !Number.isFinite(o.start)) return null;
   if (o.loop != null) o.loop = num(o.loop, 0) > 0.001 ? Math.min(o.loop, 1e5) : o.len;
+  if (c.follow != null) {                                    // a session clip's follow action
+    const F = ['next', 'prev', 'first', 'last', 'any', 'other', 'again', 'stop', 'none'], f = obj(c.follow) || {};
+    if (slot && F.includes(f.a)) o.follow = { n: Math.round(clampN(f.n, 1, 64, 1)), a: f.a, b: F.includes(f.b) ? f.b : 'none', p: clampN(f.p, 0, 1, 1) }; else delete o.follow;
+  }
   if (c.src != null || c.takes != null) {                   // audio
     o.src = str(c.src, null, 80); o.offset = Math.max(0, num(c.offset, 0)); o.gain = clampN(c.gain, -60, 24, 0);
     o.fadeIn = Math.max(0, num(c.fadeIn, 0.005)); o.fadeOut = Math.max(0, num(c.fadeOut, 0.01));
+    // a crossfade with the clip before (beats, across the seam), the clip's own gain envelope (beats from its start, dB)
+    if (c.xf != null) { o.xf = clampN(c.xf, 0, Math.min(16, o.len), 0); if (!o.xf) delete o.xf; }
+    if (c.env != null) { o.env = envPoints(c.env, o.len); if (!o.env.length) delete o.env; }
     if (c.takes != null) {
       o.takes = arr(c.takes).filter((k) => obj(k) && typeof k.src === 'string').map((k) => ({ ...k, at: num(k.at, o.start || 0), offset: Math.max(0, num(k.offset, 0)), name: str(k.name, 'TAKE', 40) }));
       o.comp = arr(c.comp).filter((x) => obj(x) && Number.isFinite(x.a) && Number.isFinite(x.b) && x.b > x.a && Number.isInteger(x.k) && x.k >= 0 && x.k < o.takes.length);
@@ -250,8 +276,27 @@ function clip(c, slot) {
     }
     if (!o.src && !o.takes) return null;
     delete o.notes;
+    if (c.wm != null) {                                         // warp markers: { s: seconds of the file, b: its beat }
+      o.wm = arr(c.wm).filter((m) => obj(m) && Number.isFinite(m.s) && Number.isFinite(m.b) && m.s >= 0).map((m) => ({ s: m.s, b: m.b })).sort((a, b) => a.b - b.b);
+      if (!o.wm.length) delete o.wm;
+    }
   } else {
     o.notes = arr(c.notes).map(note).filter(Boolean);
+    if (c.ctl != null) {                                        // controller lanes: { 'cc:64' | 'pb' | 'cp': [{ t, v }] }
+      const ct = obj(c.ctl) || {}; o.ctl = {};
+      for (const k in ct) {
+        if (!/^(cc:\d{1,3}|pb|cp)$/.test(k)) continue;
+        const lo = k === 'pb' ? -8192 : 0, hi = k === 'pb' ? 8191 : 127;
+        const pts = points(ct[k]).map((q) => ({ t: q.t, v: Math.round(Math.max(lo, Math.min(hi, q.v))) }));
+        if (pts.length) o.ctl[k] = pts;
+      }
+      if (!Object.keys(o.ctl).length) delete o.ctl;
+    }
+    if (c.mtakes != null) {                                     // MIDI takes, and the comp over them
+      o.mtakes = arr(c.mtakes).filter(obj).map((k, i) => ({ name: str(k.name, `TAKE ${i + 1}`, 40), notes: arr(k.notes).map(note).filter(Boolean) }));
+      o.comp = arr(c.comp).filter((x) => obj(x) && Number.isFinite(x.a) && Number.isFinite(x.b) && x.b > x.a && Number.isInteger(x.k) && x.k >= 0 && x.k < o.mtakes.length);
+      if (!o.mtakes.length) { delete o.mtakes; delete o.comp; }
+    }
     if (o.loop == null) o.loop = o.len;
   }
   return o;
@@ -263,14 +308,27 @@ export function validate(p) {
   const d = newProject();
   p.name = str(p.name, 'Untitled', 40) || 'Untitled';
   p.bpm = clampN(p.bpm, 20, 300, 120);
-  p.sig = Math.round(clampN(p.sig, 1, 16, 4));
+  p.sig = clampN(p.sig, 0.25, 32, 4);
+  p.meters = cleanMeters(p);                                    // time signature changes, on bar lines
+  p.sig = meterList(p)[0].len;                                  // (the first bar's length in beats)
   p.swing = clampN(p.swing, 0, 1, 0);
   p.launchQ = clampN(p.launchQ, 0, 64, 4);
   p.countIn = !!p.countIn;
+  p.recTakes = p.recTakes !== false;
+  // project macros: 8 knobs, each one turning many parameters of many tracks at once ({ track, key, lo, hi })
+  const ms = arr(p.macros).filter(obj);
+  p.macros = [...Array(Math.max(MACROS, Math.min(16, ms.length)))].map((_, i) => {
+    const m = ms[i] || {};
+    return { id: str(m.id, '', 40) || `m${i}`, name: str(m.name, `MACRO ${i + 1}`, 16) || `MACRO ${i + 1}`, v: clampN(m.v, 0, 1, 0),
+      to: arr(m.to).filter((x) => obj(x) && typeof x.track === 'string' && typeof x.key === 'string').map((x) => ({ track: x.track, key: x.key, lo: num(x.lo, 0), hi: num(x.hi, 1) })) };
+  });
+  const ma = obj(p.macroAuto) || {}; p.macroAuto = {};
+  for (const k in ma) { const pts = points(ma[k]); if (/^m\d+$/.test(k) && pts.length) p.macroAuto[k] = pts.map((q) => ({ ...q, v: Math.max(0, Math.min(1, q.v)) })); }                            // loop recording: each pass a take (or overdub)
   const span = (x, def) => { const o = obj(x); const a = Math.max(0, num(o?.a, def.a)), b = num(o?.b, def.b); return { ...(o || {}), on: o ? !!o.on : def.on, a, b: b > a ? b : a + 4 }; };
   p.loop = span(p.loop, d.loop);
   p.punch = span(p.punch, d.punch);
   p.tempo = points(p.tempo).map((q) => ({ t: q.t, v: Math.max(20, Math.min(300, q.v)) }));
+  if (obj(p.key) && Number.isFinite(p.key.root)) p.key = { root: Math.round(clampN(p.key.root, 0, 11, 0)), sc: Math.round(clampN(p.key.sc, 0, 63, 0)) }; else delete p.key;   // the song's key (the piano roll lights it)
   p.markers = arr(p.markers).filter((m) => obj(m) && Number.isFinite(m.t)).map((m) => ({ id: str(m.id, '', 40) || uid('k'), t: Math.max(0, m.t), name: str(m.name, 'MARKER', 40) }));
   p.scenes = arr(p.scenes).filter(obj).map((s, i) => ({ ...s, id: str(s.id, '', 40) || uid('s'), name: str(s.name, `SCENE ${i + 1}`, 24) }));
   if (!p.scenes.length) p.scenes = d.scenes;
@@ -278,13 +336,15 @@ export function validate(p) {
   for (const k of Object.keys(p.assets)) if (!obj(p.assets[k])) delete p.assets[k];
   p.master = obj(p.master) || d.master;
   p.master.vol = clampN(p.master.vol, -60, 12, 0);
-  p.master.fx = devices(p.master.fx, DEVICES, 'f');
+  p.master.fx = devices(p.master.fx, DEVICES, 'f').filter((d) => d.type !== 'wam');   // (plugins: on tracks only)
+  const lim = obj(p.master.limit);                              // (before the switch: always on, at -0.3 dB)
+  p.master.limit = { on: lim ? lim.on !== false : true, ceil: Math.round(clampN(lim?.ceil, -6, 0, -0.3) * 10) / 10 };
   p.returns = (Array.isArray(p.returns) ? p.returns : d.returns).filter(obj);
   p.returns.forEach((r, i) => {
     r.id = str(r.id, '', 40) || uid('r'); r.name = str(r.name, `RETURN ${i + 1}`, 24);
     r.type ??= i === 0 ? 'reverb' : i === 1 ? 'delay' : 'none';
     if (!['reverb', 'delay', 'none'].includes(r.type)) r.type = 'none';
-    r.vol = clampN(r.vol, -60, 12, -4); r.mute = !!r.mute; r.fx = devices(r.fx, DEVICES, 'f');
+    r.vol = clampN(r.vol, -60, 12, -4); r.mute = !!r.mute; r.fx = devices(r.fx, DEVICES, 'f').filter((d) => d.type !== 'wam');
     if (r.type === 'reverb') { r.size = clampN(r.size, 0, 1, 0.82); r.damp = clampN(r.damp, 0, 1, 0.35); r.pre = clampN(r.pre, 0, 0.5, 0.02); }
     if (r.type === 'delay') { r.time = clampN(r.time, 0.01, 8, 0.75); r.fb = clampN(r.fb, 0, 0.98, 0.42); r.tone = clampN(r.tone, 0, 1, 0.55); }
   });
@@ -299,7 +359,7 @@ export function validate(p) {
     t.mute = !!t.mute; t.solo = !!t.solo; t.arm = !!t.arm;
     t.sends = arr(t.sends).map((x) => clampN(x, 0, 1, 0)); while (t.sends.length < p.returns.length) t.sends.push(0);
     t.sendPre = arr(t.sendPre).map(Boolean);
-    if (t.kind === 'synth') { t.bank = t.bank === 'sloop' ? 'sloop' : 'clipper'; }
+    if (t.kind === 'synth' || t.kind === 'wam') { t.bank = t.bank === 'sloop' ? 'sloop' : 'clipper'; }
     if (t.kind === 'drum') t.bank = 'sloop';
     t.engine = Math.max(0, Math.round(num(t.engine, 0))); t.preset = Math.max(0, Math.round(num(t.preset, 0))); t.kit = Math.max(0, Math.round(num(t.kit, 15)));
     t.rev = Math.round(num(t.rev, 0));
@@ -311,18 +371,45 @@ export function validate(p) {
     while (t.slots.length < p.scenes.length) t.slots.push(null);
     const au = obj(t.auto) || {}; t.auto = {};
     for (const k in au) { const pts = points(au[k]); if (pts.length) t.auto[k] = pts; }
-    t.fx = devices(t.fx, DEVICES, 'f');
+    t.fx = devices(t.fx, DEVICES, 'f').map((d) => (d.type === 'wam' ? cleanWamFx(d) : d)).filter(Boolean);   // (a plugin: its address, its state)
     t.nfx = devices(t.nfx, NOTE_FX, 'n');
     t.mods = devices(t.mods, MODS, 'm').map((m) => ({ ...m, to: arr(m.to).filter((x) => obj(x) && typeof x.key === 'string').map((x) => ({ ...x, amt: clampN(x.amt, -1, 1, 0) })) }));
     t.midiCh = Math.round(clampN(t.midiCh, 0, 16, 0));
     t.out = typeof t.out === 'string' ? t.out : 'master';
+    if (t.h != null) { t.h = Math.round(clampN(t.h, 30, 240, 58)); }                   // its height in the arrangement (px)
+    if (t.fold != null) { if (t.kind === 'group' && t.fold) t.fold = true; else delete t.fold; }   // a group folded: its tracks hidden
+    if (t.vca != null && typeof t.vca !== 'string') delete t.vca;
     if (t.kind === 'sampler') {
       const s = obj(t.sample) || {};
       t.sample = { ...s, src: typeof s.src === 'string' ? s.src : null, name: str(s.name, '', 80), root: Math.round(clampN(s.root, 0, 127, 60)), mode: s.mode === 'slice' ? 'slice' : 'keys',
         slices: Math.round(clampN(s.slices, 1, 64, 16)), start: clampN(s.start, 0, 1, 0), end: clampN(s.end, 0, 1, 1), att: clampN(s.att, 0, 5000, 2), rel: clampN(s.rel, 0, 10000, 150),
-        gain: clampN(s.gain, -60, 24, 0), loop: !!s.loop, tune: clampN(s.tune, -100, 100, 0) };
+        gain: clampN(s.gain, -60, 24, 0), loop: !!s.loop, tune: clampN(s.tune, -100, 100, 0),
+        dec: clampN(s.dec, 0, 20000, 0), sus: clampN(s.sus, 0, 1, 1), cut: clampN(s.cut, 30, 20000, 20000), res: clampN(s.res, 0, 0.95, 0), fenv: clampN(s.fenv, 0, 8, 0),
+        zones: arr(s.zones).filter((z) => obj(z) && typeof z.src === 'string').slice(0, 128).map((z) => {
+          const lo = Math.round(clampN(z.lo, 0, 127, 0)), vlo = Math.round(clampN(z.vlo, 1, 127, 1));
+          return { src: z.src, name: str(z.name, '', 80), root: Math.round(clampN(z.root, 0, 127, 60)), lo, hi: Math.max(lo, Math.round(clampN(z.hi, 0, 127, 127))),
+            vlo, vhi: Math.max(vlo, Math.round(clampN(z.vhi, 1, 127, 127))), gain: clampN(z.gain, -60, 24, 0), tune: clampN(z.tune, -100, 100, 0) };
+        }) };
+      if (!t.sample.zones.length) delete t.sample.zones;
       if (t.sample.end <= t.sample.start) { t.sample.start = 0; t.sample.end = 1; }
     }
+    if (t.kind === 'drum') {                                   // pads with your own samples (note -> one-shot)
+      const pads = {};
+      for (const [k, pd] of Object.entries(obj(t.pads) || {})) {
+        const n = +k;
+        if (!Number.isInteger(n) || n < 0 || n > 127 || !obj(pd) || typeof pd.src !== 'string') continue;
+        const st = clampN(pd.start, 0, 1, 0), en = clampN(pd.end, 0, 1, 1);
+        pads[n] = { src: pd.src, name: str(pd.name, '', 80), gain: clampN(pd.gain, -60, 24, 0), tune: clampN(pd.tune, -48, 48, 0), dec: clampN(pd.dec, 0, 20000, 0),
+          choke: Math.round(clampN(pd.choke, 0, 8, 0)), start: en > st ? st : 0, end: en > st ? en : 1, cut: clampN(pd.cut, 30, 20000, 20000) };
+      }
+      if (Object.keys(pads).length) t.pads = pads; else delete t.pads;
+    }
+    if (t.kind === 'audio') {                                  // its input channels (b null: mono) and its monitoring
+      const ip = obj(t.input) || {}; t.input = { a: Math.round(clampN(ip.a, 0, 31, 0)), b: ip.b === null ? null : Math.round(clampN(ip.b, 0, 31, 1)) };
+      t.monitor = ['auto', 'in', 'off'].includes(t.monitor) ? t.monitor : 'auto';
+    }
+    if (t.kind === 'wam') t.wam = cleanPlugin(t.wam);
+    else delete t.wam;
     if (t.kind === 'external') { const e = obj(t.ext) || {}; t.ext = { ...e, port: str(e.port, '', 200), ch: Math.round(clampN(e.ch, 1, 16, 1)), latency: clampN(e.latency, -500, 500, 0) }; }
     if (t.frozen && !(obj(t.frozen) && typeof t.frozen.src === 'string')) delete t.frozen;
   }
@@ -333,6 +420,11 @@ export function validate(p) {
     const seen = new Set([t.id]);
     for (let g = groups.get(t.out); g; g = groups.get(g.out)) { if (seen.has(g.id)) { t.out = 'master'; break; } seen.add(g.id); }
   }
+  // a VCA: a VCA track that exists
+  const vcas = new Set(p.tracks.filter((t) => t.kind === 'vca').map((t) => t.id));
+  for (const t of p.tracks) if (t.vca != null && (!vcas.has(t.vca) || t.kind === 'vca')) delete t.vca;
+  for (const t of p.tracks) if (t.kind === 'vca') { t.clips = []; t.out = 'master'; }
+  for (const m of p.macros) m.to = m.to.filter((x) => ids.has(x.track));
   // a compressor's sidechain and a follower's source: a track that exists
   for (const t of p.tracks) {
     for (const f of t.fx) if (f.type === 'comp' && f.p.sc && !ids.has(f.p.sc)) f.p.sc = '';
@@ -353,6 +445,26 @@ export function projectEnd(p) {
 
 // clear the beats [a, b) of a track's clips (a recording or a moved clip lands there): what overlaps is cut,
 // a clip across the range becomes two, each part still playing what it played. bpm for audio offsets.
+// automation between two points: a line, or a curve (the first point's c, -1..1: slow then fast, or fast then slow),
+// held before the first and after the last
+export const curveOf = (c, x) => (!c || Math.abs(c) < 1e-3 ? x : (Math.exp(c * 5 * x) - 1) / (Math.exp(c * 5) - 1));
+export function autoAt(pts, t) {
+  if (!pts || !pts.length) return null;
+  if (t <= pts[0].t) return pts[0].v;
+  for (let i = 1; i < pts.length; i++) if (t < pts[i].t) { const a = pts[i - 1], b = pts[i]; return a.v + (b.v - a.v) * curveOf(a.c, (t - a.t) / (b.t - a.t)); }
+  return pts[pts.length - 1].v;
+}
+// a clip's gain envelope: points in order, inside the clip, -60..+12 dB
+export function envPoints(pts, len) {
+  return (Array.isArray(pts) ? pts : []).filter((q) => q && Number.isFinite(q.t) && Number.isFinite(q.v)).map((q) => ({ t: Math.max(0, Math.min(len, q.t)), v: Math.max(-60, Math.min(12, q.v)) }))
+    .sort((x, y) => x.t - y.t).slice(0, 2000);
+}
+export function envAt(pts, t) {
+  if (!pts?.length) return 0;
+  if (t <= pts[0].t) return pts[0].v;
+  for (let i = 1; i < pts.length; i++) if (t < pts[i].t) { const a = pts[i - 1], b = pts[i]; return a.v + (b.v - a.v) * ((t - a.t) / (b.t - a.t || 1)); }
+  return pts[pts.length - 1].v;
+}
 export function cutRange(clips, a, b, bpm, keep = null) {
   const out = [], spb = 60 / bpm;
   for (const c of clips) {
@@ -363,11 +475,15 @@ export function cutRange(clips, a, b, bpm, keep = null) {
       left.len = a - s;
       if (left.notes && (left.loop || 0) >= c.len - 1e-6) left.loop = left.len;
       if (isFolder(left)) left.comp = left.comp.filter((g) => g.a < left.len).map((g) => ({ ...g, b: Math.min(g.b, left.len) }));
+      if (left.env) left.env = [...left.env.filter((q) => q.t < left.len), { t: left.len, v: envAt(c.env, left.len) }];
+      if (left.xf) left.xf = Math.min(left.xf, left.len);
       out.push(left);
     }
     if (e > b + 1e-6) {                                           // the part after, in phase with what was there
       const right = structuredClone(c), off = b - s;
       right.id = uid('c'); right.start = b; right.len = e - b;
+      delete right.xf;                                            // (a cut is not a crossfade)
+      if (c.env) right.env = [{ t: 0, v: envAt(c.env, off) }, ...c.env.filter((q) => q.t > off).map((q) => ({ ...q, t: q.t - off }))];
       if (c.notes) {
         const loop = c.loop || c.len;
         if (loop < c.len - 1e-6) { const ph = off % loop; right.notes = c.notes.filter((n) => n.t < loop).map((n) => ({ ...n, t: ((n.t - ph) % loop + loop) % loop })); right.loop = loop; }

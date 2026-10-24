@@ -28,7 +28,7 @@ export class Controllers {
     const ins = c.inputs();
     const devRows = ins.length ? ins.map((i) => h('label', { class: 'ctl-row' }, h('span', { class: 'ctl-dev', text: i.name, title: i.name }),
       h('select', { 'aria-label': `${i.name} mode`, onchange: (e) => c.setMode(i.name, e.target.value) },
-        [['keys', 'KEYS & CONTROLS'], ['mackie', 'MACKIE CONTROL'], ['off', 'OFF']].map(([v, l]) => h('option', { value: v, selected: c.modeOf(i.name) === v ? true : null }, l)))))
+        [['keys', 'KEYS & CONTROLS'], ['mackie', 'MACKIE CONTROL'], ['grid', 'GRID (LAUNCHPAD): THE SESSION'], ['off', 'OFF']].map(([v, l]) => h('option', { value: v, selected: c.modeOf(i.name) === v ? true : null }, l)))))
       : [small(c.status || (c.access ? 'No MIDI device found. Plug one in: it appears here at once.' : 'Waiting for MIDI access…'))];
     const outs = c.outputs();
     const mon = c.lastMsg ? `${c.lastMsg.data.slice(0, 3).map(hex).join(' ')}  ${this.describe(c.lastMsg.data)}` : '—';

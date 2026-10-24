@@ -4,6 +4,8 @@
 import { h } from './kit.js';
 import { STARTERS, starterProject } from '../templates.js';
 import { newProject, newTrack } from '../project.js';
+import { listPresets } from '../presets.js';
+import { openTemplate } from './presets.js';
 
 const touch = () => matchMedia('(pointer: coarse)').matches;
 const phone = () => matchMedia('(max-width: 700px), (max-height: 520px) and (pointer: coarse)').matches;
@@ -39,6 +41,14 @@ export function welcome(app, { modal, first = false }) {
     h('p', { class: 'hint', text: `Already have a song? ${touch() ? '☰' : 'PROJECT'} > Open…, or a SLOOP song (.sloopsong).` }),
   ], [['Close', () => { try { localStorage.setItem('kraken.welcomed', '1'); } catch { /* */ } }]]);
   m.box.classList.add('wel');
+  // your own templates first (PROJECT > Save as a template)
+  listPresets().then((all) => {
+    const mine = all.filter((x) => x.kind === 'template');
+    const grid = m.box.querySelector('.wel-grid');
+    if (!mine.length || !grid) return;
+    grid.prepend(...mine.map((q) => h('button', { class: 'wel-card mine', onclick: () => { m.close(); try { localStorage.setItem('kraken.welcomed', '1'); } catch { /* */ } openTemplate(app, q).catch((e) => app.toast(e.message)); } },
+      h('b', { text: `★ ${q.name}` }), h('span', { text: 'Your template' }))));
+  });
   return m;
 }
 
@@ -54,7 +64,7 @@ function steps() {
     { sel: ph ? '#mnav [data-m="lib"]' : '#libbtn', text: 'SOUNDS: hundreds of SLOOP and Clipper sounds. Pick one: the selected track plays it at once.' },
     { sel: ph ? '#bot .tab[data-tab="device"]' : '#bot .tab[data-tab="mixer"]', pre: ph ? () => document.querySelector('#mnav [data-m="bot"]')?.click() : null, text: ph ? 'SOUND: every knob of the instrument, its note effects and audio effects. MIXER: levels, pan and sends.'
       : 'MIXER: levels, pan, sends and effects. INSTRUMENT: every knob of the sound, note effects, modulators.' },
-    { sel: '#filebtn', text: `Kraken saves your work by itself. ${ph ? '☰' : 'PROJECT'}: save a file, export WAV, FLAC or Opus, start another song, Help, and Report a problem if anything goes wrong.` },
+    { sel: '#filebtn', text: `Kraken saves your work by itself. ${ph ? '☰' : 'PROJECT'}: save a file, export WAV, FLAC, MP3 or Opus, start another song, Help, and Report a problem if anything goes wrong.` },
   ];
 }
 let endTour = null;

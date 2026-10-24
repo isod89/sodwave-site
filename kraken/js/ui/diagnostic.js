@@ -31,6 +31,7 @@ export async function diagnose(app) {
   add('Browser', `${browser} ${ver} · ${ios ? 'iOS / iPadOS' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'macOS' : /Win/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '?'}`);
   add('Screen', `${innerWidth} × ${innerHeight} · ×${devicePixelRatio}${matchMedia('(pointer: coarse)').matches ? ' · touch' : ''}`);
   add('Processor', `${navigator.hardwareConcurrency || '?'} cores${navigator.deviceMemory ? ` · ${navigator.deviceMemory} GB` : ''}`);
+  if (app.mc) add('Multi-core', app.mc.describe().replace(/^Multi-core: /, ''), app.mc.failed ? 'warn' : 'ok');   // (multicore.js)
   // audio
   const ctx = app.audio?.ctx;
   if (!ctx) add('Audio', 'not started', 'bad');
@@ -58,7 +59,7 @@ export async function diagnose(app) {
   add('MIDI', navigator.requestMIDIAccess ? `${app.control?.access ? `${[...app.control.access.inputs.values()].length} input(s)` : 'available'}` : 'not in this browser (Safari has none): use Chrome, Edge or Firefox for a MIDI keyboard', navigator.requestMIDIAccess ? 'ok' : 'warn');
   add('Audio input', navigator.mediaDevices?.getUserMedia ? 'available' : 'none', navigator.mediaDevices?.getUserMedia ? 'ok' : 'warn');
   let opus = false; try { opus = await opusSupported(); } catch { /* */ }
-  add('Export', `WAV, FLAC${opus ? ', Opus' : ' (no Opus in this browser)'}`);
+  add('Export', `WAV, FLAC, MP3${opus ? ', Opus' : ' (no Opus in this browser)'}`);
   add('Save to a file', window.showSaveFilePicker ? 'Ctrl+S writes the same file again' : 'each save is a download');
   add('Offline', navigator.serviceWorker?.controller ? 'ready' : 'not yet (open Kraken from its web address once more, or install it)', navigator.serviceWorker?.controller ? 'ok' : 'warn');
   if (app.errors?.length) add('Errors this session', `${app.errors.length}: ${app.errors.at(-1).msg}`, 'warn');

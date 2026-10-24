@@ -1,12 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The clip editor: a piano roll for instrument clips, a step grid for drum clips.
 import { h, fitCanvas, dragPointer, noteName, ScrollBar } from './kit.js';
-import { isFolder } from '../comp.js';
+import { isFolder, isMidiFolder, compNotes } from '../comp.js';
+import { srcAt, beatAt, cleanMarkers } from '../warp.js';
+import { barOf } from '../meter.js';
+import { SCALES } from '../notefx.js';
+import { unrollNotes } from '../edit.js';
+
+const KEY_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const QZ_KEY = 'kraken.quantize';
+const loadQz = () => { try { return { strength: 1, swing: 0, ends: false, hTime: 10, hVel: 8, ...JSON.parse(localStorage.getItem(QZ_KEY) || '{}') }; } catch { return { strength: 1, swing: 0, ends: false, hTime: 10, hVel: 8 }; } };
+// a note in the project's key (no key: every note is)
+export function inKey(key, n) { if (!key) return true; const set = (SCALES[key.sc] || SCALES[0])[1]; return set.includes((((n - key.root) % 12) + 12) % 12); }
+// a note moved past the loop's end would never play: it stays just inside
+const keepIn = (cl) => { const loop = cl.loop || cl.len; for (const n of cl.notes) if (n.t >= loop - 1e-6) n.t = Math.max(0, loop - 1 / 64); };
+// quantize: each start pulled toward the grid by strength (swing: every second grid step later), the ends too if asked
+export function quantizeNotes(notes, grid, { strength = 1, swing = 0, ends = false } = {}) {
+  const target = (t) => { const k = Math.round(t / grid); return k * grid + (k % 2 ? swing * grid : 0); };
+  for (const n of notes) {
+    const t0 = n.t, end = n.t + n.d;
+    n.t = Math.max(0, t0 + (target(t0) - t0) * strength);
+    if (ends) n.d = Math.max(grid / 4, end + (target(end) - end) * strength - n.t);
+    else n.d = Math.max(1 / 64, end - n.t);
+  }
+}
+// humanize: starts moved by up to ms (at bpm), velocities by up to vel, at random (seeded: the same notes, the same result)
+export function humanizeNotes(notes, ms, vel, bpm, seed = 1) {
+  let s = seed >>> 0 || 1; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 * 2 - 1; };
+  const beats = ms / 1000 * bpm / 60;
+  for (const n of notes) { n.t = Math.max(0, n.t + rnd() * beats); n.v = Math.max(1, Math.min(127, Math.round(n.v + rnd() * vel))); }
+}
 
 // a piano roll: synths, samplers, external MIDI (drums have their grid, audio its waveform)
 const isRoll = (t) => !!t && t.kind !== 'drum' && t.kind !== 'audio';
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const KEYW = 46, VELH = 46, CRUL = 26, BLACK = [1, 3, 6, 8, 10];
+// the lane under the piano roll: the notes' velocity, or a controller of the clip
+export const LANES = [['vel', 'VELOCITY'], ['cc:64', 'SUSTAIN'], ['cc:1', 'MOD WHEEL'], ['pb', 'PITCH BEND'], ['cc:11', 'EXPRESSION'], ['cc:7', 'VOLUME CC'], ['cp', 'PRESSURE'], ['cc:74', 'CC 74 CUTOFF'], ['cc:71', 'CC 71 RESO']];
+const laneRange = (k) => (k === 'pb' ? [-8192, 8191] : [0, 127]);
 
 export class Editor {
   constructor(app, root) {
@@ -29,8 +60,10 @@ export class Editor {
     this.vbar = new ScrollBar(root, 'v', () => {
       const cx = this.ctx, g = this.geomCache; if (!cx || !g || g.drum || cx.t.kind === 'audio') return { pos: 0, view: 1, total: 1 };
       const rows = g.gh / this.pr.rowH;
-      return { pos: 127 - this.pr.top, view: rows, total: 128 };
-    }, (y) => { this.pr.top = Math.round(127 - y); this.canvas.redraw(); });
+      return { pos: this.topRow(), view: rows, total: this.foldList ? this.foldList.length : 128 };
+    }, (y) => { this.pr.top = this.noteAtRow(Math.round(y)); this.canvas.redraw(); });
+    this.qz = loadQz();
+    this.step = { on: false, pos: 0, last: 0, timer: 0 };
     this.bind();
     app.store.on((_p, why) => { if (why !== 'change') this.sel.clear(); this.refresh(); });
   }
@@ -63,14 +96,20 @@ export class Editor {
   }
   change(fn, tag) {
     const { t, clip } = this.ctx;
-    this.app.store.change((p) => { const tr = p.tracks.find((x) => x.id === t.id); fn(tr.clips.find((x) => x.id === clip.id) || tr.slots.find((x) => x && x.id === clip.id)); }, tag);
+    let flat = false;
+    this.app.store.change((p) => {
+      const tr = p.tracks.find((x) => x.id === t.id), c = tr.clips.find((x) => x.id === clip.id) || tr.slots.find((x) => x && x.id === clip.id);
+      if (isMidiFolder(c) && t.kind !== 'audio') { c.notes = compNotes(c); delete c.mtakes; delete c.comp; flat = true; }   // (editing the notes: the comp becomes the clip)
+      fn(c);
+    }, tag);
+    if (flat) this.app.toast('The comp is now the clip\'s notes (the takes are gone; Ctrl+Z brings them back).');
   }
 
   // ---------------------------------------------------------------- bar ---
   renderBar() {
     const c = this.ctx;
     if (!c) { this.bar.replaceChildren(h('label', { text: 'CLIP' })); return; }
-    const { t, clip } = c, sig = this.app.store.p.sig;
+    const { t, clip } = c, sig = barOf(this.app.store.p, clip.start ?? 0).len;   // (the bar where the clip starts)
     const num = (label, value, set, step = 1, title) => {
       const signed = label.startsWith('GAIN') || label.startsWith('FADE');
       const inp = h('input', { type: 'number', value, step, min: signed ? null : step, title, 'aria-label': label,
@@ -90,10 +129,20 @@ export class Editor {
         num('FADE IN ms', Math.round((clip.fadeIn || 0) * 1000), (v) => this.change((cl) => { cl.fadeIn = v / 1000; }), 1),
         num('FADE OUT ms', Math.round((clip.fadeOut || 0) * 1000), (v) => this.change((cl) => { cl.fadeOut = v / 1000; }), 1),
         h('button', { class: 'add', title: 'Raise the gain so the loudest peak reaches -1 dB', onclick: () => { if (peak > 0) this.change((cl) => { cl.gain = Math.round((-1 - 20 * Math.log10(peak)) * 10) / 10; }); } }, 'NORMALIZE'),
+        isFolder(clip) ? null : h('button', { class: 'add' + (this.envOn ? ' on' : ''), 'aria-pressed': String(!!this.envOn), title: 'The clip\'s own volume line, which moves with the clip: click to add points, drag them', onclick: () => { this.envOn = !this.envOn; this.renderBar(); this.canvas.redraw(); } }, clip.env ? `ENVELOPE · ${clip.env.length}` : 'ENVELOPE'),
+        this.envOn && clip.env ? h('button', { class: 'add', title: 'Remove the envelope', onclick: () => this.change((cl) => { delete cl.env; }) }, 'CLEAR') : null,
         ...(isFolder(clip) ? this.takeBar(t, clip) : this.warpBar(t, clip, a, num))].filter(Boolean));
       return;
     }
     this.renderNotesBar(c, name, lenSel, btn, num, sig);
+    if (isMidiFolder(clip)) {                                    // MIDI takes: one everywhere, the lanes, flatten
+      const app = this.app;
+      this.bar.append(h('label', { title: 'Play one take over the whole loop' }, 'TAKE', h('select', { 'aria-label': 'Take', onchange: (e) => { if (e.target.value !== '') app.compTake(t.id, clip.id, +e.target.value); } },
+        h('option', { value: '' }, clip.comp.length > 1 ? `COMP · ${clip.comp.length} PARTS` : `TAKE ${(clip.comp[0]?.k ?? 0) + 1}`),
+        clip.mtakes.map((tk, i) => h('option', { value: i }, `${tk.name || 'TAKE ' + (i + 1)} EVERYWHERE`)))),
+      h('button', { class: 'add' + (app.view.takesOpen?.has(t.id) ? ' on' : ''), title: 'Show the takes under the track: click or swipe a take to put it in the comp', onclick: () => app.toggleTakes(t.id) }, 'TAKE LANES'),
+      h('button', { class: 'add', title: 'Keep the comp\'s notes, drop the takes (undo brings them back)', onclick: () => app.flattenComp(t.id, clip.id) }, 'FLATTEN'));
+    }
   }
   // a take folder: which take plays, the take lanes, flatten
   takeBar(t, clip) {
@@ -114,6 +163,8 @@ export class Editor {
           [['off', 'OFF'], ['repitch', 'RE-PITCH'], ['stretch', 'STRETCH']].map(([v, l]) => h('option', { value: v, selected: (clip.warp || 'off') === v ? true : null }, l)))),
         num('BPM', +(clip.bpm || this.app.store.p.bpm).toFixed(2), (v) => this.app.warpClip(t.id, clip.id, clip.warp || 'off', { bpm: v }), 0.01, 'The tempo the audio was played at'),
         h('button', { class: 'add', title: 'Find the audio\'s tempo', onclick: () => this.app.detectClipBpm(t.id, clip.id) }, 'DETECT'),
+        h('button', { class: 'add', title: 'Warp markers on the attacks near each beat: a loose performance follows the beat (STRETCH)', onclick: () => this.app.autoWarp(t.id, clip.id) }, 'AUTO WARP'),
+        clip.wm?.length ? h('button', { class: 'add', title: 'Remove every warp marker: the audio runs at its tempo again', onclick: () => this.app.warpClip(t.id, clip.id, 'stretch', { markers: [], keepLen: true }) }, `CLEAR ${clip.wm.length} MARKERS`) : null,
         clip.warp === 'stretch' ? num('PITCH st', clip.st || 0, (v) => this.app.warpClip(t.id, clip.id, 'stretch', { st: v }), 1, 'Transpose, length kept') : null,
         h('button', { class: 'add', title: 'A new sampler track with this audio, sliced to pads', onclick: () => this.app.clipToSampler(t.id, clip.id) }, '→ SAMPLER'),
         h('label', { style: { color: 'var(--dim)' }, text: a ? `${a.name} · ${(a.L.length / 44100).toFixed(2)} s · from ${(clip.offset || 0).toFixed(2)} s` : 'Audio missing' })];
@@ -127,12 +178,17 @@ export class Editor {
       [['draw', t.kind === 'drum' ? 'HITS' : 'DRAW'], ...(t.kind === 'drum' ? [['accent', 'ACCENT']] : [['select', 'SELECT']]), ['chance', 'CHANCE'], ['ratchet', 'RATCHET']].map(([v, l]) => h('option', { value: v, selected: (this.tool || 'draw') === v ? true : null }, l)));
     kids.push(h('label', {}, 'TOOL', tool));
     if (isRoll(t)) {
+      const used = Object.keys(clip.ctl || {});
+      kids.push(h('label', { title: 'The lane under the notes: their velocity, or a controller recorded or drawn in the clip (drag: draw; double-click a point: remove)' }, 'LANE',
+        h('select', { 'aria-label': 'Lane', onchange: (e) => { this.lane = e.target.value; e.target.blur(); this.canvas.redraw(); } },
+          [...LANES, ...used.filter((k) => !LANES.some(([x]) => x === k)).map((k) => [k, k.toUpperCase().replace(':', ' ')])].map(([v, l]) => h('option', { value: v, selected: (this.lane || 'vel') === v ? true : null }, (used.includes(v) ? '● ' : '') + l)))));
       kids.push(h('label', {}, 'DRAW', lenSel),
-        btn('QUANTIZE', 'Snap note starts to the grid (Q)', () => this.quantize()),
+        h('span', { class: 'split-btn' }, btn('QUANTIZE', 'Snap note starts to the grid (Q), with the strength and swing set in ▾', () => this.quantize()), btn('▾', 'Quantize strength, swing, note ends · humanize', () => this.quantizeDialog())),
         btn('−12', 'Transpose down an octave', () => this.transpose(-12)),
         btn('+12', 'Transpose up an octave', () => this.transpose(12)),
         btn('×2', 'Double the loop: copy its notes after it', () => this.doubleLoop()),
         btn('LEGATO', 'Stretch each note to the next', () => this.legato()));
+      kids.push(...this.keyBar(t, clip));
       if (this.sel.size) kids.push(...this.inspector(t));
     } else {
       kids.push(btn('×2', 'Double the loop: copy its steps after it', () => this.doubleLoop()),
@@ -141,6 +197,51 @@ export class Editor {
     }
     this.bar.replaceChildren(...kids);
     if (this.sel.size && this.bar.scrollWidth > this.bar.clientWidth + 20) this.bar.querySelector('.insp-sep')?.scrollIntoView({ block: 'nearest', inline: 'start' });   // the note settings in view
+  }
+  // the song's key (rows of the key lit, FOLD: only them), another track's notes behind, step input
+  keyBar(t, clip) {
+    const app = this.app, key = app.store.p.key;
+    const setKey = (k) => app.store.change((p) => { if (k) p.key = k; else delete p.key; });
+    const others = app.store.p.tracks.filter((x) => x.id !== t.id && x.kind !== 'audio' && x.kind !== 'group' && x.kind !== 'vca' && x.clips.some((c) => c.notes?.length));
+    if (this.ghost && !others.some((x) => x.id === this.ghost)) this.ghost = null;
+    return [
+      h('label', { title: 'The song\'s key: its notes are lit in the piano roll; FOLD shows only them' }, 'KEY',
+        h('select', { 'aria-label': 'Key', onchange: (e) => setKey(e.target.value === '' ? null : { root: +e.target.value, sc: key?.sc ?? 0 }) },
+          h('option', { value: '' }, 'OFF'), KEY_NAMES.map((n, i) => h('option', { value: i, selected: key?.root === i ? true : null }, n))),
+        key ? h('select', { 'aria-label': 'Scale', onchange: (e) => setKey({ root: key.root, sc: +e.target.value }) }, SCALES.map(([n], i) => h('option', { value: i, selected: key.sc === i ? true : null }, n))) : null),
+      h('button', { class: 'add' + (this.fold ? ' on' : ''), title: 'FOLD: only the rows of the key (and the notes the clip plays)', 'aria-pressed': String(!!this.fold), onclick: () => { this.fold = !this.fold; this.updateFold(); this.fit(); this.renderBar(); this.canvas.redraw(); } }, 'FOLD'),
+      others.length ? h('label', { title: 'Another track\'s notes, greyed behind these (write a bass under the chords)' }, 'GHOST',
+        h('select', { 'aria-label': 'Ghost notes', onchange: (e) => { this.ghost = e.target.value || null; e.target.blur(); this.canvas.redraw(); } },
+          h('option', { value: '' }, 'OFF'), others.map((x) => h('option', { value: x.id, selected: this.ghost === x.id ? true : null }, x.name)))) : null,
+      h('button', { class: 'add' + (this.step.on ? ' on' : ''), title: 'STEP INPUT: play notes on a MIDI or computer keyboard: each goes in at the cursor, which moves on by the DRAW length (a chord: together). → rest, ← back (removes)', 'aria-pressed': String(this.step.on),
+        onclick: () => { this.step.on = !this.step.on; if (this.step.on) { this.step.pos = Math.max(0, this.snapT(Math.max(0, app.pos - (clip.start ?? 0)) % (clip.loop || clip.len), true)); this.cv.focus(); } this.renderBar(); this.canvas.redraw(); } }, 'STEP'),
+    ].filter(Boolean);
+  }
+  // a note played while STEP is on: in at the cursor; the cursor moves on once the chord is complete
+  stepNote(n, v) {
+    const cx = this.ctx; if (!cx || !isRoll(cx.t) || !this.step.on) return false;
+    const now = performance.now(), loop = cx.clip.loop || cx.clip.len;
+    if (now - this.step.last > 90 && this.step.pending) { this.step.pos = (this.step.pos + this.pr.len) % loop; this.step.pending = false; }
+    this.step.last = now;
+    const at = this.step.pos, d = this.pr.len;
+    this.change((cl) => { cl.notes = cl.notes.filter((x) => !(x.n === n && Math.abs(x.t - at) < 1e-6)); cl.notes.push({ t: at, d, n, v: Math.max(1, Math.min(127, v || 100)) }); }, 'step');
+    this.step.pending = true;
+    clearTimeout(this.step.timer);
+    this.step.timer = setTimeout(() => { if (this.step.pending) { this.step.pos = (this.step.pos + this.pr.len) % loop; this.step.pending = false; this.app.store.endGesture(); this.canvas.redraw(); } }, 140);
+    this.canvas.redraw();
+    return true;
+  }
+  stepMove(dir) {
+    const cx = this.ctx; if (!cx) return;
+    const loop = cx.clip.loop || cx.clip.len;
+    clearTimeout(this.step.timer); this.step.pending = false;
+    if (dir > 0) this.step.pos = (this.step.pos + this.pr.len) % loop;
+    else {
+      this.step.pos = (this.step.pos - this.pr.len + loop) % loop;
+      const at = this.step.pos;
+      this.change((cl) => { cl.notes = cl.notes.filter((x) => Math.abs(x.t - at) > 1e-6); });
+    }
+    this.canvas.redraw();
   }
   // the selected notes: chance, ratchets, micro-timing, parameter locks (SLOOP's step options)
   inspector(t) {
@@ -177,7 +278,30 @@ export class Editor {
   targets() { const { clip } = this.ctx; return this.sel.size ? clip.notes.filter((n) => this.sel.has(n)) : clip.notes; }
   quantize() {
     const g = this.app.view.snap || 0.25;
-    this.change((cl) => { for (const n of cl.notes) if (!this.sel.size || this.sel.has(n)) n.t = Math.round(n.t / g) * g; });
+    this.change((cl) => { quantizeNotes(cl.notes.filter((n) => !this.sel.size || this.sel.has(n)), g, this.qz); keepIn(cl); });
+    if (this.qz.strength < 1 || this.qz.swing || this.qz.ends) this.app.toast(`Quantized: ${Math.round(this.qz.strength * 100)} %${this.qz.swing ? `, swing ${Math.round(this.qz.swing * 100)} %` : ''}${this.qz.ends ? ', ends too' : ''}.`);
+  }
+  humanize() {
+    const ns = (cl) => cl.notes.filter((n) => !this.sel.size || this.sel.has(n));
+    this.change((cl) => { humanizeNotes(ns(cl), this.qz.hTime, this.qz.hVel, this.app.store.p.bpm, Date.now()); keepIn(cl); });
+  }
+  // QUANTIZE ▾: how hard, swing, the ends; HUMANIZE
+  quantizeDialog() {
+    const q = this.qz, save = () => { try { localStorage.setItem(QZ_KEY, JSON.stringify(q)); } catch { /* */ } };
+    const range = (label, key, min, max, step, fmtf) => {
+      const out = h('b', { text: fmtf(q[key]) });
+      return h('label', { class: 'qz-row' }, h('span', { text: label }), h('input', { type: 'range', min, max, step, value: q[key], 'aria-label': label, oninput: (e) => { q[key] = +e.target.value; out.textContent = fmtf(q[key]); save(); } }), out);
+    };
+    const grid = this.app.view.snap || 0.25, gname = { 0.125: '1/32', 0.25: '1/16', 0.5: '1/8', 1: '1/4', 2: '1/2', 4: '1 BAR' }[grid] || `${grid} beat`;
+    this.app.modal('Quantize & humanize', [
+      h('p', { class: 'hint', text: `To the grid of the top bar (${gname}), ${this.sel.size ? `the ${this.sel.size} selected notes` : 'every note of the clip'}.` }),
+      range('STRENGTH', 'strength', 0, 1, 0.05, (v) => `${Math.round(v * 100)} %`),
+      range('SWING', 'swing', 0, 0.75, 0.05, (v) => `${Math.round(v * 100)} %`),
+      h('label', { class: 'qz-row' }, h('span', { text: 'NOTE ENDS TOO' }), h('input', { type: 'checkbox', checked: q.ends ? true : null, onchange: (e) => { q.ends = e.target.checked; save(); } })),
+      h('hr'),
+      range('HUMANIZE TIMING', 'hTime', 0, 40, 1, (v) => `± ${v} ms`),
+      range('HUMANIZE VELOCITY', 'hVel', 0, 40, 1, (v) => `± ${v}`),
+    ], [['Humanize', () => this.humanize()], ['Cancel'], ['Quantize', () => this.quantize(), true]]).box.classList.add('qz-dlg');
   }
   transpose(d) { this.change((cl) => { for (const n of cl.notes) if (!this.sel.size || this.sel.has(n)) n.n = Math.max(0, Math.min(127, n.n + d)); }, 'tr'); }
   doubleLoop() {
@@ -196,6 +320,7 @@ export class Editor {
 
   // ----------------------------------------------------------- geometry ---
   geom() {
+    this.updateFold();
     const [w, h0] = this.canvas.size(), drum = this.ctx?.t.kind === 'drum', hh = h0 - CRUL;   // below the length strip
     const lanes = this.app.lib.sloop.lanes;
     return drum ? { w, hh, gx: w < 600 ? 54 : 70, gh: hh, rowH: Math.max(10, Math.min(28, hh / lanes.length)), drum }
@@ -203,8 +328,28 @@ export class Editor {
   }
   tx(t) { return this.geomCache.gx + t * this.pr.zoom - this.pr.sx; }
   xt(x) { return (x - this.geomCache.gx + this.pr.sx) / this.pr.zoom; }
-  ny(n) { return (this.pr.top - n) * this.pr.rowH; }
-  yn(y) { return this.pr.top - Math.floor(y / this.pr.rowH); }
+  // the roll's rows, top to bottom: every note, or (FOLD) the notes of the key and the ones the clip plays
+  updateFold() {
+    if (this.foldHold) return;                                   // (a drag: the rows stay as they were when it began)
+    const cx = this.ctx, key = this.app.store.p.key;
+    if (!this.fold || !cx || !isRoll(cx.t)) { this.foldList = null; return; }
+    const used = new Set(cx.clip.notes.map((n) => n.n)), list = [];
+    for (let n = 127; n >= 0; n--) if ((key ? inKey(key, n) : false) || used.has(n) || (!key && n % 12 === 0)) list.push(n);
+    this.foldList = list.length ? list : null;
+    this.foldIdx = new Map(this.foldList?.map((n, i) => [n, i]));
+  }
+  rowOf(n) {
+    if (!this.foldList) return 127 - n;
+    const i = this.foldIdx.get(n);
+    if (i !== undefined) return i;
+    const j = this.foldList.findIndex((x) => x < n); return j < 0 ? this.foldList.length - 0.5 : j - 0.5;   // (between two rows)
+  }
+  topRow() { if (!this.foldList) return 127 - this.pr.top; const j = this.foldList.findIndex((x) => x <= this.pr.top); return j < 0 ? this.foldList.length - 1 : j; }
+  noteAtRow(r) { if (!this.foldList) return Math.max(0, Math.min(127, 127 - r)); return this.foldList[Math.max(0, Math.min(this.foldList.length - 1, r))]; }
+  // a note moved by rows (up: +), along the rows shown
+  shiftNote(n, rows) { if (!this.foldList) return Math.max(0, Math.min(127, n + rows)); return this.noteAtRow(Math.round(this.rowOf(n)) - rows); }
+  ny(n) { return (this.rowOf(n) - this.topRow()) * this.pr.rowH; }
+  yn(y) { return this.noteAtRow(this.topRow() + Math.floor(y / this.pr.rowH)); }
   snapT(t, floor) { const g = this.app.view.snap || 1 / 64; return (floor ? Math.floor(t / g) : Math.round(t / g)) * g; }
 
   // --------------------------------------------------------------- draw ---
@@ -214,7 +359,7 @@ export class Editor {
     if (!cx) { this.hbar?.update(); this.vbar?.update(); return; }
     const g = (this.geomCache = this.geom());
     if (!this.pr.zoom) this.fit();
-    if (cx.t.kind === 'audio') { this.drawAudio(c, cx, w, hh); this.hbar.update(); this.vbar.update(); return; }
+    if (cx.t.kind === 'audio') { this.drawAudio(c, cx, w, hh); if (this.envOn) this.drawEnv(c, cx, w, hh); this.hbar.update(); this.vbar.update(); return; }
     c.save(); c.translate(0, CRUL); c.beginPath(); c.rect(0, 0, w, g.hh); c.clip();
     if (g.drum) this.drawDrums(c, cx, g); else this.drawRoll(c, cx, g);
     c.restore();
@@ -224,7 +369,7 @@ export class Editor {
   // the length strip, above the grid: the clip as a block with two handles to drag, like the arrangement's clips.
   // Orange, on top: the LOOP (the notes repeat every…). White, below: the clip's LENGTH.
   drawStrip(c, { t, clip }, g) {
-    const sig = this.app.store.p.sig, loop = clip.loop || clip.len, len = clip.len;
+    const sig = barOf(this.app.store.p, clip.start ?? 0).len, loop = clip.loop || clip.len, len = clip.len;
     const x0 = this.tx(0), lx = this.tx(loop), ex = this.tx(len), hot = this.stripHot;
     const bars = (v) => { const b = +(v / sig).toFixed(2); return `${b} BAR${b === 1 ? '' : 'S'}`; };
     c.fillStyle = '#131517'; c.fillRect(0, 0, g.w, CRUL);
@@ -287,7 +432,7 @@ export class Editor {
     });
   }
   gridLines(c, g, loop, len, top, bottom) {
-    const sig = this.app.store.p.sig, step = this.pr.zoom >= 60 ? 0.25 : this.pr.zoom >= 24 ? 0.5 : 1;
+    const sig = barOf(this.app.store.p, this.ctx?.clip?.start ?? 0).len, step = this.pr.zoom >= 60 ? 0.25 : this.pr.zoom >= 24 ? 0.5 : 1;
     for (let t = 0; t <= len + 1e-9; t += step) {
       const x = Math.round(this.tx(t)) + 0.5;
       if (x < g.gx || x > g.w) continue;
@@ -313,15 +458,32 @@ export class Editor {
   }
   drawRoll(c, { t, clip }, g) {
     const loop = clip.loop || clip.len, len = clip.len, rh = this.pr.rowH;
-    // rows
-    for (let n = 127; n >= 0; n--) {
+    // rows (the song's key: its rows lit, its root marked)
+    const key = this.app.store.p.key, rows = this.foldList || [...Array(128)].map((_, i) => 127 - i);
+    for (const n of rows) {
       const y = this.ny(n);
       if (y + rh < 0 || y > g.gh) continue;
-      c.fillStyle = BLACK.includes(n % 12) ? '#0f1113' : '#14171a';
+      const ink = key && inKey(key, n), root = key && ((n - key.root) % 12 + 12) % 12 === 0;
+      c.fillStyle = key ? (root ? '#1d2126' : ink ? '#171a1e' : '#0c0d0f') : BLACK.includes(n % 12) ? '#0f1113' : '#14171a';
       c.fillRect(g.gx, y, g.w - g.gx, rh);
-      if (n % 12 === 0) { c.fillStyle = '#262a2f'; c.fillRect(g.gx, y + rh - 1, g.w - g.gx, 1); }
+      if (this.foldList || n % 12 === (key ? key.root : 0)) { c.fillStyle = '#262a2f'; c.fillRect(g.gx, y + rh - 1, g.w - g.gx, 1); }
     }
     this.gridLines(c, g, loop, len, 0, g.gh);
+    // another track's notes, greyed (GHOST)
+    const gt = this.ghost && this.app.store.track(this.ghost);
+    if (gt && clip.start !== undefined) {
+      c.strokeStyle = '#8a9097'; c.lineWidth = 1;
+      for (const gc of gt.clips) {
+        if (!gc.notes || gc.start >= clip.start + len || gc.start + gc.len <= clip.start) continue;
+        for (const n of unrollNotes(gc)) {
+          const lt = gc.start + n.t - clip.start;
+          if (lt < 0 || lt >= len) continue;
+          const x = this.tx(lt), y = this.ny(n.n), wd = Math.max(3, Math.min(n.d, len - lt) * this.pr.zoom - 1);
+          if (x > g.w || x + wd < g.gx || y > g.gh || y + rh < 0 || !Number.isInteger(this.rowOf(n.n))) continue;
+          c.globalAlpha = 0.35; c.fillStyle = gt.color; c.fillRect(x, y + 2, wd, rh - 4); c.globalAlpha = 0.8; c.strokeRect(x + 0.5, y + 1.5, wd - 1, rh - 3); c.globalAlpha = 1;
+        }
+      }
+    }
     // notes (ghosts after the loop)
     c.font = '600 8px "IBM Plex Mono", monospace'; c.textBaseline = 'middle';
     for (let base = 0; base < len; base += loop) {
@@ -338,26 +500,32 @@ export class Editor {
         if (!ghost) { c.fillStyle = '#0b0c0d'; c.fillRect(x + wd - 2, y + 3, 1, rh - 6); if (wd > 26 && rh >= 10) c.fillText(noteName(n.n), x + 3, y + rh / 2); }
       }
     }
+    if (this.step.on) {                                         // the step input cursor
+      const x = Math.round(this.tx(this.step.pos)), w2 = Math.max(2, this.pr.len * this.pr.zoom);
+      c.fillStyle = '#ffc21a22'; c.fillRect(x, 0, w2, g.gh); c.fillStyle = '#ffc21a'; c.fillRect(x, 0, 2, g.gh);
+    }
     if (this.band) {
       const b = this.band; c.strokeStyle = '#fff'; c.setLineDash([3, 3]);
       c.strokeRect(Math.min(b.x0, b.x1) + 0.5, Math.min(b.y0, b.y1) + 0.5, Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0)); c.setLineDash([]);
     }
     this.playhead(c, g, clip, 0, g.hh);
-    // keyboard
-    for (let n = 127; n >= 0; n--) {
+    // keyboard (out of the key: dimmed; folded: every row named)
+    for (const n of rows) {
       const y = this.ny(n);
       if (y + rh < 0 || y > g.gh) continue;
-      const black = BLACK.includes(n % 12);
-      c.fillStyle = this.held === n ? t.color : black ? '#1d2023' : '#d6d7d4';
-      c.fillRect(0, y, KEYW - 2, rh - (black ? 1 : 0));
+      const black = BLACK.includes(n % 12), out = key && !inKey(key, n);
+      c.fillStyle = this.held === n ? t.color : black ? '#1d2023' : out ? '#7d807d' : '#d6d7d4';
+      c.fillRect(0, y, KEYW - 2, rh - (black || this.foldList ? 1 : 0));
       if (!black) { c.fillStyle = '#9b9e9b'; c.fillRect(0, y + rh - 1, KEYW - 2, 1); }
-      if (n % 12 === 0) { c.fillStyle = '#131415'; c.font = '600 8px "IBM Plex Mono", monospace'; c.fillText(noteName(n), 4, y + rh / 2); }
+      if (n % 12 === 0 || (this.foldList && rh >= 10) || (key && ((n - key.root) % 12 + 12) % 12 === 0)) { c.fillStyle = black ? '#c9ccc9' : '#131415'; c.font = '600 8px "IBM Plex Mono", monospace'; c.fillText(noteName(n), 4, y + rh / 2); }
     }
-    // velocity lane
+    // velocity lane, or a controller lane
     const vy = g.gh;
     c.fillStyle = '#0e1011'; c.fillRect(0, vy, g.w, VELH);
     c.fillStyle = '#23272b'; c.fillRect(0, vy, g.w, 1);
-    c.fillStyle = '#737980'; c.font = '700 8px Archivo, sans-serif'; c.fillText('VEL', 10, vy + VELH / 2);
+    const lane = this.lane || 'vel';
+    c.fillStyle = '#737980'; c.font = '700 8px Archivo, sans-serif'; c.fillText(lane === 'vel' ? 'VEL' : ({ 'cc:64': 'SUS', 'cc:1': 'MOD', pb: 'BEND', 'cc:11': 'EXPR', 'cc:7': 'VOL', cp: 'PRESS', 'cc:74': 'CC74', 'cc:71': 'CC71' }[lane] || lane.toUpperCase().replace('CC:', 'CC')), 4, vy + VELH / 2);
+    if (lane !== 'vel') { this.drawCtl(c, t, clip, lane, vy, g); return; }
     for (const n of clip.notes) {
       if (n.t >= loop) continue;
       const x = this.tx(n.t); if (x < g.gx || x > g.w) continue;
@@ -394,6 +562,7 @@ export class Editor {
   }
   drawAudio(c, { t, clip }, w, hh) {
     if (isFolder(clip)) return this.drawFolder(c, t, clip, w, hh);
+    if (clip.warp === 'stretch' && this.app.assets.get(clip.orig)) return this.drawWarp(c, t, clip, w, hh);
     const a = this.app.assets.get(clip.src);
     if (!a) return;
     const total = a.L.length / 44100, spb = 60 / this.app.store.p.bpm;
@@ -416,6 +585,122 @@ export class Editor {
     c.fillStyle = '#9aa0a6'; c.font = '500 9px "IBM Plex Mono", monospace';
     c.fillText('Grey: outside the clip. Drag the clip edges in the arrangement to trim.', 14, hh - 4);
   }
+  // the clip's gain envelope over its audio: beats of the clip across, dB up (+12 at the top, -36 at the bottom)
+  envGeom(clip, w, hh) {
+    let bx;
+    if (clip.warp === 'stretch' && this.app.assets.get(clip.orig)) bx = this.warpGeom(clip, w).x;
+    else {
+      const a = this.app.assets.get(clip.src); if (!a) return null;
+      const total = a.L.length / 44100, spb = 60 / this.app.store.p.bpm, rate = clip.warp === 'repitch' && clip.bpm ? this.app.store.p.bpm / clip.bpm : 1;
+      bx = (b) => 12 + ((clip.offset || 0) + b * spb * rate) / total * (w - 24);
+    }
+    const x0 = bx(0), x1 = bx(clip.len), top = 26, bot = hh - 18;
+    return { bx, xb: (px) => Math.max(0, Math.min(clip.len, (px - x0) / (x1 - x0) * clip.len)), vy: (db) => top + (12 - Math.max(-36, db)) / 48 * (bot - top), yv: (y) => Math.max(-60, Math.min(12, 12 - (y - top) / (bot - top) * 48)), top, bot };
+  }
+  drawEnv(c, { clip }, w, hh) {
+    const G = this.envGeom(clip, w, hh); if (!G) return;
+    const pts = clip.env?.length ? clip.env : [{ t: 0, v: 0 }, { t: clip.len, v: 0 }];
+    c.fillStyle = '#ffffff0d'; c.fillRect(G.bx(0), G.vy(0), G.bx(clip.len) - G.bx(0), 1);
+    c.strokeStyle = '#ffc21a'; c.lineWidth = 1.5; c.beginPath();
+    c.moveTo(G.bx(0), G.vy(pts[0].v));
+    for (const q of pts) c.lineTo(G.bx(q.t), G.vy(q.v));
+    c.lineTo(G.bx(clip.len), G.vy(pts.at(-1).v)); c.stroke(); c.lineWidth = 1;
+    if (clip.env) for (const q of clip.env) { c.fillStyle = '#0b0c0d'; c.beginPath(); c.arc(G.bx(q.t), G.vy(q.v), 4, 0, 7); c.fill(); c.strokeStyle = '#ffc21a'; c.stroke(); }
+    c.fillStyle = '#ffc21a'; c.font = '600 9px "IBM Plex Mono", monospace';
+    c.fillText('ENVELOPE · 0 dB', G.bx(0) + 4, G.vy(0) - 4);
+    if (this.envHot) c.fillText(`${this.envHot.v > 0 ? '+' : ''}${this.envHot.v.toFixed(1)} dB`, Math.min(w - 70, G.bx(this.envHot.t) + 8), G.vy(this.envHot.v) - 6);
+  }
+  envDown(e, { clip }, x, y, raw) {
+    const [w, hh] = this.canvas.size(), G = this.envGeom(clip, w, hh); if (!G) return;
+    const pts = clip.env || [];
+    let i = pts.findIndex((q) => Math.abs(G.bx(q.t) - x) < 8 && Math.abs(G.vy(q.v) - y) < 8);
+    const now = performance.now();
+    if (i >= 0 && this.envLast && this.envLast.i === i && now - this.envLast.at < 400) {     // a double click: the point goes
+      this.change((cl) => { cl.env.splice(i, 1); if (!cl.env.length) delete cl.env; }); this.envLast = null; return;
+    }
+    const tag = 'env' + Math.random();
+    if (i < 0) {
+      const q = { t: G.xb(x), v: Math.round(G.yv(y) * 10) / 10 };
+      this.change((cl) => {
+        if (!cl.env) cl.env = [{ t: 0, v: 0 }, { t: cl.len, v: 0 }].filter((p) => Math.abs(p.t - q.t) > 1e-3);
+        cl.env.push(q); cl.env.sort((a, b) => a.t - b.t); i = cl.env.indexOf(q);
+      }, tag);
+    }
+    this.envLast = { i, at: now };
+    dragPointer(e, (m) => {
+      const [mx, my] = raw(m);
+      this.change((cl) => { const q = cl.env?.[i]; if (!q) return; q.t = G.xb(mx); q.v = Math.round(G.yv(my) * 10) / 10; this.envHot = q; cl.env.sort((a, b) => a.t - b.t); i = cl.env.indexOf(q); }, tag);
+    }, () => { this.envHot = null; this.app.store.endGesture(); this.canvas.redraw(); this.renderBar(); });
+  }
+  // a stretched clip, on the song's beats: its audio laid along its warp markers, the attacks, the markers to drag
+  warpGeom(clip, w) {
+    const songBpm = this.app.store.p.bpm, off = (clip.offset || 0) * songBpm / 60;        // (the clip starts this many beats into the file)
+    const x = (b) => 12 + (b / clip.len) * (w - 24), b = (px) => ((px - 12) / (w - 24)) * clip.len;
+    return { off, x, b, markers: this.wmDrag?.clip === clip.id ? this.wmDrag.markers : clip.wm || [] };
+  }
+  drawWarp(c, t, clip, w, hh) {
+    const a = this.app.assets.get(clip.orig), bpm = clip.bpm || this.app.store.p.bpm, sig = barOf(this.app.store.p, clip.start ?? 0).len;
+    const { off, x, markers } = this.warpGeom(clip, w);
+    const top = 24, mid = (top + hh - 14) / 2, amp = (hh - 14 - top) / 2 - 2, g = Math.pow(10, (clip.gain || 0) / 20);
+    c.fillStyle = '#131517'; c.fillRect(12, top, w - 24, hh - 14 - top);
+    for (let k = 0; k <= Math.ceil(clip.len); k++) { c.fillStyle = k % sig ? '#1d2124' : '#2f343a'; c.fillRect(Math.round(x(k)), top, 1, hh - 14 - top); }
+    const B = this.warpGeom(clip, w).b;
+    for (let px = 12; px < w - 12; px++) {
+      const s0 = srcAt(off + B(px), markers, bpm), s1 = srcAt(off + B(px + 1), markers, bpm);
+      let m = 0;
+      for (let i = Math.max(0, Math.floor(s0 * 44100 / 256)); i <= Math.floor(s1 * 44100 / 256) && i < a.peaks.length; i++) m = Math.max(m, a.peaks[i]);
+      const hgt = Math.min(1, m * g) * amp;
+      c.fillStyle = t.color; c.fillRect(px, mid - hgt, 1, hgt * 2 || 1);
+    }
+    // the attacks (thin), the markers (orange, a handle on top)
+    c.fillStyle = 'rgba(255,255,255,0.28)';
+    for (const s of this.wTrans || []) { const px = x(beatAt(s, markers, bpm) - off); if (px >= 12 && px <= w - 12) c.fillRect(Math.round(px), top, 1, 6); }
+    for (const m of markers) {
+      const px = x(m.b - off); if (px < 6 || px > w - 6) continue;
+      const hot = this.wmHot === m || this.wmDrag?.m === m;
+      c.fillStyle = hot ? '#fff' : '#ff5b14';
+      c.fillRect(Math.round(px), top, 1.5, hh - 14 - top);
+      c.beginPath(); c.moveTo(px - 6, 6); c.lineTo(px + 6, 6); c.lineTo(px, 18); c.closePath(); c.fill();
+    }
+    const pos = this.app.pos - clip.start;
+    if (pos >= 0 && pos <= clip.len) { c.fillStyle = '#fff'; c.fillRect(Math.round(x(pos)), top, 1, hh - 14 - top); }
+    c.fillStyle = '#9aa0a6'; c.font = '500 9px "IBM Plex Mono", monospace';
+    c.fillText(markers.length ? 'Drag a marker (▼) to move that beat · double-click: add a marker · double-click a marker: remove it · Shift: no snap'
+      : 'Double-click on the audio: a warp marker (on the nearest attack), then drag it onto its beat · AUTO WARP: all at once', 14, hh - 3);
+    if (this.wTransFor !== clip.orig) { this.wTransFor = clip.orig; this.wTrans = null; this.wTransAsked = null; }
+    if (!this.wTrans && !this.wTransAsked) { this.wTransAsked = clip.orig; this.app.transientsOf(clip.orig).then((tr) => { this.wTrans = tr; this.wTransAsked = null; this.canvas.redraw(); }); }
+  }
+  // a pointer on a stretched clip: a marker grabbed, moved (snapped to the grid), or added / removed by a double-click
+  warpDown(e, cx, x0, y0, raw) {
+    const clip = cx.clip, w = this.cv.clientWidth, G = this.warpGeom(clip, w), bpm = clip.bpm || this.app.store.p.bpm;
+    const hit = (G.markers).find((m) => Math.abs(G.x(m.b - G.off) - x0) < 7);
+    const commit = (markers) => { this.wmDrag = null; this.app.warpClip(cx.t.id, clip.id, 'stretch', { markers, keepLen: true }); };
+    if (!hit) return;
+    const markers = G.markers.map((m) => ({ ...m })), m = markers[G.markers.indexOf(hit)], i = markers.indexOf(m);
+    this.wmDrag = { clip: clip.id, markers, m };
+    const lo = i > 0 ? markers[i - 1].b + 1 / 16 : -Infinity, hi = i < markers.length - 1 ? markers[i + 1].b - 1 / 16 : Infinity;
+    dragPointer(e, (ev) => {
+      const [x] = raw(ev);
+      let b = G.off + G.b(x);
+      if (!ev.shiftKey) b = Math.round(b * 4) / 4;                    // (on the sixteenths)
+      m.b = Math.max(lo, Math.min(hi, b));
+      this.canvas.redraw();
+    }, () => commit(markers));
+  }
+  // a double-click: the marker under it removed, or one added (on the nearest attack, if one is that close)
+  warpDbl(cx, x0) {
+    const clip = cx.clip, w = this.cv.clientWidth, G = this.warpGeom(clip, w), bpm = clip.bpm || this.app.store.p.bpm;
+    const hit = G.markers.find((m) => Math.abs(G.x(m.b - G.off) - x0) < 7);
+    let markers;
+    if (hit) markers = G.markers.filter((m) => m !== hit);
+    else {
+      let s = srcAt(G.off + G.b(x0), G.markers, bpm);
+      const near = (this.wTrans || []).reduce((best, t) => (Math.abs(t - s) < Math.abs(best - s) ? t : best), Infinity);
+      if (Math.abs(near - s) < 0.03) s = near;
+      markers = cleanMarkers([...G.markers, { s, b: beatAt(s, G.markers, bpm) }]);
+    }
+    this.app.warpClip(cx.t.id, clip.id, 'stretch', { markers, keepLen: true });
+  }
   // chance (a dotted top and its %), ratchets (ticks), locks (a dot), micro-timing (an arrow)
   marks(c, n, x, y, w, hh) {
     c.fillStyle = '#0b0c0d';
@@ -436,9 +721,10 @@ export class Editor {
     for (let l = 0; l < lib.lanes.length; l++) {
       const y = l * rh;
       c.fillStyle = l % 2 ? '#111315' : '#14171a'; c.fillRect(0, y, g.w, rh);
-      c.fillStyle = this.held === lib.laneNotes[l] ? t.color : '#737980';
+      const u = t.pads?.[lib.laneNotes[l]];                 // a pad with your sample: its name, in yellow
+      c.fillStyle = this.held === lib.laneNotes[l] ? t.color : u ? '#ffc21a' : '#737980';
       c.font = '700 9px Archivo, sans-serif'; c.textBaseline = 'middle';
-      c.fillText(lib.lanes[l].toUpperCase(), 10, y + rh / 2);
+      c.fillText(u ? u.name.toUpperCase().slice(0, Math.max(4, Math.floor((g.gx - 14) / 6.5))) : lib.lanes[l].toUpperCase(), 10, y + rh / 2);
     }
     this.gridLines(c, g, loop, loop, 0, lib.lanes.length * rh);
     const cw = this.pr.zoom / 4;
@@ -473,7 +759,7 @@ export class Editor {
       const cx = this.ctx; if (!cx || e.button !== 0 || this.pinch) return;
       cv.focus();
       const g = (this.geomCache = this.geom());
-      if (cx.t.kind === 'audio') return;
+      if (cx.t.kind === 'audio') { const [x, y] = raw(e); if (this.envOn && !isFolder(cx.clip)) this.envDown(e, cx, x, y, raw); else if (cx.clip.warp === 'stretch' && cx.clip.orig) this.warpDown(e, cx, x, y, raw); return; }
       const [x, y] = local(e);
       if (y < 0) return this.stripDown(e, cx, g, x, y + CRUL, local);
       // a finger: wait a moment, in case a second one comes (two fingers scroll and zoom, they don't draw)
@@ -498,7 +784,7 @@ export class Editor {
       const g = (this.geomCache = this.geom()), [x, y] = local(e);
       if (g.drum) return this.drumDown(e, cx, g, x, y, local);
       if (x < KEYW && y < g.gh) { this.audition(this.yn(y), e); return; }
-      if (y >= g.gh) return this.velDown(e, cx, local);
+      if (y >= g.gh) return (this.lane || 'vel') === 'vel' ? this.velDown(e, cx, local) : this.ctlDown(e, cx, local);
       if (e.pointerType === 'touch') {                            // a finger: a double tap on a note removes it
         const hit = this.hitNote(cx.clip, x, y), now = performance.now();
         if (hit && this.lastTap?.n === hit.n && now - this.lastTap.at < 380) {
@@ -511,7 +797,10 @@ export class Editor {
       this.rollDown(e, cx, g, x, y, local);
     };
     cv.addEventListener('dblclick', (e) => {
-      const cx = this.ctx; if (!cx || !isRoll(cx.t)) return;
+      const cx = this.ctx;
+      if (cx?.t.kind === 'audio' && this.envOn) return;
+      if (cx?.t.kind === 'audio' && cx.clip.warp === 'stretch' && cx.clip.orig) { this.warpDbl(cx, raw(e)[0]); return; }
+      if (!cx || !isRoll(cx.t)) return;
       const [x, y] = local(e), hit = this.hitNote(cx.clip, x, y);
       if (hit) { this.change((cl) => { cl.notes = cl.notes.filter((n) => n !== hit.n); }); this.sel.delete(hit.n); }
     });
@@ -528,6 +817,13 @@ export class Editor {
       if (hot !== (this.stripHot || null)) { this.stripHot = hot; this.canvas.redraw(); }
       cv.title = y < 0 && cx.t.kind !== 'audio' ? 'Drag the white handle to change the clip length, the orange one to change the loop (Shift: finer)' : '';
       if (y < 0 && cx.t.kind !== 'audio') { cv.style.cursor = hot ? 'ew-resize' : 'default'; return; }
+      if (cx.t.kind === 'audio' && this.envOn) { cv.style.cursor = 'crosshair'; cv.title = 'Click: a point · drag: move it · double-click a point: remove it'; return; }
+      if (cx.t.kind === 'audio' && cx.clip.warp === 'stretch' && cx.clip.orig) {
+        const G = this.warpGeom(cx.clip, cv.clientWidth), rx = raw(e)[0], hot = G.markers.find((m) => Math.abs(G.x(m.b - G.off) - rx) < 7) || null;
+        if (hot !== (this.wmHot || null)) { this.wmHot = hot; this.canvas.redraw(); }
+        cv.style.cursor = hot ? 'ew-resize' : 'copy'; cv.title = hot ? 'Drag: move this beat · double-click: remove the marker' : 'Double-click: a warp marker here';
+        return;
+      }
       if (cx.t.kind === 'audio' || g.drum || y >= g.gh || x < KEYW) { cv.style.cursor = g.drum ? 'pointer' : 'default'; return; }
       const hit = this.hitNote(cx.clip, x, y);
       cv.style.cursor = hit ? (hit.edge ? 'ew-resize' : 'move') : 'crosshair';
@@ -541,7 +837,7 @@ export class Editor {
         this.pr.zoom = Math.max(8, Math.min(400, this.pr.zoom * Math.pow(1.0018, -e.deltaY)));
         this.pr.sx = Math.max(0, t * this.pr.zoom - (x - this.geomCache.gx));
       } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) this.pr.sx = Math.max(0, this.pr.sx + (e.deltaX || e.deltaY));
-      else if (isRoll(cx.t)) this.pr.top = Math.max(20, Math.min(127, this.pr.top - Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 30))));
+      else if (isRoll(cx.t)) { const k = Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 30)); this.pr.top = this.foldList ? this.noteAtRow(this.topRow() + k) : Math.max(20, Math.min(127, this.pr.top - k)); }
       this.canvas.redraw();
     }, { passive: false });
     cv.addEventListener('keydown', (e) => this.key(e));
@@ -566,7 +862,7 @@ export class Editor {
       const zoom = drum ? this.pr.zoom : Math.max(8, Math.min(400, g.zoom0 * Math.hypot(a.x - b.x, a.y - b.y) / g.d0));
       const beat = (g.cx0 - gx + g.sx0) / g.zoom0;
       this.pr.zoom = zoom; this.pr.sx = Math.max(0, beat * zoom - (cx - gx));
-      if (!drum) this.pr.top = Math.max(20, Math.min(127, g.top0 + Math.round((cy - g.cy0) / this.pr.rowH)));
+      if (!drum) { const k = Math.round((cy - g.cy0) / this.pr.rowH); this.pr.top = this.foldList ? this.noteAtRow(this.rowOf(g.top0) - k) : Math.max(20, Math.min(127, g.top0 + k)); }
       this.canvas.redraw();
     });
     const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2) this.pinch = null; };
@@ -585,7 +881,7 @@ export class Editor {
   }
   audition(n, e) {
     const cx = this.ctx; if (!cx) return;
-    this.app.noteOn(cx.t.id, n, 100);
+    this.app.noteOn(cx.t.id, n, 100, false, true);
     this.held = n; this.canvas.redraw();
     const up = () => { this.app.noteOff(cx.t.id, n); this.held = null; this.canvas.redraw(); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointerup', up);
@@ -608,7 +904,7 @@ export class Editor {
       if (nt.t >= (clip.loop || clip.len)) return;
       this.change((cl) => cl.notes.push(nt), tag);
       this.sel.clear(); this.sel.add(nt);
-      this.app.noteOn(t.id, nt.n, 100);
+      this.app.noteOn(t.id, nt.n, 100, false, true);
       const t0 = nt.t;
       dragPointer(e, (m) => {
         const [mx] = local(m);
@@ -628,24 +924,63 @@ export class Editor {
       n = map.get(n); this.sel = new Set(copies);
     }
     const start = [...this.sel].map((s) => ({ s, t: s.t, n: s.n, d: s.d }));
-    const t0 = this.xt(x), n0 = this.yn(y);
+    const t0 = this.xt(x), r0 = Math.floor(y / this.pr.rowH);
+    this.foldHold = true;
     let lastPitch = n.n;
-    this.app.noteOn(t.id, n.n, n.v);
+    this.app.noteOn(t.id, n.n, n.v, false, true);
     const loop = clip.loop || clip.len;
     dragPointer(e, (m) => {
       const [mx, my] = local(m);
-      const dt = this.xt(mx) - t0, dn = this.yn(my) - n0;
+      const dt = this.xt(mx) - t0, dn = r0 - Math.floor(my / this.pr.rowH);      // rows up
       this.change(() => {
         for (const o of start) {
           if (hit.edge) o.s.d = Math.max(this.app.view.snap || 1 / 32, this.snapT(o.t + o.d + dt) - o.t);
           else {
             o.s.t = Math.max(0, Math.min(loop - 1 / 64, this.snapT(o.t + dt)));
-            o.s.n = Math.max(0, Math.min(127, o.n + dn));
+            o.s.n = this.shiftNote(o.n, dn);
           }
         }
       }, tag);
-      if (!hit.edge && n.n !== lastPitch) { this.app.noteOff(t.id, lastPitch); lastPitch = n.n; this.app.noteOn(t.id, n.n, n.v); }
-    }, () => { this.app.noteOff(t.id, lastPitch); this.app.store.endGesture(); });
+      if (!hit.edge && n.n !== lastPitch) { this.app.noteOff(t.id, lastPitch); lastPitch = n.n; this.app.noteOn(t.id, n.n, n.v, false, true); }
+    }, () => { this.foldHold = false; this.app.noteOff(t.id, lastPitch); this.app.store.endGesture(); this.canvas.redraw(); });
+  }
+  // a controller lane: its values as steps (a value holds until the next), its points
+  drawCtl(c, t, clip, key, vy, g) {
+    const [lo, hi] = laneRange(key), pts = clip.ctl?.[key] || [], loop = clip.loop || clip.len;
+    const yv = (v) => vy + VELH - 4 - ((v - lo) / (hi - lo)) * (VELH - 8);
+    if (key === 'pb') { c.fillStyle = '#2f343a'; c.fillRect(g.gx, Math.round(yv(0)), g.w - g.gx, 1); }
+    if (!pts.length) { c.fillStyle = '#5b6066'; c.fillText('drag here to draw', g.gx + 8, vy + VELH / 2); return; }
+    c.strokeStyle = t.color; c.lineWidth = 1.5; c.beginPath();
+    pts.forEach((q, i) => { const x = this.tx(q.t), y = yv(q.v); if (!i) c.moveTo(Math.max(g.gx, x), y); else c.lineTo(x, y); const nx = i + 1 < pts.length ? this.tx(pts[i + 1].t) : this.tx(loop); c.lineTo(nx, y); });
+    c.stroke(); c.lineWidth = 1;
+    c.fillStyle = t.color;
+    for (const q of pts) { const x = this.tx(q.t); if (x >= g.gx - 3 && x <= g.w) c.fillRect(x - 2, yv(q.v) - 2, 5, 5); }
+  }
+  // draw a controller: a drag paints a point per grid step (an existing point at that step takes the value);
+  // a double-click on a point removes it
+  ctlDown(e, { clip }, local) {
+    const key = this.lane, [lo, hi] = laneRange(key), g = this.geomCache, tag = 'ctl' + Math.random(), loop = clip.loop || clip.len;
+    const val = (my) => Math.round(lo + Math.max(0, Math.min(1, 1 - (my - g.gh - 4) / (VELH - 8))) * (hi - lo));
+    const grid = Math.max(1 / 32, this.app.view.snap || 1 / 16);
+    const [mx0] = local(e), now = performance.now(), b0 = this.xt(mx0);
+    const hitPt = (clip.ctl?.[key] || []).findIndex((q) => Math.abs(this.tx(q.t) - mx0) < (COARSE ? 12 : 6));
+    if (hitPt >= 0 && this.lastCtl && this.lastCtl.i === hitPt && now - this.lastCtl.at < 420) {
+      this.lastCtl = null;
+      this.change((cl) => { cl.ctl[key].splice(hitPt, 1); if (!cl.ctl[key].length) delete cl.ctl[key]; if (!Object.keys(cl.ctl).length) delete cl.ctl; });
+      return;
+    }
+    this.lastCtl = hitPt >= 0 ? { i: hitPt, at: now } : null;
+    const paint = (m) => {
+      const [mx, my] = local(m), b = Math.max(0, Math.min(loop - 1e-6, Math.floor(this.xt(mx) / grid) * grid)), v = val(my);
+      this.change((cl) => {
+        cl.ctl ||= {}; const pts = (cl.ctl[key] ||= []);
+        const i = pts.findIndex((q) => Math.abs(q.t - b) < grid / 2);
+        if (i >= 0) pts[i].v = v; else { pts.push({ t: b, v }); pts.sort((x, y) => x.t - y.t); }
+      }, tag);
+    };
+    void b0;
+    paint(e);
+    dragPointer(e, paint, () => this.app.store.endGesture());
   }
   velDown(e, { clip }, local) {
     const tag = 'vel' + Math.random(), g = this.geomCache;
@@ -696,7 +1031,7 @@ export class Editor {
         if (mode && !n) cl.notes.push({ t: s / 4, d: 0.25, n: lib.laneNotes[lane], v: 100 });
         else if (!mode && n) cl.notes = cl.notes.filter((q) => q !== n);
       }, tag);
-      if (mode) { this.app.noteOn(t.id, lib.laneNotes[lane], 100); }
+      if (mode) { this.app.noteOn(t.id, lib.laneNotes[lane], 100, false, true); }
     };
     paint(x, y);
     dragPointer(e, (m) => { const [mx, my] = local(m); paint(mx, my); }, () => this.app.store.endGesture());
@@ -708,6 +1043,9 @@ export class Editor {
   key(e) {
     const cx = this.ctx; if (!cx || !isRoll(cx.t)) return;
     const mod = e.ctrlKey || e.metaKey;
+    if (this.step.on && !this.sel.size && (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || (e.key === 'Backspace' && !mod))) {
+      e.preventDefault(); e.stopPropagation(); this.stepMove(e.key === 'ArrowRight' ? 1 : -1); return;
+    }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (!this.sel.size) return;
       e.preventDefault(); e.stopPropagation();

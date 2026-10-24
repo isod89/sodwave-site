@@ -8,6 +8,8 @@ import { newClip, uid } from '../project.js';
 
 const CELL = 116, LEAD = 76;                       // a slot's width; the first column: the stop keys
 
+const FOLLOW_NAME = { next: 'NEXT', prev: 'PREVIOUS', first: 'FIRST', last: 'LAST', any: 'ANY', other: 'ANOTHER', again: 'AGAIN', stop: 'STOP', none: 'NOTHING' };
+const FOLLOW_ICON = { next: '↓', prev: '↑', first: '⤒', last: '⤓', any: '⚄', other: '⚄', again: '↻', stop: '■', none: '' };
 export class Session {
   constructor(app) {
     this.app = app;
@@ -48,7 +50,7 @@ export class Session {
     const kids = rows.map((r) => {
       const t = r.t;
       const row = h('div', { class: 'srow' + (r.kind !== 'track' ? ' auto' : ''), style: { top: `${r.y - v.sy}px`, height: `${r.h}px`, width: `${W}px` } });
-      if (r.kind !== 'track' || t.kind === 'group') return row;
+      if (r.kind !== 'track' || (t.kind === 'group' || t.kind === 'vca')) return row;
       const st = this.state[t.id] || {};
       row.append(h('button', { class: 'tstop' + (st.slot >= 0 ? ' on' : ''), style: { width: `${LEAD - 8}px` }, title: 'Stop this track (back to the arrangement)', 'data-learn': `stoptrack:${t.id}`, onclick: () => app.launch(t.id, -1) }, '■'));
       scenes.forEach((s, i) => {
@@ -59,7 +61,7 @@ export class Session {
           style: { width: `${CELL - 4}px` }, '--c': t.color, 'data-learn': c ? `slot:${t.id}:${i}` : null, title: c ? `${c.name}: click to launch, double-click to edit` : 'Double-click: a new clip here · click: stop the track' });
         if (c) {
           cell.append(h('span', { class: 'tri', text: playing ? '▶' : queued ? '◷' : '▷' }), h('span', { class: 'cname', text: c.name }),
-            h('span', { class: 'clen', text: `${+((c.loop || c.len) / p.sig).toFixed(2)}` }));
+            h('span', { class: 'clen', text: `${c.follow ? FOLLOW_ICON[c.follow.a] + ' ' : ''}${+((c.loop || c.len) / p.sig).toFixed(2)}` }));
           if (playing) cell.append(h('i', { class: 'prog', style: { '--a': st.at } }));
         }
         // a long press (or a right-click): the slot's menu
@@ -99,7 +101,7 @@ export class Session {
   slotSheet(t, i, c) {
     const app = this.app, p = this.p;
     if (!c) {
-      if (t.kind === 'audio' || t.kind === 'group') return;
+      if (t.kind === 'audio' || (t.kind === 'group' || t.kind === 'vca')) return;
       app.sheet(`${t.name} · slot ${i + 1}`, [['NEW CLIP HERE', () => { const nc = newClip(0, p.sig * 4, t.kind === 'drum' ? 'BEAT' : 'CLIP'); delete nc.start; app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i] = nc; }); app.selectClip(nc.id, t.id); app.showTab('edit'); }]]);
       return;
     }
@@ -107,9 +109,24 @@ export class Session {
     app.sheet(c.name, [
       ['OPEN IN THE EDITOR', () => { app.selectClip(c.id, t.id); app.showTab('edit'); }],
       ['LAUNCH', () => app.launch(t.id, i)],
+      [c.follow ? `FOLLOW ACTION · ${FOLLOW_NAME[c.follow.a]} AFTER ${c.follow.n}` : 'FOLLOW ACTION…', () => this.followDialog(t, i, c)],
       ...(next >= 0 ? [[`DUPLICATE TO SLOT ${next + 1}`, () => app.store.change((pp) => { const x = structuredClone(c); x.id = uid('c'); pp.tracks.find((q) => q.id === t.id).slots[next] = x; })]] : []),
       ['DELETE', () => app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i] = null; }), 'danger'],
     ]);
+  }
+  // what happens after the clip has played: the next one, another one at random, stop… (a second action by chance)
+  followDialog(t, i, c) {
+    const app = this.app, f = c.follow || { n: 1, a: 'next', b: 'none', p: 1 };
+    const sel = (label, value, opts) => h('label', { class: 'qz-row' }, h('span', { text: label }), h('select', { 'aria-label': label }, opts.map(([v, l]) => h('option', { value: v, selected: String(v) === String(value) ? true : null }, l))));
+    const acts = Object.entries(FOLLOW_NAME);
+    const n = sel('AFTER (TIMES IT PLAYS)', f.n, [1, 2, 3, 4, 6, 8, 12, 16].map((x) => [x, `${x} × ${+((c.loop || c.len) / this.p.sig).toFixed(2)} BAR${(c.loop || c.len) / this.p.sig === 1 && x === 1 ? '' : 'S'}`]));
+    const a = sel('THEN', f.a, acts.filter(([v]) => v !== 'none'));
+    const pc = sel('CHANCE', f.p, [[1, '100 %'], [0.75, '75 %'], [0.5, '50 %'], [0.25, '25 %']]);
+    const b = sel('OTHERWISE', f.b, acts);
+    const get = (el) => el.querySelector('select').value;
+    app.modal(`${c.name} · follow action`, [h('p', { class: 'hint', text: 'Once launched, the clip plays this many times, then launches another slot of the track by itself (on its beat): a set that plays itself, or never twice the same.' }), n, a, pc, b],
+      [['Remove', () => app.store.change((pp) => { delete pp.tracks.find((x) => x.id === t.id).slots[i].follow; })], ['Cancel'],
+        ['Set', () => app.store.change((pp) => { pp.tracks.find((x) => x.id === t.id).slots[i].follow = { n: +get(n), a: get(a), p: +get(pc), b: get(b) }; }), true]]).box.classList.add('qz-dlg');
   }
   rename(el, i) {
     el.contentEditable = 'true'; el.focus(); document.getSelection().selectAllChildren(el);
@@ -124,6 +141,7 @@ export class Session {
     this.lastKey = key;
     this.state = {};
     for (const [id, s] of Object.entries(sess || {})) this.state[id] = s;
+    this.app.control?.feedbackSoon();                            // (a grid controller's lights)
     if (this.app.view.mode === 'session') this.render();
   }
 }

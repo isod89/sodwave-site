@@ -4,6 +4,7 @@
 // Control surfaces (faders, V-pots, transport, LEDs, scribble strips); MIDI Start / Stop and MMC; MIDI
 // clock out to sync hardware (an FM-1 running SLOOP); notes, bend, pressure and CCs to the instruments,
 // routed by channel; controller moves recorded as automation.
+import { barOf, barStart, prevBar, nextBar } from './meter.js';
 import { dbToPos, posToDb } from './ui/mixer.js';
 import { NOTE_FX } from './notefx.js';
 import { DEVICES, toNorm, fromNorm } from './fx.js';
@@ -11,6 +12,8 @@ import { DEVICES, toNorm, fromNorm } from './fx.js';
 const STORE = 'kraken.control.v1';
 const MCU_NAME = /mackie|mcu|x-touch|xtouch|faderport|icon |qcon|platform ?m|v1-m|cmc-|launch control xl|nano ?kontrol studio/i;
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+import { Grid, GRID_NAME } from './launchpad.js';
 
 export const ACTIONS = [
   ['playstop', 'Play / stop'], ['play', 'Play'], ['stop', 'Stop'], ['record', 'Record'], ['loop', 'Loop on / off'],
@@ -53,6 +56,7 @@ export class Control {
     this.held = new Map();             // `${ch}:${note}` -> [track ids]
     this.listeners = new Set();
     this.mcu = { bank: 0, outs: new Set(), lastSent: new Map() };
+    this.grid = new Grid(app);                 // a Launchpad: the session's slots
     this.taps = [];
     this.clock = { next: 0, running: false, sentStart: false };
     document.addEventListener('pointerdown', (e) => this.learnClick(e), true);
@@ -79,15 +83,17 @@ export class Control {
   }
   inputs() { return this.access ? [...this.access.inputs.values()] : []; }
   outputs() { return this.access ? [...this.access.outputs.values()] : []; }
-  modeOf(name) { return this.cfg.devices[name]?.mode || (MCU_NAME.test(name) ? 'mackie' : 'keys'); }
+  modeOf(name) { return this.cfg.devices[name]?.mode || (MCU_NAME.test(name) ? 'mackie' : GRID_NAME.test(name) ? 'grid' : 'keys'); }
   setMode(name, mode) { (this.cfg.devices[name] ||= {}).mode = mode; this.save(); this.attach(); }
   outFor(name) { const base = name.replace(/\s*(in|input|midiin)\b.*$/i, '').trim(); return this.outputs().find((o) => o.name === name || o.name.startsWith(base)); }
   attach() {
     this.mcu.outs.clear();
+    this.grid.clear();
     for (const input of this.inputs()) {
       const mode = this.modeOf(input.name);
       input.onmidimessage = mode === 'off' ? null : ({ data }) => this.message(input, mode, data);
       if (mode === 'mackie') { const o = this.outFor(input.name); if (o) this.mcu.outs.add(o); }
+      if (mode === 'grid') this.grid.attach(input.name, this.outFor(input.name));
     }
     const names = this.inputs().filter((i) => this.modeOf(i.name) !== 'off').map((i) => i.name);
     const label = document.getElementById('midi');
@@ -115,6 +121,7 @@ export class Control {
     // learning: the first CC, note or bend binds the armed control
     if (this.learning && this.armed && key && (type !== 0x80 && !(type === 0x90 && d2 === 0))) { this.bind(key, type); return; }
     if (mode === 'mackie' && this.mackie(st, d1, d2)) return;
+    if (mode === 'grid' && this.grid.message(st, d1, d2)) return;
     if (key && this.mapped(key, value, press, type)) return;
     // what nothing claims plays the instruments; an MPE track gets every channel raw (Clipper's MPE)
     const mpe = this.app.store.p.tracks.find((t) => t.mpe && t.kind === 'synth' && (t.midiCh === 0 ? t.id === this.app.playTarget()?.id : true));
@@ -296,6 +303,11 @@ export class Control {
       const label = ACTIONS.find(([a]) => a === parts[1])?.[1] || parts[1];
       return { label, kind: 'trig', press: () => this.run(parts[1]) };
     }
+    if (parts[0] === 'macro') {
+      const i = +parts[1];
+      return { label: store.p.macros?.[i]?.name || `Macro ${i + 1}`, kind: 'cont', get: () => store.p.macros?.[i]?.v ?? 0,
+        set: (v) => store.change((p) => { if (p.macros[i]) p.macros[i].v = v; }, 'midimacro' + i) };
+    }
     if (parts[0] === 'scene') { const i = +parts[1]; return { label: `Launch ${store.p.scenes[i]?.name || 'scene ' + (i + 1)}`, kind: 'trig', press: () => app.launchScene(i) }; }
     if (parts[0] === 'slot') { const [, tid, i] = parts; const t = store.track(tid); return t ? { label: `${t.name} slot ${+i + 1}`, kind: 'trig', press: () => app.launch(tid, +i) } : null; }
     if (parts[0] === 'stoptrack') { const t = store.track(parts[1]); return t ? { label: `Stop ${t.name}`, kind: 'trig', press: () => app.launch(t.id, -1) } : null; }
@@ -386,8 +398,8 @@ export class Control {
       case 'loop': $('loop').click(); break;
       case 'click': $('click').click(); break;
       case 'home': $('home').click(); break;
-      case 'rewind': app.seek(Math.max(0, Math.floor(app.pos / p.sig - 1e-6) * p.sig - (app.pos % p.sig < 0.01 ? p.sig : 0))); break;
-      case 'forward': app.seek((Math.floor(app.pos / p.sig) + 1) * p.sig); break;
+      case 'rewind': app.seek(prevBar(p, app.pos)); break;
+      case 'forward': app.seek(nextBar(p, app.pos)); break;
       case 'undo': store.undo(); break;
       case 'redo': store.redo(); break;
       case 'prevTrack': if (ti > 0) app.selectTrack(tracks[ti - 1].id); break;
@@ -397,7 +409,7 @@ export class Control {
       case 'octDown': app.input.octave = Math.max(0, app.input.octave - 1); app.input.show(); break;
       case 'octUp': app.input.octave = Math.min(8, app.input.octave + 1); app.input.show(); break;
       case 'arm': case 'mute': case 'solo': this.target(`sel:${name}`)?.press(); break;
-      case 'newClip': if (t && t.kind !== 'audio') app.arrange.createClip(t, Math.floor(app.pos / p.sig) * p.sig, p.sig * 4); break;
+      case 'newClip': if (t && t.kind !== 'audio') { const b = barOf(p, app.pos); app.arrange.createClip(t, b.start, barStart(p, b.bar + 4) - b.start); } break;
       case 'dupClip': key('d', { ctrl: true }); break;
       case 'delClip': key('Delete'); break;
       case 'quantize': app.editor.quantize?.(); break;
@@ -472,6 +484,7 @@ export class Control {
     return n >= 0x68 && n <= 0x70;                                  // fader touch: nothing to do
   }
   feedbackSoon(force = false) {
+    if (this.grid.outs.size) { clearTimeout(this.gridT); this.gridT = setTimeout(() => this.grid.feedback(), 30); }
     if (force) this.mcu.lastSent.clear();
     if (this.fbQueued || !this.mcu.outs.size) return;
     this.fbQueued = true;
