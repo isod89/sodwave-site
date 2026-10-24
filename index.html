@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sodwave — Sam, developer & maker</title>
-<meta name="description" content="Sodwave is Sam: a developer and maker working across embedded firmware, audio DSP, web and automation. Creator of SLOOP and Clipper, free open-source firmware for the M-VAVE FM-1.">
+<meta name="description" content="Sodwave is Sam: a developer and maker working across embedded firmware, audio DSP, web and automation. Creator of SLOOP and Clipper, free open-source firmware for the M-VAVE FM-1, SLOOP Pro for the SMK-37, and the Kraken browser DAW.">
 <meta name="theme-color" content="#121317">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sodwave">
 <meta property="og:title" content="Sodwave — Sam, developer & maker">
-<meta property="og:description" content="Firmware, tools and instruments. Creator of SLOOP and Clipper for the M-VAVE FM-1.">
+<meta property="og:description" content="Firmware, tools and instruments. Creator of SLOOP and Clipper for the M-VAVE FM-1, SLOOP Pro for the SMK-37, and Kraken.">
 <meta property="og:url" content="https://www.sodwave.com/">
 <style>
   :root{
@@ -72,24 +72,25 @@
   .about .hl{color:var(--fg)}
 
   /* projects */
-  .projects{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .projects{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
   .proj{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column;transition:.15s}
   .proj:hover{transform:translateY(-2px)}
-  .proj.sloop:hover{border-color:var(--green)} .proj.clipper:hover{border-color:var(--orange)} .proj.kraken:hover{border-color:var(--yellow)}
+  .proj.sloop:hover{border-color:var(--green)} .proj.clipper:hover{border-color:var(--orange)} .proj.kraken:hover{border-color:var(--yellow)} .proj.pro:hover{border-color:var(--blue)}
   .proj .logo{height:40px;display:flex;align-items:center;margin-bottom:16px}
   .proj .logo img{max-height:38px;width:auto}
   .proj .logo .txt{font-family:var(--mono);font-weight:700;font-size:26px;letter-spacing:.02em}
   .proj .tag{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
-  .proj.sloop .tag{color:var(--green)} .proj.clipper .tag{color:var(--orange)} .proj.kraken .tag{color:var(--yellow)}
+  .proj.sloop .tag{color:var(--green)} .proj.clipper .tag{color:var(--orange)} .proj.kraken .tag{color:var(--yellow)} .proj.pro .tag{color:var(--blue)}
   .proj h3{font-size:18px;margin-bottom:10px}
   .proj p{color:var(--dim);font-size:15px;margin:0 0 16px}
   .proj .stats{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 18px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .proj .stat b{font-family:var(--mono);font-size:18px;display:block}
   .proj .stat span{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
-  .proj.sloop .stat b{color:var(--green)} .proj.clipper .stat b{color:var(--orange)} .proj.kraken .stat b{color:var(--yellow)}
+  .proj.sloop .stat b{color:var(--green)} .proj.clipper .stat b{color:var(--orange)} .proj.kraken .stat b{color:var(--yellow)} .proj.pro .stat b{color:var(--blue)}
   .proj .go{display:block;text-align:center;font-family:var(--mono);font-size:13.5px;font-weight:700;text-decoration:none;padding:12px 14px;border-radius:9px;margin-top:auto}
-  .proj.sloop .go{background:var(--green);color:#042313} .proj.clipper .go{background:var(--orange);color:#200a02} .proj.kraken .go{background:var(--yellow);color:#1a1400}
-  .proj.sloop .go:hover{background:#3ad683} .proj.clipper .go:hover{background:#ff7a3d} .proj.kraken .go:hover{background:#ffd34d}
+  .proj.sloop .go{background:var(--green);color:#042313} .proj.clipper .go{background:var(--orange);color:#200a02} .proj.kraken .go{background:var(--yellow);color:#1a1400} .proj.pro .go{background:var(--blue);color:#06121f}
+  .proj.sloop .go:hover{background:#3ad683} .proj.clipper .go:hover{background:#ff7a3d} .proj.kraken .go:hover{background:#ffd34d} .proj.pro .go:hover{background:#4a95ff}
+  .proj .logo .pro{font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:.12em;color:#06121f;background:var(--blue);padding:5px 8px;border-radius:6px;line-height:1;margin-left:10px}
   .based{color:var(--faint);font-size:13px;margin-top:22px;text-align:center}
   .based a{color:var(--dim)}
 
@@ -201,8 +202,8 @@
     <div class="sec-h"><span class="no">02</span><h2><span class="en">Projects</span><span class="fr">Projets</span></h2></div>
 
     <p class="lead2">
-      <span class="en">Three things I build around the M-VAVE FM-1 and its engines — two free firmware that turn a $60 MIDI keyboard into a real instrument, and a full DAW that runs in your browser. Open each one for details.</span>
-      <span class="fr">Trois projets autour du M-VAVE FM-1 et de ses moteurs — deux firmware libres qui transforment un clavier MIDI à 60&nbsp;$ en véritable instrument, et un DAW complet qui tourne dans ton navigateur. Ouvre chacun pour les détails.</span>
+      <span class="en">Four things I build around small M-VAVE keyboards and their sound engines — free firmware that turn a $60 MIDI keyboard into a real instrument (SLOOP and Clipper on the FM-1, SLOOP Pro on the bigger SMK-37), and a full DAW that runs in your browser. Open each one for details.</span>
+      <span class="fr">Quatre projets autour des petits claviers M-VAVE et de leurs moteurs de son — des firmware libres qui transforment un clavier MIDI à 60&nbsp;$ en véritable instrument (SLOOP et Clipper sur le FM-1, SLOOP Pro sur le SMK-37, plus grand), et un DAW complet qui tourne dans ton navigateur. Ouvre chacun pour les détails.</span>
     </p>
     <div class="projects">
 
@@ -220,6 +221,22 @@
           <div class="stat"><b>GPL-3.0</b><span><span class="en">open</span><span class="fr">libre</span></span></div>
         </div>
         <a class="go" href="/sloop/"><span class="en">Discover SLOOP →</span><span class="fr">Découvrir SLOOP →</span></a>
+      </div>
+
+      <div class="proj pro">
+        <div class="logo"><img src="assets/sloop-logo-v2.png" alt="SLOOP"><span class="pro">PRO</span></div>
+        <div class="tag"><span class="en">Groovebox firmware · SMK-37 · beta</span><span class="fr">Firmware de groovebox · SMK-37 · bêta</span></div>
+        <h3><span class="en">SLOOP with pads, faders and 37 keys.</span><span class="fr">SLOOP avec des pads, des faders et 37 touches.</span></h3>
+        <p>
+          <span class="en">The same SLOOP groovebox on the M-VAVE SMK-37: 37 velocity keys, 16 RGB pads, 4 faders with 5 banks, 8 knobs, wheels, a sustain pedal and a DAW mode.</span>
+          <span class="fr">Le même groovebox SLOOP sur le M-VAVE SMK-37 : 37 touches dynamiques, 16 pads RGB, 4 faders sur 5 banques, 8 knobs, des molettes, une pédale de sustain et un mode DAW.</span>
+        </p>
+        <div class="stats">
+          <div class="stat"><b>37</b><span><span class="en">keys</span><span class="fr">touches</span></span></div>
+          <div class="stat"><b>16</b><span><span class="en">pads</span><span class="fr">pads</span></span></div>
+          <div class="stat"><b>BETA</b><span><span class="en">2.8.1</span><span class="fr">2.8.1</span></span></div>
+        </div>
+        <a class="go" href="/sloop-pro/"><span class="en">Discover SLOOP Pro →</span><span class="fr">Découvrir SLOOP Pro →</span></a>
       </div>
 
       <div class="proj clipper">
@@ -255,7 +272,7 @@
       </div>
 
     </div>
-    <p class="based"><span class="en">SLOOP and Clipper are built on</span><span class="fr">SLOOP et Clipper sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span></p>
+    <p class="based"><span class="en">SLOOP, SLOOP Pro and Clipper are built on</span><span class="fr">SLOOP, SLOOP Pro et Clipper sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span></p>
   </div>
 </section>
 

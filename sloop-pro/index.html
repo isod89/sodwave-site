@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SLOOP Pro — the SLOOP groovebox on the M-VAVE SMK-37 · Sodwave</title>
+<meta name="description" content="SLOOP Pro is the free, open-source SLOOP groovebox firmware on the M-VAVE SMK-37: 37 velocity keys, 16 RGB pads, 4 faders with 5 banks, 8 knobs, wheels, a sustain pedal and a DAW mode. Beta, installed from the browser.">
+<meta name="theme-color" content="#121317">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sodwave">
+<meta property="og:title" content="SLOOP Pro — the SLOOP groovebox on the M-VAVE SMK-37">
+<meta property="og:description" content="Free open-source firmware (beta). SLOOP's four-track groovebox with pads, faders, 37 keys, wheels, a pedal and a DAW mode — installed from the browser.">
+<meta property="og:url" content="https://www.sodwave.com/sloop-pro/">
+<style>
+  :root{
+    --bg:#121317; --surface:#181A20; --surface2:#1E2128; --line:#2A2E38;
+    --fg:#F2F2F2; --dim:#9AA1AD; --faint:#6B7280;
+    --blue:#2E82FF; --green:#1ECC70; --yellow:#FFC618; --orange:#FF621A;
+    --accent:var(--blue); --ink:#06121f;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --maxw:1060px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+    font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1100px 560px at 82% -12%,rgba(46,130,255,.11),transparent 60%),radial-gradient(900px 500px at -10% 18%,rgba(30,204,112,.05),transparent 55%);}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  a{color:inherit}
+  h1,h2,h3{font-family:var(--mono);font-weight:700;letter-spacing:-.01em;line-height:1.15;margin:0}
+  .lang-en .fr{display:none}
+  .lang-fr .en{display:none}
+
+  header.top{position:sticky;top:0;z-index:30;background:rgba(18,19,23,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .bar{display:flex;align-items:center;gap:18px;height:62px}
+  .brand{display:flex;flex-direction:column;line-height:1;text-decoration:none;gap:3px}
+  .brand .mark{font-family:var(--mono);font-weight:700;font-size:20px;letter-spacing:.14em}
+  .brand .sub{font-size:11px;color:var(--dim);letter-spacing:.22em;text-transform:uppercase}
+  .brand .mark b{color:var(--blue)}
+  nav.main{margin-left:auto;display:flex;gap:4px;align-items:center}
+  nav.main a{font-family:var(--mono);font-size:13.5px;color:var(--dim);text-decoration:none;padding:8px 11px;border-radius:7px}
+  nav.main a:hover{color:var(--fg);background:var(--surface2)}
+  nav.main a.cur{color:var(--accent)}
+  .langtog{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--dim);padding:6px 9px;cursor:pointer;margin-left:6px}
+  .langtog b{color:var(--fg)}
+
+  .crumb{font-family:var(--mono);font-size:12.5px;color:var(--faint);padding:20px 0 0}
+  .crumb a{color:var(--dim);text-decoration:none}
+  .crumb a:hover{color:var(--fg)}
+
+  .hero{padding:30px 0 56px;border-bottom:1px solid var(--line)}
+  .hlogo{height:54px;margin-bottom:22px;display:flex;align-items:center;gap:14px}
+  .hlogo img{height:54px;width:auto}
+  .pro{font-family:var(--mono);font-weight:700;font-size:20px;letter-spacing:.14em;color:var(--ink);background:var(--blue);padding:6px 11px;border-radius:8px;line-height:1}
+  .tag{font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  .hero h1{font-size:clamp(28px,5vw,46px);max-width:19ch}
+  .hero h1 .a{color:var(--accent)}
+  .hero .lead{font-size:clamp(16px,2.2vw,20px);color:var(--dim);max-width:66ch;margin:20px 0 28px}
+  .cta{display:flex;flex-wrap:wrap;gap:12px}
+  .btn{font-family:var(--mono);font-size:14px;text-decoration:none;padding:12px 18px;border-radius:9px;border:1px solid var(--line);color:var(--fg);background:var(--surface);transition:.15s}
+  .btn:hover{border-color:var(--faint);transform:translateY(-1px)}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:700}
+  .btn.pri:hover{filter:brightness(1.08)}
+  .note{margin-top:26px;max-width:760px;border:1px solid rgba(255,198,24,.35);background:rgba(255,198,24,.06);border-radius:12px;padding:14px 16px;font-size:14.5px;color:#d8dbe2}
+  .note b{color:var(--yellow);font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;margin-right:6px}
+  .note a{color:var(--fg)}
+  .stats{display:flex;gap:26px;flex-wrap:wrap;margin-top:30px;padding-top:24px;border-top:1px solid var(--line)}
+  .stat b{font-family:var(--mono);font-size:24px;display:block;color:var(--accent)}
+  .stat span{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+
+  section{padding:56px 0;border-bottom:1px solid var(--line)}
+  .sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:28px}
+  .sec-h .no{font-family:var(--mono);color:var(--faint);font-size:14px}
+  .sec-h h2{font-size:clamp(20px,3vw,27px)}
+  .lead2{color:var(--dim);max-width:70ch;margin:-12px 0 28px;font-size:16.5px}
+
+  .feat{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .f{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+  .f h3{font-size:15.5px;margin-bottom:9px;color:var(--accent);font-family:var(--mono)}
+  .f p{margin:0;color:var(--dim);font-size:14.5px}
+
+  .steps{display:flex;flex-direction:column;gap:2px;max-width:760px}
+  .step{display:grid;grid-template-columns:38px 1fr;gap:16px;padding:18px 0;border-top:1px solid var(--line)}
+  .step:first-child{border-top:0}
+  .step .n{font-family:var(--mono);font-size:15px;color:var(--accent);border:1px solid var(--line);border-radius:9px;width:38px;height:38px;display:flex;align-items:center;justify-content:center}
+  .step h3{font-size:16px;margin-bottom:5px}
+  .step p{margin:0;color:var(--dim);font-size:15px}
+  .step p a{color:var(--fg)}
+
+  .links-row{display:flex;flex-wrap:wrap;gap:10px}
+  .links-row a{font-family:var(--mono);font-size:13px;text-decoration:none;color:var(--fg);border:1px solid var(--line);border-radius:9px;padding:11px 16px;background:var(--surface)}
+  .links-row a:hover{border-color:var(--faint)}
+  .links-row a.pri{border-color:var(--accent);color:var(--accent)}
+  .based{color:var(--faint);font-size:13px;margin-top:26px;max-width:80ch}
+  .based a{color:var(--dim)}
+
+  footer{padding:36px 0;color:var(--faint);font-size:13px}
+  footer .frow{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+  footer a{color:var(--dim);text-decoration:none}
+  footer a:hover{color:var(--fg)}
+
+  @media(max-width:820px){ .feat{grid-template-columns:1fr 1fr} nav.main{display:none} }
+  @media(max-width:520px){ .feat{grid-template-columns:1fr} }
+</style>
+</head>
+<body class="lang-en">
+
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="/" aria-label="Sodwave, home">
+      <span class="mark">SOD<b>WAVE</b></span>
+      <span class="sub">by Sam</span>
+    </a>
+    <nav class="main">
+      <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a>
+      <a href="/sloop/">SLOOP</a>
+      <a href="/sloop-pro/" class="cur">SLOOP Pro</a>
+      <a href="/clipper/">Clipper</a>
+      <a href="/kraken/">Kraken</a>
+      <button class="langtog" id="langtog" onclick="setLang(document.documentElement.lang==='en'?'fr':'en')"></button>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a> / SLOOP Pro</div>
+
+<section class="hero" style="border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="hlogo"><img src="/assets/sloop-logo-v2.png" alt="SLOOP"><span class="pro">PRO</span></div>
+    <div class="tag"><span class="en">Groovebox firmware · M-VAVE SMK-37 · beta</span><span class="fr">Firmware de groovebox · M-VAVE SMK-37 · bêta</span></div>
+    <h1>
+      <span class="en">SLOOP, with <span class="a">pads, faders and 37 keys</span>.</span>
+      <span class="fr">SLOOP, avec <span class="a">des pads, des faders et 37 touches</span>.</span>
+    </h1>
+    <p class="lead">
+      <span class="en">SLOOP Pro is the SLOOP groovebox firmware on the M-VAVE SMK-37: the same four-track groovebox — three synths and a drum machine, twelve engines, 153 sounds, 37 drum kits, song mode, 27 punch-in effects and the piano-roll editor — with everything the bigger keyboard brings. Free and open source.</span>
+      <span class="fr">SLOOP Pro, c'est le firmware de groovebox SLOOP sur le M-VAVE SMK-37 : le même groovebox quatre pistes — trois synthés et une boîte à rythmes, douze moteurs, 153 sons, 37 kits de batterie, le mode song, 27 effets punch-in et l'éditeur piano-roll — avec tout ce que le clavier plus grand apporte. Libre et open source.</span>
+    </p>
+    <div class="cta">
+      <a class="btn pri" href="https://isod89.github.io/sloop-pro/"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a>
+      <a class="btn" href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md"><span class="en">Controls &amp; install guide</span><span class="fr">Commandes et installation</span></a>
+      <a class="btn" href="https://github.com/isod89/sloop-pro">GitHub</a>
+    </div>
+    <div class="note">
+      <b><span class="en">Beta</span><span class="fr">Bêta</span></b>
+      <span class="en">SLOOP Pro 2.8.1 is a beta built on SLOOP 2.8.1. Back up the keyboard's flash first and read the <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">safety notes</a>. Your unit's calibration is never written, and M-VAVE's own updater takes you back to the original firmware at any time.</span>
+      <span class="fr">SLOOP Pro 2.8.1 est une bêta bâtie sur SLOOP 2.8.1. Sauvegarde d'abord la flash du clavier et lis les <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">consignes de sécurité</a>. La calibration de ton clavier n'est jamais réécrite, et l'outil de mise à jour de M-VAVE te ramène au firmware d'origine à tout moment.</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>37</b><span><span class="en">velocity keys</span><span class="fr">touches dynamiques</span></span></div>
+      <div class="stat"><b>16</b><span><span class="en">RGB pads</span><span class="fr">pads RGB</span></span></div>
+      <div class="stat"><b>4 × 5</b><span><span class="en">fader banks</span><span class="fr">banques de faders</span></span></div>
+      <div class="stat"><b>8</b><span><span class="en">knobs</span><span class="fr">knobs</span></span></div>
+      <div class="stat"><b>GPL-3.0</b><span><span class="en">open source</span><span class="fr">open source</span></span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-h"><span class="no">01</span><h2><span class="en">What the SMK-37 adds</span><span class="fr">Ce que le SMK-37 ajoute</span></h2></div>
+    <p class="lead2"><span class="en">Everything SLOOP does on the FM-1, plus the hands-on controls of a bigger keyboard.</span><span class="fr">Tout ce que SLOOP fait sur le FM-1, plus les commandes physiques d'un clavier plus grand.</span></p>
+    <div class="feat">
+      <div class="f"><h3><span class="en">37 velocity keys</span><span class="fr">37 touches dynamiques</span></h3><p><span class="en">The 27 middle keys play as on SLOOP, with velocity from your unit's factory curves; the outer 10 play notes, or drums on the drum track.</span><span class="fr">Les 27 touches du milieu jouent comme sur SLOOP, avec la vélocité des courbes d'usine de ton clavier ; les 10 autres jouent des notes, ou la batterie sur la piste batterie.</span></p></div>
+      <div class="f"><h3><span class="en">16 RGB pads</span><span class="fr">16 pads RGB</span></h3><p><span class="en">The drum kit, the selected track's sound or its 16 steps, lit in the screen's track colours.</span><span class="fr">Le kit de batterie, le son de la piste choisie ou ses 16 pas, éclairés aux couleurs des pistes à l'écran.</span></p></div>
+      <div class="f"><h3><span class="en">4 faders, 5 banks</span><span class="fr">4 faders, 5 banques</span></h3><p><span class="en">Level, filter, reverb and delay of the four tracks, and the selected synth's envelope.</span><span class="fr">Le niveau, le filtre, la réverbe et le délai des quatre pistes, et l'enveloppe du synthé choisi.</span></p></div>
+      <div class="f"><h3><span class="en">8 knobs</span><span class="fr">8 knobs</span></h3><p><span class="en">Master, select, track, sound and the four dials, laid out as on the screen.</span><span class="fr">Master, sélection, piste, son et les quatre potentiomètres, disposés comme à l'écran.</span></p></div>
+      <div class="f"><h3><span class="en">Wheels and pedal</span><span class="fr">Molettes et pédale</span></h3><p><span class="en">Pitch bend, vibrato and a sustain pedal on the PEDAL jack.</span><span class="fr">Pitch bend, vibrato et une pédale de sustain sur la prise PEDAL.</span></p></div>
+      <div class="f"><h3><span class="en">MIDI and DAW mode</span><span class="fr">MIDI et mode DAW</span></h3><p><span class="en">USB MIDI, the TRS MIDI OUT jack, and a full DAW mode with your own CC map — set in the SLOOP web editor.</span><span class="fr">MIDI USB, la prise TRS MIDI OUT, et un vrai mode DAW avec ta propre table de CC — réglée dans l'éditeur web SLOOP.</span></p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-h"><span class="no">02</span><h2><span class="en">Get it running</span><span class="fr">Le mettre en route</span></h2></div>
+    <p class="lead2"><span class="en">One package per model — the installer reads yours and picks it: SMK-37 Pro (and Starrykey 37 Play), SMK-37 Elite, MKE-P37.</span><span class="fr">Un paquet par modèle — l'installateur lit le tien et le choisit : SMK-37 Pro (et Starrykey 37 Play), SMK-37 Elite, MKE-P37.</span></p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div><h3><span class="en">Back up the keyboard once</span><span class="fr">Sauvegarde le clavier une fois</span></h3><p><span class="en">Save its flash first, as the <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">safety notes</a> explain.</span><span class="fr">Sauvegarde d'abord sa flash, comme l'expliquent les <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">consignes de sécurité</a>.</span></p></div></div>
+      <div class="step"><div class="n">2</div><div><h3><span class="en">Update it to M-VAVE's V016</span><span class="fr">Mets-le à jour en V016 de M-VAVE</span></h3><p><span class="en">The keyboard must run M-VAVE's V016 firmware first — update an older one with M-VAVE's own updater.</span><span class="fr">Le clavier doit d'abord tourner sur le firmware V016 de M-VAVE — mets un ancien à jour avec l'outil de M-VAVE.</span></p></div></div>
+      <div class="step"><div class="n">3</div><div><h3><span class="en">Install from the browser</span><span class="fr">Installe depuis le navigateur</span></h3><p><span class="en">Open the installer in Chrome or Edge, connect the SMK-37 straight to the computer with a USB data cable, close other MIDI apps and press Install SLOOP Pro.</span><span class="fr">Ouvre l'installateur dans Chrome ou Edge, branche le SMK-37 directement à l'ordinateur avec un câble USB de données, ferme les autres apps MIDI et appuie sur Install SLOOP Pro.</span></p></div></div>
+    </div>
+  </div>
+</section>
+
+<section style="border-bottom:0">
+  <div class="wrap">
+    <div class="sec-h"><span class="no">03</span><h2><span class="en">Links</span><span class="fr">Liens</span></h2></div>
+    <div class="links-row">
+      <a class="pri" href="https://isod89.github.io/sloop-pro/"><span class="en">Install</span><span class="fr">Installer</span></a>
+      <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md"><span class="en">SLOOP Pro guide</span><span class="fr">Guide SLOOP Pro</span></a>
+      <a href="https://github.com/isod89/sloop-pro/blob/HEAD/DEMARRAGE-RAPIDE-PRO-FR.md"><span class="en">Quick start (French)</span><span class="fr">Démarrage rapide</span></a>
+      <a href="https://github.com/isod89/sloop-pro">GitHub</a>
+      <a href="https://github.com/isod89/sloop-pro/issues"><span class="en">Report a bug</span><span class="fr">Signaler un bug</span></a>
+      <a href="https://ko-fi.com/sodwave">Ko-fi</a>
+      <a href="/sloop/"><span class="en">SLOOP on the FM-1 →</span><span class="fr">SLOOP sur le FM-1 →</span></a>
+    </div>
+    <p class="based">
+      <span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments; the SMK-37 board layer by</span><span class="fr">de Leo Kuroshita / Hügelton Instruments ; la couche matérielle SMK-37 par</span> <a href="https://github.com/genkigenki/fm1-to-smk37">genkigenki</a>. <span class="en">Everyone who made it possible:</span><span class="fr">Tous ceux qui l'ont rendu possible :</span> <a href="https://github.com/isod89/sloop-pro/blob/HEAD/CREDITS.md">CREDITS</a>.<br>
+      <span class="en">M-VAVE, SMK-37, MKE-P37 and Starrykey are trademarks of their respective owners; SLOOP Pro is not affiliated with them.</span><span class="fr">M-VAVE, SMK-37, MKE-P37 et Starrykey sont des marques de leurs propriétaires respectifs ; SLOOP Pro n'y est pas affilié.</span>
+    </p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap frow">
+    <span>© <span id="yr"></span> Sodwave · Sam</span>
+    <span><a href="/"><span class="en">← Back to sodwave.com</span><span class="fr">← Retour à sodwave.com</span></a></span>
+  </div>
+</footer>
+
+<script>
+  function setLang(l){
+    document.documentElement.lang=l;
+    document.body.className='lang-'+l;
+    var t=document.getElementById('langtog');
+    t.innerHTML = l==='en' ? 'EN<b> / FR</b>' : '<b>EN / </b>FR';
+    try{localStorage.setItem('sw_lang',l)}catch(e){}
+  }
+  (function(){
+    var saved; try{saved=localStorage.getItem('sw_lang')}catch(e){}
+    var l = saved || ((navigator.language||'en').slice(0,2)==='fr' ? 'fr':'en');
+    setLang(l);
+    document.getElementById('yr').textContent=new Date().getFullYear();
+  })();
+</script>
+</body>
+</html>
