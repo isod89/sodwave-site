@@ -14,6 +14,7 @@ export const HUB_CSS = `
   background: var(--chassis-hi); padding: 0 12px; font: 500 13px/1 var(--f-ui); color: var(--ink); outline: none; }
 .hub-search:focus { border-color: var(--accent); }
 .hub-head .spacer { flex: 1; }
+.hub-head .hub-lab { height: 34px; padding: 0 12px; font-weight: 800; letter-spacing: 0.1em; }
 .hub-me { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 6px; border-radius: var(--r); border: 1px solid var(--edge);
   background: linear-gradient(var(--chassis-hi), var(--chassis)); cursor: pointer; min-width: 0; }
 .hub-me .who { display: grid; gap: 3px; min-width: 0; text-align: left; }

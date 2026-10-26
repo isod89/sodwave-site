@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "4e723a797806";
+const VERSION = "6a4da0529613";
 const FILES = [
 "./",
+"hub.html",
 "assets/apple-touch-icon.png",
 "assets/icon-192.png",
 "assets/icon-512.png",
@@ -26,6 +27,7 @@ const FILES = [
 "js/flac.js",
 "js/fx.js",
 "js/gensounds.js",
+"js/hub-page.js",
 "js/hub.js",
 "js/i18n.js",
 "js/i18n/fr-hub.js",

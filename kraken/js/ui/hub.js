@@ -83,8 +83,10 @@ class Hub {
     this.body = h('div', { class: 'hub-body', translate: null });
     const head = h('div', { class: 'hub-head' },
       h('div', { class: 'hub-logo' }, h('b', { text: 'HUB' }), h('small', { text: 'Songs, sounds and plugins from Kraken users everywhere' })),
-      this.search, h('div', { class: 'spacer' }), this.meBox,
-      h('button', { class: 'key hub-x', title: 'Close the hub (Esc)', 'aria-label': 'Close the hub', onclick: () => this.close() }, '×'));
+      this.search, h('div', { class: 'spacer' }),
+      this.app.labStart && !this.app.standalone ? h('button', { class: 'key hub-lab', title: 'LAB: build your own plugin, an instrument or an effect', onclick: () => this.lab() }, '◈ LAB') : null,
+      this.meBox,
+      this.app.standalone ? null : h('button', { class: 'key hub-x', title: 'Close the hub (Esc)', 'aria-label': 'Close the hub', onclick: () => this.close() }, '×'));
     this.box = h('div', { class: 'hub', role: 'dialog', 'aria-label': 'Kraken hub', tabindex: '-1' }, head, this.tabs, this.body);   // (focusable: the keys stay in it)
     this.bg = h('div', { class: 'hub-bg', hidden: true }, this.box);
     this.bg.addEventListener('pointerdown', (e) => { if (e.target === this.bg) this.close(); });
@@ -107,7 +109,7 @@ class Hub {
     setTimeout(() => (phone() ? this.box : this.search).focus?.({ preventScroll: true }), 30);
   }
   close() {
-    if (!this.bg) return;
+    if (!this.bg || this.app.standalone) return;                  // (the hub's own page: it is the page, it never closes)
     this.bg.hidden = true;
     this.stopPreview();
     this.app.logAct?.('hub: close');
@@ -207,9 +209,11 @@ class Hub {
       f.tag ? h('button', { class: 'hub-chip on', title: 'Remove this filter', onclick: () => { f.tag = ''; this.go('discover', null, true); } }, h('span', NAME, `#${f.tag}`), ' ×') : null,
       f.q ? h('button', { class: 'hub-chip on', title: 'Remove this filter', onclick: () => { f.q = ''; this.search.value = ''; this.go('discover', null, true); } }, h('span', NAME, `“${f.q}”`), ' ×') : null,
       h('div', { class: 'spacer', style: { flex: '1' } }),
+      f.kind === 'plugin' && this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null,
       h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…'));
     const query = { kind: f.kind, sort: f.sort, genre: f.genre, tag: f.tag, country: f.country, q: f.q };
     await this.feed(seq, chips, query, () => h('div', { class: 'hub-empty' }, h('p', { text: f.q || f.genre || f.tag || f.country || f.kind ? 'Nothing matches these filters yet.' : 'Nothing published yet: be the first!' }),
+      f.kind === 'plugin' && this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null,
       h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…')));
   }
   // a list of cards, page after page
@@ -293,6 +297,7 @@ class Hub {
       it.status && it.status !== 'visible' ? h('p', { class: 'hub-warn', style: { marginTop: '10px' }, text: it.hidden_reason === 'reports' ? 'Hidden: reported by several people, waiting for a moderator.' : 'Hidden by a moderator.' }) : null,
       h('div', { class: 'hub-actions' }, listenBtn,
         it.kind === 'song' ? h('button', { class: 'hub-btn go', onclick: () => this.openSong(it) }, 'Open in Kraken') : h('button', { class: 'hub-btn go', onclick: () => this.install(it) }, '⬇ Install'),
+        it.kind === 'plugin' && this.app.labOpenPatch ? h('button', { class: 'hub-btn', onclick: () => this.openInLab(it) }, '◈ Open in the LAB') : null,
         likeBtn,
         h('button', { class: 'hub-btn', onclick: () => this.share(it) }, '↗ Share')),
       stats, world,
@@ -339,6 +344,7 @@ class Hub {
     const actions = h('div', { class: 'hub-actions' }, fol,
       mine ? h('button', { class: 'hub-btn', onclick: () => this.editProfile() }, '✎ Edit my profile') : null,
       mine ? h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…') : null,
+      mine && this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null,
       u.youtube ? h('a', { class: 'hub-btn', href: u.youtube, target: '_blank', rel: 'noopener' }, '▶ YouTube channel') : null,
       !mine && me?.admin ? h('button', { class: 'hub-btn danger', onclick: () => this.adminAct(u.banned ? 'unban' : 'ban', { user: u.id }, () => this.go('user', u.id, true)) }, u.banned ? 'Unban' : 'Ban') : null,
       mine ? h('button', { class: 'hub-btn', onclick: () => this.signOut() }, 'Sign out') : null);
@@ -640,6 +646,17 @@ class Hub {
       this.app.toast(extra ? `${msg} ${extra}` : msg);
     } catch (e) { this.app.toast(errText(e)); }
   }
+  // ---- the LAB from the hub: build a plugin (the hub closes, the LAB's door opens)
+  lab() { if (!this.app.standalone) this.close(); this.app.labStart?.(); }
+  // a plugin opened in the LAB at once: kept in MY PATCHES, played (a new track, or an effect on the selected track), its editor open
+  async openInLab(it) {
+    try {
+      const { data } = await api.data(it.id, true);
+      if (!data?.lab) { this.app.toast('That plugin has no LAB patch.'); return; }
+      if (!this.app.standalone) this.close();
+      await this.app.labOpenPatch(data.lab, { name: it.title, from: { hub: it.id, creator: it.user?.name } });
+    } catch (e) { this.app.toast(errText(e)); }
+  }
   // ---- INSTALL a preset, a template, a plugin: kept with my presets
   async install(it) {
     try {
@@ -724,10 +741,10 @@ class Hub {
     const drawXp = () => {
       const pub = today.publishes < today.publish_max ? XP.publish : 0;
       const yt = kind === 'song' && ytOk && today.youtube < today.youtube_max ? XP.youtube : 0;
-      preview.replaceChildren(h('b', { text: `+${pub + yt} XP` }),
+      preview.replaceChildren(...[h('b', { text: `+${pub + yt} XP` }),
         h('span', { text: pub ? `+${XP.publish} XP for publishing (${today.publish_max - today.publishes} of ${today.publish_max} left today)` : `The first ${today.publish_max} publishes of a day earn XP: this one earns none today.` }),
         kind === 'song' ? h('span', { text: yt ? `+${XP.youtube} XP for the YouTube link` : `A YouTube link of your song earns +${XP.youtube} XP` }) : null,
-        h('span', { text: `Then +${XP.like} XP for each like, +${XP.download} XP for each download.` }));
+        h('span', { text: `Then +${XP.like} XP for each like, +${XP.download} XP for each download.` })].filter(Boolean));   // (no "null" for a preset or a plugin)
     };
     const f = this.fields({ title, genre }, (id) => { ytOk = !!id; drawXp(); });
     drawXp();

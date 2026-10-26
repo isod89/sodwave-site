@@ -275,10 +275,60 @@ export const dict = {
   'You cannot follow yourself.': 'Vous ne pouvez pas vous suivre vous-même.',
   'You cannot report your own work: delete it instead.': 'Vous ne pouvez pas signaler vos propres créations : supprimez-les plutôt.',
   'Pick a reason.': 'Choisissez une raison.',
+  // ---- the LAB's front door (the top bar, PROJECT, Ctrl+K, the hub) and the hub's own page
+  'LAB: build your own plugin, an instrument or an effect, then share it on the hub': 'LAB : créez votre propre plugin, un instrument ou un effet, puis partagez-le sur le hub',
+  'LAB: build your own plugin, an instrument or an effect': 'LAB : créez votre propre plugin, un instrument ou un effet',
+  'LAB: build your own plugin, an instrument or an effect (it opens in Kraken)': 'LAB : créez votre propre plugin, un instrument ou un effet (il s’ouvre dans Kraken)',
+  '◈ Build a plugin (LAB)…': '◈ Créer un plugin (LAB)…',
+  'INSTRUMENT · EFFECT': 'INSTRUMENT · EFFET',
+  '◈ LAB: build your own plugin': '◈ LAB : créez votre propre plugin',
+  'An instrument or an effect made of modules and cables: no code. Play it in your songs, then share it on the hub.': 'Un instrument ou un effet fait de modules et de câbles, sans code. Jouez-le dans vos morceaux, puis partagez-le sur le hub.',
+  '◈ New instrument': '◈ Nouvel instrument',
+  'A synth of your own, on a new track': 'Votre propre synthé, sur une nouvelle piste',
+  '◈ New effect': '◈ Nouvel effet',
+  'On the master': 'Sur le master',
+  '☁ Plugins on the hub': '☁ Les plugins du hub',
+  'Made by Kraken users: open one in the LAB, see how it works': 'Faits par des utilisateurs de Kraken : ouvrez-en un dans le LAB pour voir comment il marche',
+  'A LAB effect: start from': 'Un effet LAB : partir de',
+  '◈ Build a plugin': '◈ Créer un plugin',
+  '◈ Open in the LAB': '◈ Ouvrir dans le LAB',
+  '◈ Open the LAB': '◈ Ouvrir le LAB',
+  'That plugin has no LAB patch.': 'Ce plugin n’a pas de patch LAB.',
+  'Build a plugin: instrument or effect…': 'Créer un plugin : instrument ou effet…',
+  'modules and cables, no code': 'modules et câbles, sans code',
+  'LAB instrument track (build your own)': 'Piste instrument LAB (faites le vôtre)',
+  'Open Kraken': 'Ouvrir Kraken',
+  'OPEN KRAKEN': 'OUVRIR KRAKEN',
+  'Open Kraken, the free DAW': 'Ouvrir Kraken, le DAW gratuit',
+  'Loading the hub…': 'Chargement du hub…',
+  'Publish from Kraken': 'Publier depuis Kraken',
+  'Songs, presets and plugins are published from Kraken, where they are made: PROJECT > Publish to the hub, or ☁ PUBLISH in the LAB. You stay signed in.': 'Les morceaux, presets et plugins se publient depuis Kraken, là où ils sont faits : PROJET > Publier sur le hub, ou ☁ PUBLIER dans le LAB. Vous restez connecté.',
+  'It is in Kraken now, in the LAB\'s patches: open the LAB to play it, change it, or see how it is made.': 'Il est maintenant dans Kraken, dans les patchs du LAB : ouvrez le LAB pour le jouer, le modifier ou voir comment il est fait.',
+  'This song uses web plugins: listen to it in Kraken.': 'Ce morceau utilise des plugins web : écoutez-le dans Kraken.',
+  'The Kraken hub needs JavaScript.': 'Le hub de Kraken a besoin de JavaScript.',
+  // ---- LAB: the ENGINE module (the firmware's engines in a patch)
+  'ENGINE': 'MOTEUR',
+  'A real SLOOP or Clipper engine in your patch, the very one of the firmware: pick the FIRMWARE, one of its ENGINES and one of its SOUNDS, and every setting of that engine shows below. It plays each note with its own envelope and effects. Run it through filters, VCAs and effects, and move any of its settings with MOD A and MOD B (a MACRO, an LFO, an envelope…).':
+    'Un vrai moteur de SLOOP ou de Clipper dans votre patch, celui-là même du firmware : choisissez le FIRMWARE, un de ses MOTEURS et un de ses SONS, et tous les réglages de ce moteur s’affichent en dessous. Il joue chaque note avec sa propre enveloppe et ses effets. Passez-le dans des filtres, des VCA et des effets, et bougez n’importe lequel de ses réglages avec MOD A et MOD B (une MACRO, un LFO, une enveloppe…).',
+  'MOD A MOVES': 'MOD A BOUGE',
+  'MOD B MOVES': 'MOD B BOUGE',
+  'The engines are still loading…': 'Les moteurs se chargent encore…',
+  'BACK TO THE SOUND': 'RETOUR AU SON',
+  'Every setting back to the sound as it was loaded': 'Tous les réglages reviennent au son tel qu’il a été chargé',
+  'The sound before': 'Le son précédent',
+  'The next sound': 'Le son suivant',
 };
 
 // [regex, (match, t) => French]: names and titles stay as typed
 export const rules = [
+  [/^ENGINE · (.+)$/s, (m) => `MOTEUR · ${m[1]}`],
+  [/^(SLOOP|CLIPPER) · (\d+) ENGINES$/, (m) => `${m[1]} · ${m[2]} MOTEURS`],
+  [/^(.+): (\d+) sounds$/s, (m) => `${m[1]} : ${m[2]} sons`],
+  [/^(.+): drag · double-click: back to the sound's value$/s, (m) => `${m[1]} : glissez · double-clic : retour à la valeur du son`],
+  [/^MOD A and MOD B move a setting from the patch: plug a MACRO, an LFO or an envelope into them and choose what they move\. A patch holds (\d+) engines at most\.$/s, (m) => `MOD A et MOD B bougent un réglage depuis le patch : branchez-y une MACRO, un LFO ou une enveloppe et choisissez ce qu’elles bougent. Un patch contient ${m[1]} moteurs au plus.`],
+  [/^A patch holds (\d+) ENGINE modules at most \(each note runs its own copy of each\)\.$/s, (m) => `Un patch contient ${m[1]} modules MOTEUR au plus (chaque note joue sa propre copie de chacun).`],
+  [/^On the track (.+)$/s, (m) => `Sur la piste ${m[1]}`],
+  [/^(.+) has 8 effects already: remove one first\.$/s, (m) => `${m[1] === 'The master' ? 'Le master' : m[1]} a déjà 8 effets : retirez-en un d’abord.`],
   [/^LV (\d+)$/, (m) => `NIV ${m[1]}`],
   [/^LV (\d+) (\S+)$/, (m) => `NIV ${m[1]} ${m[2]}`],
   [/^\+(\d+) XP since your last visit$/, (m) => `+${m[1]} XP depuis votre dernière visite`],
@@ -329,7 +379,7 @@ export const rules = [
 
 // as they are in French: names, words French uses too, and what the code writes that is not text
 export const keep = [
-  'HUB', '☁ HUB', 'Preset', 'Presets', 'Plugins', 'Badges', 'Description', 'Genre', 'Tags', 'Note', 'Jazz', 'Funk', 'Soul', 'Reggae', 'Folk',
+  'HUB', '☁ HUB', '◈ LAB', 'LAB', 'FIRMWARE', 'MOD A', 'MOD B', 'SLOOP', 'CLIPPER', '◀', '▶', 'FR', 'EN', 'Switch to English', 'Passer en français', 'sodwave.com', 'Preset', 'Presets', 'Plugins', 'Badges', 'Description', 'Genre', 'Tags', 'Note', 'Jazz', 'Funk', 'Soul', 'Reggae', 'Folk',
   'GET', 'POST', 'Content-Type', 'X-Kraken-Token', 'youtu.be', 'www.youtu.be', 'https://www.youtube.com/@yourname', 'https://youtu.be/…', 'https://example.com/api',
 ];
 export const keepRules = [

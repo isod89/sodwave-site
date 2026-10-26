@@ -771,6 +771,12 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 .lab-mod .knob .val { color: var(--text); font-size: 9px; }
 .lab-sel-w { display: grid; gap: 2px; font: 700 8px/1 var(--f-ui); letter-spacing: 0.08em; color: var(--dim); }
 .lab-sel-w.wide { grid-column: 1 / -1; width: 100%; }
+.lab-engs { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 4px; }
+.lab-engs .add { height: 24px; padding: 0 8px; font: 700 9px/1 var(--f-ui); letter-spacing: 0.06em; }
+.lab-engs .add.on { background: #4cb3ff; border-color: #4cb3ff; color: #031421; }
+.lab-engsound { display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; gap: 6px; align-items: center; }
+.lab-engsound .add { height: 28px; padding: 0; }
+.lab-engsound span { font: 600 11px/1.2 var(--f-mono); color: var(--ink); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lab-sel { background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 4px; font: 600 10px/1 var(--f-ui); padding: 4px; max-width: 120px; }
 .lab-insp .lab-sel, .lab-bottom .lab-sel { background: #fff; color: var(--ink); border-color: var(--edge); }
 .lab-steps { display: block; width: calc(100% - 12px); margin: 0 6px 8px; height: auto; background: var(--screen); border-radius: 4px; cursor: crosshair; touch-action: none; }
@@ -820,6 +826,11 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 .lab-plist { display: grid; gap: 4px; max-height: 60vh; overflow-y: auto; min-width: min(420px, 80vw); }
 .lab-plist .add, .lab-prow .add { display: grid; gap: 2px; text-align: left; width: 100%; }
 .lab-plist .add span { font: 500 10px/1.2 var(--f-ui); opacity: 0.7; }
+.lab-doors { gap: 8px; }
+.lab-doors .lab-door { height: auto; min-height: 60px; padding: 12px 16px; align-content: center; gap: 4px; }
+.lab-doors .lab-door b { font-size: 13px; letter-spacing: 0.06em; }
+.lab-doors .lab-door span { text-transform: none; letter-spacing: 0.01em; font-size: 11px; }
+@media (max-width: 700px) { #labbtn { display: none !important; } }
 .lab-prow { display: flex; gap: 4px; align-items: center; }
 .lab-guide { display: grid; gap: 10px; max-width: 520px; }
 .lab-guide b { font: 700 12px/1.2 var(--f-ui); }
@@ -888,6 +899,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <button class="key icon" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" data-learn="act:undo">↶</button>
       <button class="key icon" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" data-learn="act:redo">↷</button>
       <button class="key" id="libbtn" title="Sound library (B)" data-learn="act:library">SOUNDS</button>
+      <button class="key" id="labbtn" title="LAB: build your own plugin, an instrument or an effect, then share it on the hub">◈ LAB</button>
       <button class="key" id="hubbtn" title="The Kraken hub: songs, presets and plugins from people everywhere">☁ HUB</button>
       <div class="menu">
         <button class="key" id="filebtn" aria-haspopup="true" aria-label="Project menu"><span class="lg">PROJECT</span><span class="sm" aria-hidden="true">☰</span></button>
@@ -907,6 +919,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
           <hr>
           <button data-act="hub">☁ The hub <kbd>SONGS · PLUGINS · WORLD</kbd></button>
           <button data-act="publish">Publish to the hub…</button>
+          <button data-act="lab">◈ Build a plugin (LAB)… <kbd>INSTRUMENT · EFFECT</kbd></button>
           <hr>
           <button data-act="export">Export audio… <kbd>WAV FLAC MP3 OPUS</kbd></button>
           <button data-act="stems">Export stems…</button>

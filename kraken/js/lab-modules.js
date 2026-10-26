@@ -21,6 +21,12 @@ export const LAB_VERSION = 1;
 export const FX_TYPES = ['eq', 'comp', 'mband', 'deess', 'trans', 'sat', 'amp', 'filter', 'chorus', 'flanger', 'phaser', 'pitch', 'delay', 'reverb', 'space', 'crush', 'gate', 'slicer', 'utility', 'limiter'];
 const FX_NAMES = ['EQ', 'COMPRESSOR', 'MULTIBAND', 'DE-ESSER', 'TRANSIENT', 'SATURATOR', 'AMP', 'AUTO FILTER', 'CHORUS', 'FLANGER', 'PHASER', 'PITCH SHIFT', 'DELAY', 'REVERB', 'SPACE', 'BIT CRUSHER', 'GATE', 'SLICER', 'UTILITY', 'LIMITER'];
 export const MAX_MODS = 64, MAX_CABLES = 160, MAX_TEXT = 200;
+// ENGINE: what MOD A / MOD B can move: the engine's eight own settings (their names come from the firmware), then its
+// envelope and level (the firmware's track settings of those names). MAX_ENGINES: each voice runs its own copy of
+// each ENGINE (4 MB each), so a patch holds two at most.
+export const ENG_TP = ['ATK', 'DEC', 'SUS', 'REL', 'LVL'];
+export const ENG_TP_NAMES = ['ATTACK', 'DECAY', 'SUSTAIN', 'RELEASE', 'LEVEL'];
+export const ENG_TARGETS = 8 + ENG_TP.length, MAX_ENGINES = 2;
 
 const P = (k, l, min, max, def, unit = '', curve = 'lin', names = null) => ({ k, l, min, max, def, unit, curve, names });
 const IN = (k, l, kind = 'audio', range = 1, unit = '') => ({ k, l, kind, range, unit });
@@ -46,6 +52,11 @@ export const MODULES = {
   tempo: { name: 'TEMPO', cat: 'io', help: 'The song\'s clock: a ramp from 0 to 1 on every beat and on every bar, and 1 while the song plays.',
     ins: [], outs: [OUT('beat', 'BEAT', 'mod'), OUT('bar', 'BAR', 'mod'), OUT('play', 'PLAYING', 'gate')], params: [] },
   // ------------------------------------------------------------------ sources
+  eng: { name: 'ENGINE', cat: 'src', only: 'inst', help: 'A real SLOOP or Clipper engine in your patch, the very one of the firmware: pick the FIRMWARE, one of its ENGINES and one of its SOUNDS, and every setting of that engine shows below. It plays each note with its own envelope and effects. Run it through filters, VCAs and effects, and move any of its settings with MOD A and MOD B (a MACRO, an LFO, an envelope…).',
+    ins: [IN('ma', 'MOD A', 'mod', 1), IN('mb', 'MOD B', 'mod', 1)],
+    outs: [OUT('l', 'LEFT'), OUT('r', 'RIGHT')],
+    params: [P('bank', 'FIRMWARE', 0, 1, 1, '', 'lin', ['SLOOP', 'CLIPPER']), P('engine', 'ENGINE', 0, 31, 0), P('preset', 'SOUND', 0, 63, 12),
+      P('ta', 'MOD A MOVES', 0, ENG_TARGETS - 1, 4), P('tb', 'MOD B MOVES', 0, ENG_TARGETS - 1, 5), P('level', 'LEVEL', 0, 1, 0.8, '%')], eng: true },
   osc: { name: 'OSC', cat: 'src', help: 'An oscillator. SHAPE goes smoothly from sine to triangle, saw, square and a thin pulse. It plays the note unless PITCH is plugged. FM: another oscillator into it for bells and metal; SYNC restarts it on another one\'s cycle.',
     ins: [IN('pitch', 'PITCH', 'pitch'), IN('pmod', 'PITCH MOD', 'mod', 12, 'st'), IN('fm', 'FM', 'audio', 1), IN('shape', 'SHAPE', 'mod', 4), IN('pw', 'WIDTH', 'mod', 0.45), IN('sync', 'SYNC', 'audio')],
     outs: [OUT('out', 'OUT')],
@@ -141,6 +152,7 @@ export function newModule(type, x = 0, y = 0, id = null) {
   const m = { id: id || `${type}${rid()}`, type, x: Math.round(x), y: Math.round(y), p: modDefaults(type) };
   if (MODULES[type].text) m.text = MODULES[type].text;
   if (MODULES[type].dev) m.fx = { p: {} };
+  if (MODULES[type].eng) m.eng = { p: {} };
   return m;
 }
 const MACRO_NAMES = ['CUTOFF', 'RESONANCE', 'ENV AMOUNT', 'ATTACK', 'RELEASE', 'DRIVE', 'MOVEMENT', 'SPACE'];
@@ -180,6 +192,7 @@ export function validatePatch(raw, kindHint = null) {
     if (out.mods.length >= MAX_MODS || !m || typeof m !== 'object') continue;
     const def = MODULES[m.type];
     if (!def || (def.only && def.only !== kind)) continue;
+    if (def.eng && out.mods.filter((x) => x.type === m.type).length >= MAX_ENGINES) continue;
     let id = str(m.id, '', 24).replace(/[^\w-]/g, '');
     if (!id || /^__|^(constructor|prototype|hasOwnProperty|toString)$/.test(id)) id = `${m.type}${ids.size}`;
     while (ids.has(id)) id += 'x';
@@ -191,6 +204,12 @@ export function validatePatch(raw, kindHint = null) {
       q.p[k.k] = v;
     }
     if (def.text) q.text = str(m.text, def.text, MAX_TEXT);
+    if (def.eng) {                                  // (whole numbers; the settings: firmware parameter ids, at most 64)
+      for (const k of ['bank', 'engine', 'preset', 'ta', 'tb']) q.p[k] = Math.round(q.p[k]);
+      const ep = {};
+      for (const [id, v] of Object.entries(m.eng?.p && typeof m.eng.p === 'object' ? m.eng.p : {}).slice(0, 64)) if (/^\d{1,3}$/.test(id) && +id < 256) ep[id] = Math.round(clamp(v, -128, 127, 0));
+      q.eng = { p: ep };
+    }
     if (def.dev) {
       const type = FX_TYPES[q.p.dev], dp = {};
       for (const k of DEVICES[type].params) if (k.k !== 'sc') dp[k.k] = clamp(m.fx?.p?.[k.k], k.min, k.max, k.def);
@@ -219,4 +238,4 @@ export function validatePatch(raw, kindHint = null) {
   return out;
 }
 // the structure of a patch (modules, cables, voices), without its knob values: what forces a rebuild when it changes
-export const patchShape = (p) => JSON.stringify([p.kind, p.voice?.poly, p.voice?.mode, p.mods.map((m) => [m.id, m.type, m.text || '', m.type === 'fx' ? m.p.dev : 0]), p.cables.map((c) => [c.from, c.to]), (p.fx || []).map((f) => [f.id, f.type])]);
+export const patchShape = (p) => JSON.stringify([p.kind, p.voice?.poly, p.voice?.mode, p.mods.map((m) => [m.id, m.type, m.text || '', m.type === 'fx' ? m.p.dev : m.type === 'eng' ? m.p.bank : 0]), p.cables.map((c) => [c.from, c.to]), (p.fx || []).map((f) => [f.id, f.type])]);

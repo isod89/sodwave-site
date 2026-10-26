@@ -6,7 +6,7 @@
 // LabSynth looks to the engine like a firmware engine (k_note, k_param, k_get, k_midi, k_render): its eight macros
 // are its eight parameters, so automation, modulators, MIDI learn, parameter locks, freezing and the multi-core
 // engine work on it as they do on SLOOP and Clipper. No DOM: the worklet, the export, the workers and the tests use it.
-import { MODULES, FX_TYPES, patchShape, SYNC_BEATS, LAB_VERSION } from './lab-modules.js';
+import { MODULES, FX_TYPES, patchShape, SYNC_BEATS, LAB_VERSION, ENG_TP } from './lab-modules.js';
 import { createDevice, Rack, DEVICES } from './fx.js';   // (only inside functions: fx.js imports this file)
 import { SCALES } from './notefx.js';
 
@@ -531,7 +531,119 @@ class Expr {
     }
   }
 }
-const DSP = { note: Note, midi: Midi, macro: Macro, in: AudioIn, out: Out, tempo: Tempo, osc: Osc, super: Super, op: Op, noise: Noise, pluck: Pluck, filter: Filter, ladder: Ladder,
+// ---- ENGINE: a firmware engine (SLOOP or Clipper, the WebAssembly the tracks play) inside the patch. Each voice runs
+// its own copy and plays its own note on it, so filters, VCAs and envelopes after it work per note as with an OSC.
+// The compiled engines come from whoever plays the patch: the audio engine (worklet, workers), or the page (the editor).
+let WASM = null;
+const CATALOG = {};
+export function setLabEngines(modules) { if (modules?.sloop && modules?.clipper) WASM = modules; }
+export const labEnginesReady = () => !!WASM;
+// (the audio thread has no TextDecoder: UTF-8 read by hand there)
+function utf8(b) {
+  if (typeof TextDecoder === 'function') return new TextDecoder().decode(b);
+  let s = '';
+  for (let i = 0; i < b.length;) {
+    let c = b[i++];
+    if (c >= 0xf0) c = ((c & 7) << 18) | ((b[i++] & 63) << 12) | ((b[i++] & 63) << 6) | (b[i++] & 63);
+    else if (c >= 0xe0) c = ((c & 15) << 12) | ((b[i++] & 63) << 6) | (b[i++] & 63);
+    else if (c >= 0xc0) c = ((c & 31) << 6) | (b[i++] & 63);
+    s += String.fromCodePoint(c);
+  }
+  return s;
+}
+function catalogOf(bank, w) {
+  if (!CATALOG[bank]) CATALOG[bank] = JSON.parse(utf8(new Uint8Array(w.memory.buffer, w.k_buffer(), w.k_catalog()).slice()));
+  return CATALOG[bank];
+}
+// a target of MOD A / MOD B -> { id, min, max } (0-7: the engine's own settings; then the envelope and the level)
+function engTarget(cat, e, t) {
+  if (t < 8) { const q = cat.engines[e]?.edit?.[t]; return q ? { id: cat.e0 + t, min: q.min, max: q.max } : null; }
+  const i = cat.tp.findIndex((q) => q.l === ENG_TP[t - 8]);
+  return i >= 0 ? { id: i, min: cat.tp[i].min, max: cat.tp[i].max } : null;
+}
+// what a sound's settings are, for the editor (a spare copy of the firmware per bank, on the page's thread)
+const spare = {};
+export function engineInfo(bank, e, pr) {
+  if (!WASM) return null;
+  const b = bank ? 'clipper' : 'sloop';
+  let s = spare[b];
+  if (!s) { const w = new WebAssembly.Instance(WASM[b], {}).exports; w.k_init(0); s = spare[b] = { w, cat: catalogOf(b, w), key: '', vals: null }; }
+  const ne = s.cat.engines.length, ei = Math.min(ne - 1, Math.max(0, e | 0)), np = s.cat.engines[ei].presets.length, pi = Math.min(np - 1, Math.max(0, pr | 0));
+  if (s.key !== `${ei}:${pi}`) {
+    s.w.k_preset(ei, pi); s.w.k_render(); s.w.k_render();
+    s.vals = [...Array(s.w.k_nparams())].map((_, i) => s.w.k_get(i));
+    s.key = `${ei}:${pi}`;
+  }
+  return { cat: s.cat, engine: ei, preset: pi, values: s.vals };
+}
+class Engine {
+  constructor() { this.w = null; this.bank = ''; this.key = ''; this.applied = {}; this.base = {}; this.modded = {}; this.note = -1; this.gate = false; this.quiet = 0; this.idle = true; this.level = 0.8; this.bpm = 0; }
+  set(p, m) {
+    try { this.load(p, m); } catch (e) { this.w = null; this.bank = ''; }   // (whatever happens, the song plays on)
+  }
+  load(p, m) {
+    this.level = p.level ?? 0.8;
+    if (!WASM) return;
+    const bank = p.bank ? 'clipper' : 'sloop';
+    if (this.bank !== bank) {
+      try { this.w = new WebAssembly.Instance(WASM[bank], {}).exports; } catch { this.w = null; return; }
+      this.w.k_init(0);
+      this.cat = catalogOf(bank, this.w);
+      this.ptr = this.w.k_render();
+      this.out = new Float32Array(this.w.memory.buffer, this.ptr, BLOCK * 2);
+      this.bank = bank; this.key = ''; this.note = -1; this.gate = false;
+    }
+    const cat = this.cat, e = Math.min(cat.engines.length - 1, Math.max(0, p.engine | 0)), pr = Math.min(cat.engines[e].presets.length - 1, Math.max(0, p.preset | 0));
+    if (`${e}:${pr}` !== this.key) {                            // a new sound: the firmware loads it, its settings start from it
+      if (this.note >= 0) this.w.k_note(this.note, 0, 0);
+      this.w.k_preset(e, pr); this.w.k_render(); this.w.k_render();
+      this.key = `${e}:${pr}`; this.applied = {}; this.base = {}; this.modded = {}; this.note = -1; this.gate = false;
+    }
+    this.e = e;
+    const over = m?.eng?.p || {};                                // the settings you changed (firmware parameter ids)
+    for (const id in over) {
+      if (!(id in this.base)) this.base[id] = this.w.k_get(+id);
+      if (this.applied[id] !== over[id]) { this.w.k_param(+id, over[id]); this.applied[id] = over[id]; }
+    }
+    for (const id in this.applied) if (!(id in over)) { this.w.k_param(+id, this.base[id]); delete this.applied[id]; }
+    this.tA = engTarget(cat, e, p.ta | 0); this.tB = engTarget(cat, e, p.tb | 0);
+  }
+  start(v) {
+    if (!this.w) return;
+    if (this.note >= 0) this.w.k_note(this.note, 0, 0);
+    this.note = v.note; this.gate = true; this.quiet = 0; this.idle = false;
+    this.w.k_note(v.note, Math.max(1, Math.min(127, Math.round(v.vel * 127))), 1);
+  }
+  // a setting as it is without MOD A / MOD B
+  plain(id) { if (id in this.applied) return this.applied[id]; if (!(id in this.base)) this.base[id] = this.w.k_get(id); return this.base[id]; }
+  process(I, O, v, g) {
+    const L = O.l, R = O.r, w = this.w;
+    if (!w) { L.fill(0); R.fill(0); this.idle = true; return; }
+    if (this.gate && !v.gate) { w.k_note(this.note, 0, 0); this.gate = false; }
+    else if (this.gate && v.gate && v.note !== this.note) {      // (legato: the voice moved to another key)
+      const old = this.note; this.note = v.note;
+      w.k_note(v.note, Math.max(1, Math.round(v.vel * 127)), 1); w.k_note(old, 0, 0);
+    }
+    if (g.bpm !== this.bpm) { this.bpm = g.bpm; w.k_bpm?.(g.bpm); }
+    // MOD A / MOD B: a signal of ±1 moves its setting across its whole range (the cable's amount scales it)
+    const want = {};
+    for (const [inp, t] of [[I.ma, this.tA], [I.mb, this.tB]]) if (inp && t) want[t.id] = (want[t.id] ?? 0) + inp[0] * (t.max - t.min);
+    for (const id in want) {
+      const t = [this.tA, this.tB].find((x) => x && x.id === +id), val = Math.round(Math.max(t.min, Math.min(t.max, this.plain(+id) + want[id])));
+      if (this.modded[id] !== val) { w.k_param(+id, val); this.modded[id] = val; }
+    }
+    for (const id in this.modded) if (!(id in want)) { w.k_param(+id, this.plain(+id)); delete this.modded[id]; }
+    w.k_render();
+    if (!this.out.length) this.out = new Float32Array(w.memory.buffer, this.ptr, BLOCK * 2);   // (its memory grew)
+    const o = this.out, lv = this.level;
+    let pk = 0;
+    for (let i = 0; i < BLOCK; i++) { const l = o[i * 2] * lv, r = o[i * 2 + 1] * lv; L[i] = l; R[i] = r; const a = (l < 0 ? -l : l) + (r < 0 ? -r : r); if (a > pk) pk = a; }
+    // done when let go and silent for 30 ms (its own release has played out)
+    if (!this.gate) { this.quiet = pk < 1e-5 ? this.quiet + 1 : 0; this.idle = this.quiet > 40; } else this.idle = false;
+  }
+}
+
+const DSP = { eng: Engine, note: Note, midi: Midi, macro: Macro, in: AudioIn, out: Out, tempo: Tempo, osc: Osc, super: Super, op: Op, noise: Noise, pluck: Pluck, filter: Filter, ladder: Ladder,
   comb: Comb, vowel: Vowel, adsr: Adsr, lfo: Lfo, steps: Steps, slew: Slew, follow: Follow, sh: Sh, vca: Vca, mix: Mix, scale: Scale, math: Maths, shaper: Shaper, xfade: Xfade,
   quant: Quant, value: Value, expr: Expr, delay: Delay, fx: Effect };
 
@@ -575,7 +687,7 @@ class Graph {
     };
     for (const n of this.nodes) visit(n);
     this.order = order;
-    this.envs = this.nodes.filter((n) => n.m.type === 'adsr').map((n) => n.dsp);
+    this.envs = this.nodes.filter((n) => n.m.type === 'adsr' || n.m.type === 'eng').map((n) => n.dsp);   // (a voice ends when these are done)
     this.byId = byId;
   }
   // new knob values and cable amounts, the same modules and cables
@@ -604,6 +716,7 @@ const SILENT = 1e-5, QUIET_BLOCKS = 140;                          // (a released
 export class LabSynth {
   constructor(engine = null) {
     this.engine = engine;
+    if (engine?.modules) setLabEngines(engine.modules);           // (ENGINE modules play the same firmware)
     this.out = new Float32Array(BLOCK * 2);
     this.L = new Float32Array(BLOCK); this.R = new Float32Array(BLOCK);
     this.g = { bpm: 120, pos: 0, sig: 4, playing: false, macros: new Float64Array(8).fill(0.5), wheel: 0, press: 0, bendN: 0, sus: false, cc: new Float32Array(128) };

@@ -16,6 +16,13 @@ const amp = (env = {}) => M('env', 'adsr', X[2], Y[2], { a: 3, d: 300, s: 0.75, 
 
 export const LAB_FACTORY = [
   // ------------------------------------------------------------------ instruments
+  // a real Clipper engine (ANALOG · SUPERSAW) through a filter: MACRO 1 the filter, MACRO 2 the engine's own cutoff
+  inst('Engine + filter', 'clipper engine starter', [
+    M('note', 'note', X[0], Y[0]), M('eng', 'eng', X[1], Y[0], { bank: 1, engine: 0, preset: 12, ta: 4, level: 0.8 }), M('flt', 'filter', X[2], Y[0], { cut: 2500, res: 0.2 }),
+    M('m0', 'macro', X[0], Y[1], { n: 0 }), M('m1', 'macro', X[0], Y[2], { n: 1 }), M('out', 'out', X[3], Y[0])],
+  [C('eng.l', 'flt.in'), C('flt.out', 'out.l'), C('m0.out', 'flt.cut', 0.5), C('m1.out', 'eng.ma', 0.6)],
+  { macros: [['CUTOFF', 0.5], ['ENGINE CUT', 0.2]] }),
+
   inst('Classic subtractive', 'synth lead keys', [
     M('note', 'note', X[0], Y[0]), M('o1', 'osc', X[1], Y[0], { shape: 2, level: 0.5 }), M('o2', 'osc', X[1], Y[1], { shape: 2, fine: 9, level: 0.5 }), M('mix', 'mix', X[2], Y[0]),
     M('flt', 'filter', X[3], Y[0], { cut: 500, res: 0.25 }), M('fenv', 'adsr', X[2], Y[3], { a: 2, d: 400, s: 0.2, r: 300 }), M('envamt', 'vca', X[3], Y[3]),

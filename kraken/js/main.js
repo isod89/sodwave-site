@@ -43,7 +43,8 @@ import { MultiCore, mcMode, mcSupported } from './multicore.js';
 import { reportDialog } from './ui/report.js';
 import { welcome, startTour } from './ui/welcome.js';
 import { initI18n, toggleLang } from './i18n.js';
-import { openLab, installLab, labPicker } from './ui/lab.js';
+import { openLab, installLab, labPicker, labStart, labOpenPatch } from './ui/lab.js';
+import { setLabEngines } from './lab-dsp.js';
 import { initHub } from './ui/hub.js';                       // the community hub (ui/hub.js, hub.js, hub/api)
 
 const $ = (id) => document.getElementById(id);
@@ -79,6 +80,7 @@ async function boot() {
   try {
     const { modules, lib } = await loadEngines();
     app.modules = modules; app.lib = lib;
+    setLabEngines(modules);                                       // (the LAB's ENGINE module, in the editor: its test note, its settings)
     $('st-eng').firstChild.textContent = String(lib.engineNames.length);
     $('st-snd').firstChild.textContent = String(lib.sounds.length);
     $('st-kit').firstChild.textContent = String(lib.sloop.kits.filter((k) => !/^USR|^SYN/.test(k)).length);
@@ -227,9 +229,16 @@ async function openUi(project) {
   let welcomed = false;
   try { welcomed = !!localStorage.getItem('kraken.welcomed'); } catch { /* */ }
   const hubLink = initHub(app);                                  // (opened by a hub link, /?hub=ID or /?hub_login=…: the hub first)
+  // /?lab (sodwave.com/lab, the hub's page): straight into the LAB's front door
+  const q0 = new URLSearchParams(location.search), labLink = !hubLink && q0.has('lab');
+  if (labLink) {
+    q0.delete('lab');
+    try { history.replaceState(null, '', location.pathname + (q0.size ? `?${q0}` : '') + location.hash); } catch { /* */ }
+    setTimeout(() => labStart(app), 120);
+  }
   // the first visit: the welcome (not under automation: the test suites start from the demo song)
-  if (!project && !welcomed && !hubLink && !app.pendingFiles?.length && !navigator.webdriver) { welcome(app, { modal, first: true }); return; }
-  if (hubLink) { if (app.pendingFiles?.length) openPending(); return; }
+  if (!project && !welcomed && !hubLink && !labLink && !app.pendingFiles?.length && !navigator.webdriver) { welcome(app, { modal, first: true }); return; }
+  if (hubLink || labLink) { if (app.pendingFiles?.length) openPending(); return; }
   if (app.missingAtStart) toast(`Your last session is back. ${missingText(app.missingAtStart)}`);
   else toast(project ? `Your last session is back. ${touch ? '☰' : 'PROJECT'} > Open demo song for the demo.` : touch ? 'Demo song loaded: tap ▶ to play. Hold a clip or a track for its menu.' : 'Demo song loaded: press Space to play.');
   if (app.pendingFiles?.length) openPending();
@@ -534,6 +543,8 @@ app.addAudio = (id, a) => addAsset(id, a);
 // LAB: open the editor (target: { track } or { track | bus, fx }); a patch from the hub or a file, kept and used
 app.openLab = (target) => openLab(app, target);
 app.installLab = (patch, meta) => installLab(app, patch, meta);
+app.labStart = () => labStart(app);                              // (the LAB's front door: top bar, PROJECT, Ctrl+K, the hub)
+app.labOpenPatch = (patch, meta) => labOpenPatch(app, patch, meta);
 // the LAB patches of this project (its LAB tracks and LAB effects), for the hub's "Publish… > A LAB plugin"
 app.hubLabs = async () => {
   const p = app.store.p, out = [];
@@ -1287,6 +1298,7 @@ function bindTop() {
   $('learn').onclick = () => app.control.setLearning(!app.control.learning);
   $('redo').onclick = () => app.store.redo();
   $('libbtn').onclick = () => $('app').classList.toggle('no-lib');
+  $('labbtn').onclick = () => labStart(app);
   $('mode-arr').onclick = () => app.setMode('arrange');
   $('mode-ses').onclick = () => app.setMode('session');
   const addMenu = $('addmenu');
@@ -1306,7 +1318,7 @@ function bindTop() {
   $('autobtn').onclick = () => { app.autorec.cycle(); toast({ read: 'Automation: READ (it plays, your moves are not recorded).', touch: 'Automation: TOUCH. While playing, hold any knob, fader or send: its moves are recorded.', latch: 'Automation: LATCH. Like TOUCH, and it keeps its last value until you stop.' }[app.autorec.mode]); };
   app.syncAutoButton();
   // the top bar on one row: the least needed things leave first while it does not fit (they stay in the menus)
-  const FIT = ['#midi-cell', '#oct-cell', '.title-field', '#top > .sep', '#swing-cell', '#install', '#lufs-cell', '#sigbtn', '#countin', '#takesbtn', '#snap-cell', '#autobtn', '#learn', '#punch', '#click'];
+  const FIT = ['#midi-cell', '#oct-cell', '.title-field', '#top > .sep', '#swing-cell', '#install', '#lufs-cell', '#sigbtn', '#countin', '#takesbtn', '#snap-cell', '#autobtn', '#learn', '#labbtn', '#punch', '#click'];
   const top = $('top'), one = () => { const ys = [...top.children].filter((e) => e.offsetParent && e.offsetWidth).map((e) => e.offsetTop + e.offsetHeight / 2); return !ys.length || Math.max(...ys) - Math.min(...ys) < 12; };
   let fitting = false;
   const fitTop = (fresh = true) => {
@@ -1490,6 +1502,7 @@ async function fileAction(act) {
   if (act === 'presets') return managePresets(app);
   if (act === 'hub') return app.hub.open();
   if (act === 'publish') return app.hub.publish({ kind: 'song' });
+  if (act === 'lab') return labStart(app);
   if (act === 'rename') {
     const inp = h('input', { value: p.name, maxlength: 40, style: { width: '100%' }, 'aria-label': 'Project name' });
     const ok = () => { const v = inp.value.trim().slice(0, 40); if (v) app.store.change((pp) => { pp.name = v; }); };

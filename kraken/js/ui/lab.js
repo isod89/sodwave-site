@@ -4,9 +4,9 @@
 // a cable for its amount, click a module to see everything about it on the right (its help, every knob, what each of
 // its outputs does on a test note). Below: the eight MACROS (the knobs you automate and map), the voices and the
 // effects after them. Every change is a project change: Ctrl+Z takes it back, it plays at once.
-import { h, knob } from './kit.js';
-import { MODULES, CATS, FX_TYPES, newModule, newPatch, validatePatch, LAB_VERSION } from '../lab-modules.js';
-import { probe, formulaError } from '../lab-dsp.js';
+import { h, knob, fmt } from './kit.js';
+import { MODULES, CATS, FX_TYPES, newModule, newPatch, validatePatch, LAB_VERSION, ENG_TP_NAMES, MAX_ENGINES } from '../lab-modules.js';
+import { probe, formulaError, engineInfo, labEnginesReady } from '../lab-dsp.js';
 import { LAB_FACTORY } from '../lab-presets.js';
 import { DEVICES, defaults, fmtParam, toNorm, fromNorm } from '../fx.js';
 import { listPresets, addPreset, removePreset } from '../presets.js';
@@ -138,7 +138,7 @@ class LabEditor {
   }
 
   // ---- drawing the patch
-  shapeKey() { const p = this.patch; return JSON.stringify([p.mods.map((m) => [m.id, m.type, m.x, m.y, m.text, m.type === 'fx' ? m.p.dev : 0, m.type === 'steps' ? m.p.len : 0]), p.cables.map((c) => [c.from, c.to, c.amt]), this.sel, p.kind]); }
+  shapeKey() { const p = this.patch; return JSON.stringify([p.mods.map((m) => [m.id, m.type, m.x, m.y, m.text, m.type === 'fx' ? m.p.dev : m.type === 'eng' ? `${m.p.bank}:${m.p.engine}:${m.p.preset}` : 0, m.type === 'steps' ? m.p.len : 0]), p.cables.map((c) => [c.from, c.to, c.amt]), this.sel, p.kind]); }
   sync() {
     if (!this.patch) { this.close(); return; }
     if (this.dragging) return;
@@ -167,7 +167,7 @@ class LabEditor {
       h('i', { class: 'dot', 'data-port': `${m.id}.in.${q.k}`, style: { background: KIND_COLOR[q.kind] } }), h('span', { text: q.l })));
     const outs = d.outs.map((q) => h('div', { class: 'lab-port out', title: `${q.l} · ${KIND_LABEL[q.kind]}` }, h('span', { text: q.l }),
       h('i', { class: 'dot', 'data-port': `${m.id}.out.${q.k}`, style: { background: KIND_COLOR[q.kind] } })));
-    const head = h('h5', { style: { '--c': CAT_COLOR[d.cat] } }, h('span', { text: m.type === 'macro' ? `MACRO ${m.p.n + 1} · ${this.patch.macros[m.p.n]?.name || ''}` : m.type === 'fx' ? `EFFECT · ${DEVICES[FX_TYPES[m.p.dev]]?.name || ''}` : d.name }),
+    const head = h('h5', { style: { '--c': CAT_COLOR[d.cat] } }, h('span', { text: m.type === 'macro' ? `MACRO ${m.p.n + 1} · ${this.patch.macros[m.p.n]?.name || ''}` : m.type === 'fx' ? `EFFECT · ${DEVICES[FX_TYPES[m.p.dev]]?.name || ''}` : m.type === 'eng' ? `ENGINE · ${this.engCat(m)?.engines[m.p.engine]?.name || ''}` : d.name }),
       h('button', { class: 'lab-x', title: 'Remove (Delete)', 'aria-label': `Remove ${d.name}`, onclick: (e) => { e.stopPropagation(); this.removeModule(m.id); } }, '×'));
     const body = [];
     if (m.type === 'steps') body.push(this.stepsEl(m, 'small'));
@@ -184,6 +184,7 @@ class LabEditor {
     const color = CAT_COLOR[MODULES[m.type].cat];
     return params.map((q) => {
       const key = `${where}:${m.id}:${q.k}`;
+      if (m.type === 'eng' && ['bank', 'engine', 'preset', 'ta', 'tb'].includes(q.k)) return this.engSel(m, q, key);
       if (q.names && q.k !== 'n') {
         const s = h('select', { class: 'lab-sel', 'aria-label': q.l, title: q.l, onchange: (e) => this.edit((pp) => { const x = pp.mods.find((y) => y.id === m.id); if (x) x.p[q.k] = +e.target.value; }) },
           q.names.map((n, i) => (i < q.min ? null : h('option', { value: i, selected: Math.round(m.p[q.k]) === i ? true : null }, n))));
@@ -412,6 +413,7 @@ class LabEditor {
   addModule(type, x = null, y = null, then = null) {
     const d = MODULES[type];
     if (!d || this.patch.mods.length >= 64) { this.app.toast('A patch holds 64 modules at most.'); return; }
+    if (d.eng && this.patch.mods.filter((q) => q.type === type).length >= MAX_ENGINES) { this.app.toast(`A patch holds ${MAX_ENGINES} ENGINE modules at most (each note runs its own copy of each).`); return; }
     if (x == null) { const r = this.viewEl.getBoundingClientRect(), w = this.toWorld(r.left + r.width / 2, r.top + r.height / 3); x = w.x - W / 2 + (Math.random() * 40 - 20); y = w.y + (Math.random() * 40 - 20); }
     const m = newModule(type, Math.round(x / 10) * 10, Math.round(y / 10) * 10);
     if (type === 'macro') { const used = new Set(this.patch.mods.filter((q) => q.type === 'macro').map((q) => q.p.n)); m.p.n = [0, 1, 2, 3, 4, 5, 6, 7].find((i) => !used.has(i)) ?? 0; }
@@ -477,6 +479,7 @@ class LabEditor {
     const extra = [];
     if (m.type === 'steps') extra.push(this.stepsEl(m, 'big'));
     if (m.type === 'expr') extra.push(this.formulaEl(m, false));
+    if (m.type === 'eng') extra.push(...this.engPanel(m));
     if (m.type === 'fx') {
       const type = FX_TYPES[m.p.dev], spec = DEVICES[type];
       extra.push(h('h6', { text: spec.name }), h('div', { class: 'lab-knobs' }, spec.params.filter((q) => q.k !== 'sc').map((q) => knob({ label: q.l, min: 0, max: 1000, size: 34,
@@ -491,6 +494,52 @@ class LabEditor {
       d.outs.length ? h('h6', { text: this.r.kind === 'fx' ? 'ITS OUTPUTS ON A TEST SOUND' : 'ITS OUTPUTS ON A TEST NOTE' }) : null, this.scopes,
       h('div', { class: 'row' }, h('button', { class: 'add', onclick: () => this.duplicate(m.id) }, 'DUPLICATE'), h('button', { class: 'add danger', onclick: () => this.removeModule(m.id) }, 'REMOVE')));
     this.drawScopes(m);
+  }
+  // ---- ENGINE: the firmware's engines, sounds and settings, by name
+  engCat(m) { return this.app.lib?.[m.p.bank ? 'clipper' : 'sloop']; }
+  engEdit(m, fn) { this.edit((pp) => { const x = pp.mods.find((y) => y.id === m.id); if (x) { x.eng ||= { p: {} }; fn(x); } }); this.probeSoon(); }
+  engSel(m, q, key) {
+    const cat = this.engCat(m), eng = cat?.engines[m.p.engine];
+    const names = q.k === 'bank' ? q.names : q.k === 'engine' ? (cat?.engines || []).map((e) => e.name) : q.k === 'preset' ? (eng?.presets || [])
+      : [...(eng?.edit || []).map((e) => e.l), ...ENG_TP_NAMES];
+    const s = h('select', { class: 'lab-sel', 'aria-label': q.l, title: q.l, translate: q.k === 'engine' || q.k === 'preset' ? 'no' : null,
+      onchange: (e) => { const v = +e.target.value; this.engEdit(m, (x) => {
+        if (q.k === 'bank') { x.p.bank = v; x.p.engine = 0; x.p.preset = 0; x.eng.p = {}; }
+        else if (q.k === 'engine') { x.p.engine = v; x.p.preset = 0; x.eng.p = {}; }
+        else if (q.k === 'preset') { x.p.preset = v; x.eng.p = {}; }
+        else x.p[q.k] = v;
+      }); } },
+      names.map((n, i) => h('option', { value: i, selected: Math.round(m.p[q.k]) === i ? true : null }, q.k === 'preset' ? `${i + 1} · ${n}` : n)));
+    this.knobs.set(key, { set: (v) => { if (document.activeElement !== s) s.value = String(Math.round(v)); } });
+    return h('label', { class: 'lab-sel-w' + (q.k === 'preset' || q.k === 'engine' ? ' wide' : '') }, h('span', { text: q.l }), s);
+  }
+  // in the inspector: every engine as a button, the sound before / after, and every setting of the engine as a knob
+  engPanel(m) {
+    if (!labEnginesReady()) return [h('p', { class: 'lab-help', text: 'The engines are still loading…' })];
+    const info = engineInfo(m.p.bank, m.p.engine, m.p.preset);
+    if (!info) return [];
+    const { cat, values } = info, eng = cat.engines[info.engine], e0 = cat.e0, over = m.eng?.p || {}, color = CAT_COLOR.src;
+    const chips = h('div', { class: 'lab-engs' }, cat.engines.map((e, i) => h('button', { class: 'add' + (i === info.engine ? ' on' : ''), translate: 'no', title: `${e.name}: ${e.presets.length} sounds`,
+      onclick: () => this.engEdit(m, (x) => { x.p.engine = i; x.p.preset = 0; x.eng.p = {}; }) }, e.name)));
+    const step = (d) => this.engEdit(m, (x) => { x.p.preset = (info.preset + d + eng.presets.length) % eng.presets.length; x.eng.p = {}; });
+    const sound = h('div', { class: 'lab-engsound' }, h('button', { class: 'add', onclick: () => step(-1), title: 'The sound before' }, '◀'),
+      h('span', { translate: 'no', text: `${eng.presets[info.preset]} · ${info.preset + 1}/${eng.presets.length}` }), h('button', { class: 'add', onclick: () => step(1), title: 'The next sound' }, '▶'));
+    const mk = (id, d, label) => {
+      const k = knob({ label: label || d.l, min: d.min, max: d.max, def: values[id] ?? d.def, value: over[id] ?? values[id] ?? d.def, size: 34, color, mod: id in over, format: (v) => fmt(d, v),
+        onChange: (v) => { k.classList.add('mod'); this.edit((pp) => { const x = pp.mods.find((y) => y.id === m.id); if (x) { x.eng ||= { p: {} }; x.eng.p[id] = Math.round(v); } }, `labeng${m.id}${id}`); },
+        onEnd: () => { this.app.store.endGesture(); this.probeSoon(); } });
+      k.title = `${label || d.l}: drag · double-click: back to the sound's value`;
+      return k;
+    };
+    const tp = (ids) => ids.filter((id) => cat.tp[id]).map((id) => mk(id, cat.tp[id], ENG_NICE[id]));
+    const groups = [[eng.name, eng.edit.map((d, i) => mk(e0 + i, d))], ['ENVELOPE', tp([1, 2, 3, 4, 5, 6, 7])], ['LFO', tp([9, 10, 11, 12, 13, 14, 15, 16])],
+      ['VOICE', tp([0, 38, 44, 39])], ['EFFECTS', tp([33, 34, 35, 36])], ...(m.p.bank ? [['MACROS', tp([96, 97, 98, 99])]] : [])].filter(([, ks]) => ks.length);
+    return [h('h6', { text: `${m.p.bank ? 'CLIPPER' : 'SLOOP'} · ${cat.engines.length} ENGINES` }), chips,
+      h('h6', { text: 'SOUND' }), sound,
+      ...groups.flatMap(([title, ks]) => [h('h6', { translate: title === eng.name ? 'no' : null, text: title }), h('div', { class: 'lab-knobs' }, ks)]),
+      h('div', { class: 'row' }, h('button', { class: 'add', disabled: Object.keys(over).length ? null : true, title: 'Every setting back to the sound as it was loaded',
+        onclick: () => this.engEdit(m, (x) => { x.eng.p = {}; }) }, 'BACK TO THE SOUND')),
+      h('p', { class: 'lab-help', text: `MOD A and MOD B move a setting from the patch: plug a MACRO, an LFO or an envelope into them and choose what they move. A patch holds ${MAX_ENGINES} engines at most.` })];
   }
   probeSoon() { clearTimeout(this.pt); this.pt = setTimeout(() => { const m = this.sel?.mod && this.patch?.mods.find((x) => x.id === this.sel.mod); if (m) this.drawScopes(m); }, 120); }
   drawScopes(m) {
@@ -644,6 +693,8 @@ class LabEditor {
   }
 }
 const KIND_LABEL = { audio: 'Audio', mod: 'Modulation', gate: 'Gate', pitch: 'Pitch' };
+// the firmware's track settings an ENGINE shows, named as on a synth track
+const ENG_NICE = { 0: 'LEVEL', 5: 'ENV>FLT', 6: 'ENV>PIT', 7: 'ENV>SHP', 13: 'LFO>PIT', 14: 'LFO>FLT', 15: 'LFO>SHP', 16: 'LFO>AMP', 38: 'GLIDE', 44: 'DETUNE', 39: 'PAN' };
 
 // ------------------------------------------------------------------ the INSTRUMENT tab of a LAB track
 export function buildLab(dev, t) {
@@ -694,4 +745,49 @@ export function labFxButton(app, o, d) {
   return h('div', { class: 'row lab-fxrow' }, h('span', { class: 'lab-fxname', text: d.lab?.name || 'Empty effect' }),
     h('button', { class: 'add go', onclick: () => openLab(app, target) }, 'OPEN THE LAB'),
     h('button', { class: 'add', onclick: () => labPicker(app, 'fx', (patch) => o.edit((fx) => { const x = fx.find((y) => y.id === d.id); if (x) { x.lab = validatePatch(structuredClone(patch), 'fx'); patch.macros?.forEach((m, i) => { x.p[`m${i}`] = m.v; }); } }), 'Choose an effect patch') }, 'PATCHES ▾'));
+}
+
+// ------------------------------------------------------------------ the way in: LAB in the top bar, PROJECT, Ctrl+K, the hub
+// where a new effect goes: the selected track's effects (when it has some), else the master's
+function fxHome(app) {
+  const t = app.store.track(app.view.selTrack);
+  return Array.isArray(t?.fx) ? { t, where: `On the track ${t.name}` } : { t: null, where: 'On the master' };
+}
+// a patch played now: an instrument on a new track, an effect on the selected track (or the master); then the editor opens
+export function labUse(app, raw, name) {
+  const kind = raw?.kind === 'fx' ? 'fx' : 'inst', patch = validatePatch(structuredClone(raw), kind);
+  if (name) patch.name = String(name).slice(0, 40);
+  if (kind === 'inst') {
+    const t = app.addTrack('lab', { lab: patch, name: String(patch.name || 'LAB').toUpperCase().slice(0, 16), sends: [0.1, 0] });
+    app.audition?.(t.id, [60, 64, 67]);
+    return openLab(app, { track: t.id });
+  }
+  const { t } = fxHome(app), id = `f${Math.random().toString(36).slice(2, 8)}`;
+  const rack = (pp) => (t ? pp.tracks.find((x) => x.id === t.id)?.fx : pp.master.fx);
+  if ((rack(app.store.p)?.length ?? 0) >= 8) { app.toast?.(`${t ? t.name : 'The master'} has 8 effects already: remove one first.`); return null; }
+  app.store.change((pp) => { rack(pp)?.push({ id, type: 'lab', on: true, p: { ...defaults('lab'), ...Object.fromEntries(patch.macros.map((m, i) => [`m${i}`, m.v])) }, lab: patch }); });
+  return openLab(app, t ? { track: t.id, fx: id } : { bus: 'master', fx: id });
+}
+// a plugin from the hub: kept in MY PATCHES, then played and opened at once
+export async function labOpenPatch(app, raw, meta = {}) {
+  const kind = raw?.kind === 'fx' ? 'fx' : 'inst', patch = validatePatch(structuredClone(raw), kind), name = String(meta.name || patch.name).slice(0, 40);
+  patch.name = name;
+  await addPreset({ kind: 'lab', type: kind, name, data: patch, from: meta.from || null });
+  return labUse(app, patch, name);
+}
+// the LAB's front door: build an instrument, an effect, or find plugins on the hub
+export function labStart(app) {
+  app.logAct?.('lab: start');
+  const home = fxHome(app);
+  let m = null;
+  const big = (title, sub, run) => h('button', { class: 'add lab-door', onclick: () => { m?.close(); run(); } }, h('b', { text: title }), h('span', { text: sub }));
+  m = app.modal('◈ LAB: build your own plugin', [
+    h('p', { class: 'hint', text: 'An instrument or an effect made of modules and cables: no code. Play it in your songs, then share it on the hub.' }),
+    h('div', { class: 'lab-plist lab-doors' },
+      big('◈ New instrument', 'A synth of your own, on a new track', () => labPicker(app, 'inst', (patch, name) => labUse(app, patch, name), 'A LAB instrument: start from')),
+      big('◈ New effect', home.where, () => labPicker(app, 'fx', (patch, name) => labUse(app, patch, name), 'A LAB effect: start from')),
+      app.hub?.open ? big('☁ Plugins on the hub', 'Made by Kraken users: open one in the LAB, see how it works', () => { app.hub.filters && (app.hub.filters.kind = 'plugin'); app.hub.stack = []; app.hub.open('discover'); }) : null)],
+    [['Close', null, true]]);
+  m.box?.classList.add('lab-psheet');
+  return m;
 }
