@@ -131,6 +131,7 @@ export class Control {
       return;
     }
     if (type === 0x90 && d2 > 0) {
+      this.lagHint();
       const ids = this.routeTracks(ch);
       this.held.set(`${ch}:${d1}`, ids);
       for (const id of ids) this.app.noteOn(id, d1, d2, true);
@@ -143,6 +144,13 @@ export class Control {
     } else if (type === 0xc0) {
       this.programChange(d1);
     }
+  }
+  // the first key of the session, when the sound card is slow: why the sound comes late, and what helps (once)
+  lagHint() {
+    if (this.lagShown) return;
+    this.lagShown = true;
+    const ms = Math.round((this.app.audio?.latency?.() || 0) * 1000);
+    if (ms > 40) this.app.toast?.(`Your sound output adds ${ms} ms between a key and its sound. Wired headphones or a USB audio interface play sooner than Bluetooth or a screen's speakers. Recordings are placed where you heard them. Details: PROJECT > Check this device.`);
   }
   // a channel's notes: the tracks listening on it, else the armed or selected track
   routeTracks(ch) {

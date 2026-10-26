@@ -175,7 +175,7 @@ export function engineMsg(e, m) {
     case 'raw': e.tracks.get(m.track)?.w?.k_midi_in(m.st, m.d1, m.d2); break;
     case 'stop': e.stop(); break;
     case 'seek': e.seek(m.beat); e.seekSeq = m.seq || 0; break;
-    case 'rec': e.recording = m.on; if (m.on) e.recPass = 0; else e.flushRecording(); break;
+    case 'rec': e.recording = m.on; if (m.on) { e.recPass = 0; e.recLag = Math.max(0, Math.min(1, +m.lag || 0)); } else e.flushRecording(); break;
     case 'click': e.click = m.on; break;
     case 'note': e.liveCall = true; try { e.liveNote(m.track, m.n, m.v, m.on, !!m.silent, !!m.preview); } finally { e.liveCall = false; } break;
     case 'param': { const tr = e.tracks.get(m.track); if (tr?.w) { tr.w.k_param(m.id, m.v); tr.params[m.id] = m.v; } break; }

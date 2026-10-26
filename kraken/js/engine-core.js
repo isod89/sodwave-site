@@ -612,7 +612,16 @@ export class KrakenEngine {
     this.lastBeat = -1;
   }
   panic() { for (const tr of this.order) { tr.allOff(this); tr.w?.k_panic(); tr.sampler && (tr.sampler.v = []); tr.pads && (tr.pads.v = []); if (tr.kind === 'wam') this.wamOut(tr.id, 0xb0, 123, 0); } }
-  punchOpen() { const pu = this.project?.punch; return !pu?.on || (this.pos >= pu.a && this.pos < pu.b); }
+  punchOpen(t = this.pos) { const pu = this.project?.punch; return !pu?.on || (t >= pu.a && t < pu.b); }
+  // where a note played now belongs in the song: the player plays with what they HEAR, recLag seconds behind the
+  // engine (the sound card's buffers, the plugins' delay); a note heard at the loop's start but played before the engine
+  // wrapped back belongs to the end of the turn before. -> { t (beats), pass (the loop's turn) }
+  recPos() {
+    const pass = this.recPass || 0, lag = (this.recLag || 0) * this.bpm / 60;
+    let t = this.pos - lag;
+    if (this.loop.on && pass > 0 && t < this.loop.a && this.pos >= this.loop.a - 1e-9) return { t: t + (this.loop.b - this.loop.a), pass: pass - 1 };
+    return { t: Math.max(0, t), pass };
+  }
 
   // ---------------------------------------------------------------- session ---
   launch(trackId, slot, now = false) {
@@ -659,7 +668,7 @@ export class KrakenEngine {
     tr.w?.k_midi(st, d1, d2);
     if (tr.kind === 'wam') this.wamOut(id, st, d1, d2);
     const kind = st & 0xf0;
-    if (this.recording && this.playing && !this.counting && (kind === 0xb0 || kind === 0xe0 || kind === 0xd0)) this.post({ t: 'recctl', track: id, ev: { t: this.pos, st: kind, d1, d2 } });
+    if (this.recording && this.playing && !this.counting && (kind === 0xb0 || kind === 0xe0 || kind === 0xd0)) this.post({ t: 'recctl', track: id, ev: { t: this.recPos().t, st: kind, d1, d2 } });
   }
   // live notes (keys, MIDI); recorded when recording and playing (into the playing session clip, if any)
   liveNote(id, n, v, on, silent = false, preview = false) {   // (preview: a sound auditioned, never recorded)
@@ -667,28 +676,28 @@ export class KrakenEngine {
     if (!tr) return;
     if (on) {
       if (!silent) tr.noteOn(this, n, v);
-      if (!preview && this.playing && this.recording && !this.counting && this.punchOpen()) tr.live.set(n, { t: this.pos, v });
+      if (!preview && this.playing && this.recording && !this.counting) { const at = this.recPos(); if (this.punchOpen(at.t)) tr.live.set(n, { t: at.t, v, pass: at.pass }); }
     } else {
       if (!silent) tr.noteOff(this, n);
       const s = tr.live.get(n);
       if (s) {
         tr.live.delete(n);
-        let d = this.pos - s.t;
+        let d = this.recPos().t - s.t;
         if (d <= 0) d += this.loop.b - this.loop.a;
-        this.recNote(tr, { t: s.t, d: Math.max(0.02, d), n, v: s.v });
+        this.recNote(tr, { t: s.t, d: Math.max(0.02, d), n, v: s.v }, s.pass);
       }
     }
   }
-  recNote(tr, note) {
+  recNote(tr, note, pass = this.recPass || 0) {
     const s = tr.sess;
     if (s) {                                                     // session overdub: into the playing slot
       const c = tr.def.slots[s.slot], loop = c.loop || c.len;
       this.post({ t: 'rec', track: tr.id, slot: s.slot, note: { ...note, t: ((note.t - s.at) % loop + loop) % loop } });
-    } else this.post({ t: 'rec', track: tr.id, note: { ...note, pass: this.recPass || 0 } });   // (pass: the loop's turn, for takes)
+    } else this.post({ t: 'rec', track: tr.id, note: { ...note, pass } });   // (pass: the loop's turn, for takes)
   }
   flushRecording() {
     for (const tr of this.order) {
-      for (const [n, s] of tr.live) this.recNote(tr, { t: s.t, d: Math.max(0.02, this.pos - s.t), n, v: s.v });
+      for (const [n, s] of tr.live) this.recNote(tr, { t: s.t, d: Math.max(0.02, this.recPos().t - s.t), n, v: s.v }, s.pass);
       tr.live.clear();
     }
   }
@@ -925,8 +934,8 @@ export class KrakenEngine {
     if (!this.recording) return;
     for (const tr of this.order) {
       for (const [n, s] of tr.live) {
-        this.recNote(tr, { t: s.t, d: Math.max(0.02, this.loop.b - s.t), n, v: s.v });
-        tr.live.set(n, { t: this.loop.a, v: s.v });
+        this.recNote(tr, { t: s.t, d: Math.max(0.02, this.loop.b - s.t), n, v: s.v }, s.pass);
+        tr.live.set(n, { t: this.loop.a, v: s.v, pass: (this.recPass || 0) + 1 });
       }
     }
   }

@@ -986,7 +986,7 @@ Object.assign(app, {
     app.recording = on;
     if (on) { app.recSession = (app.recSession || 0) + 1; app.recTakes = new Map(); }   // (each loop pass: a take)
     $('rec').classList.toggle('on', on);
-    app.audio.send({ t: 'rec', on });
+    app.audio.send({ t: 'rec', on, lag: on ? app.audio.latency() : 0 });   // (what you play lands where you heard it: engine-core.js recPos)
     app.store.endGesture();
     if (on) for (const [id, st] of Object.entries(app.session.state)) if (st.slot >= 0) sessRec.set(id, { slot: st.slot, at: app.pos });
     if (on && !app.playing) app.play(true, app.store.p.countIn);

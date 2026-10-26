@@ -40,7 +40,20 @@ export async function diagnose(app) {
     add('Audio', `${ctx.state} · ${ctx.sampleRate} Hz · ${lat ? `${lat.toFixed(0)} ms out` : 'latency unknown'}`, ctx.state === 'running' ? 'ok' : 'warn');
     const ago = app.audio.lastTick ? (performance.now() - app.audio.lastTick) / 1000 : null;
     add('Audio engine', app.audio.useBytes ? 'running (compiled on the audio thread)' : 'running', ago == null ? 'bad' : 'ok');
-    if (lat > 60) add('Latency', `${lat.toFixed(0)} ms: playing live will feel late. Wired headphones or a USB interface help (Bluetooth adds 150 ms or more)`, 'warn');
+    if (lat > 40) add('Latency', `${lat.toFixed(0)} ms: playing live will feel late. Wired headphones or a USB interface help (Bluetooth adds 150 ms or more)`, 'warn');
+    // the sound card at its own rate: when it is not Kraken's, the browser converts, and its latency at that rate
+    // tells what the conversion costs (Kraken's engines run at 44.1 kHz)
+    if (!ios && typeof AudioContext === 'function') {
+      try {
+        const nat = new AudioContext({ latencyHint: 'interactive' });
+        await Promise.race([nat.resume(), new Promise((r) => setTimeout(r, 300))]);
+        await new Promise((r) => setTimeout(r, 250));
+        const nl = ((nat.baseLatency || 0) + (nat.outputLatency || 0)) * 1000, nr = nat.sampleRate;
+        nat.close().catch(() => {});
+        if (nr !== ctx.sampleRate) add('Sound card', `${nr} Hz, converted to ${ctx.sampleRate} Hz by the browser${nl ? ` (${nl.toFixed(0)} ms at its own rate, ${lat.toFixed(0)} ms here)` : ''}`, nl && lat - nl > 8 ? 'warn' : 'ok');
+        else add('Sound card', `${nr} Hz, as Kraken`);
+      } catch { /* (no second context here) */ }
+    }
   }
   if (ios) add('iPhone, iPad', navigator.audioSession ? 'sound plays with the silent switch on' : 'turn the silent switch off to hear Kraken (this iOS is older than 17)', navigator.audioSession ? 'ok' : 'warn');
   try {
