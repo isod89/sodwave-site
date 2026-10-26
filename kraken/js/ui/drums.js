@@ -95,12 +95,17 @@ const LANE_KNOBS = [
 ];
 const cutTo = (n) => 20 * 1000 ** (n / 1000), cutFrom = (hz) => Math.round(1000 * Math.log(Math.max(20, hz) / 20) / Math.log(1000));
 const lcTo = (n) => (n <= 0 ? 0 : 20 * 100 ** (n / 1000)), lcFrom = (hz) => (hz <= 0 ? 0 : Math.round(1000 * Math.log(Math.max(20, hz) / 20) / Math.log(100)));
+// a pad shows at once whether its sound has settings of its own (the project keeps only what differs from the kit)
+function markPad(dev, t, l) {
+  const n = dev.app.lib.sloop.laneNotes[l], own = !!dev.app.store.track(t.id)?.lanes?.[l];
+  dev.wrap?.querySelector(`.pad[data-note="${n}"]`)?.classList.toggle('tweak', own);
+}
 // the kit's sound on pad n: its knobs, its choke group, mute, back to the kit
 export function laneSound(dev, t, n, color) {
   const app = dev.app, lib = app.lib.sloop, l = lib.laneNotes.indexOf(n);
   if (l < 0) return [];
   const cur = () => ({ ...LANE_DEF, ...(app.store.track(t.id)?.lanes?.[l] || {}) });
-  const set = (fn, tag) => app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); x.lanes ||= {}; const q = { ...LANE_DEF, ...(x.lanes[l] || {}) }; fn(q); x.lanes[l] = q; }, tag);
+  const set = (fn, tag) => { app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); x.lanes ||= {}; const q = { ...LANE_DEF, ...(x.lanes[l] || {}) }; fn(q); x.lanes[l] = q; }, tag); markPad(dev, t, l); };
   const q = cur();
   const knobs = LANE_KNOBS.map(([key, label, min, max, def, step, fmt]) => {
     const log = key === 'cut' || key === 'lc', to = key === 'cut' ? cutTo : lcTo, from = key === 'cut' ? cutFrom : lcFrom;
@@ -123,11 +128,11 @@ export function drumMixer(dev, t) {
   const strips = lib.lanes.map((name, l) => {
     const n = lib.laneNotes[l], q = { ...LANE_DEF, ...(t.lanes?.[l] || {}) };
     const k = knob({ label: name, min: -60, max: 12, def: 0, step: 0.5, size: 26, color: t.color, value: q.lv, format: (v) => (v <= -60 ? 'OFF' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`),
-      onChange: (v) => app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); x.lanes ||= {}; x.lanes[l] = { ...LANE_DEF, ...(x.lanes[l] || {}), lv: v }; }, `lanemix${t.id}${l}`),
+      onChange: (v) => { app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); x.lanes ||= {}; x.lanes[l] = { ...LANE_DEF, ...(x.lanes[l] || {}), lv: v }; }, `lanemix${t.id}${l}`); markPad(dev, t, l); },
       onEnd: () => app.store.endGesture() });
     const m = h('button', { class: 'drm-m' + (q.mute ? ' on' : ''), title: `Mute ${name}`, onclick: () => {
       app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); x.lanes ||= {}; const c = { ...LANE_DEF, ...(x.lanes[l] || {}) }; c.mute = !c.mute; x.lanes[l] = c; });
-      m.classList.toggle('on'); } }, 'M');
+      m.classList.toggle('on'); markPad(dev, t, l); } }, 'M');
     const s = h('div', { class: 'drm-strip' + (app.view.padSel === n ? ' sel' : '') }, k, m);
     s.addEventListener('pointerdown', (e) => { if (e.target.closest('.knob, button')) return; app.view.padSel = n; dev.refresh(true); });
     return s;

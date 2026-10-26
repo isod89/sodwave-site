@@ -326,9 +326,6 @@ export const dict = {
   'IMPORT': 'IMPORTER',
   'EXPORT': 'EXPORTER',
   'MUTE': 'MUET',
-  'TONE': 'TON',
-  'NOISE': 'BRUIT',
-  'OUT': 'SORTIE',
   'Kit name': 'Nom du kit',
   'Start from a kit': 'Partir d’un kit',
   'Sounds of one group stop each other (a closed hat stops the open one)': 'Les sons d’un même groupe s’arrêtent entre eux (un hat fermé arrête le hat ouvert)',
@@ -457,8 +454,12 @@ export const rules = [
 // as they are in French: names, words French uses too, and what the code writes that is not text
 export const keep = [
   'HUB', '☁ HUB', '◈ LAB', 'LAB', 'FIRMWARE', 'MOD A', 'MOD B', 'SLOOP', 'CLIPPER', '◀', '▶', 'FR', 'EN', 'Switch to English', 'Passer en français', 'sodwave.com', 'Preset', 'Presets', 'Plugins', 'Badges', 'Description', 'Genre', 'Tags', 'Note', 'Jazz', 'Funk', 'Soul', 'Reggae', 'Folk',
+  // the drum synth: SLOOP's DRUM SYNTH page's own names (the firmware and its editor say them so), the LAB ENGINE's short targets
+  'KICK', 'SNARE', 'CLAP', 'HAT', 'OPEN HAT', 'LOW TOM', 'HI TOM', 'CRASH', 'RIDE', 'SHAKER', 'CONGA', 'RIM', 'COWBELL', 'CLAVE', 'KICK 2', 'SNARE 2',
+  'TRI', 'CYM', 'CHIP', 'LP', 'BP', 'HP', 'B.TIME', '2ND', '2ND LVL', 'HPF', 'RESO', 'MY KIT', 'ATK', 'DEC', 'REL', 'LVL', 'LFO>PIT', 'LFO>FLT', 'LFO>SHP', 'LFO>AMP',
+  '?lab', 'bad',
   'GET', 'POST', 'Content-Type', 'X-Kraken-Token', 'youtu.be', 'www.youtu.be', 'https://www.youtube.com/@yourname', 'https://youtu.be/…', 'https://example.com/api',
 ];
 export const keepRules = [
-  /^[+−-]?\d+ XP$/, /^(?:[A-Z]{2} )+[A-Z]{2}$/,
+  /^[+−-]?\d+ XP$/, /^(?:[A-Z]{2} )+[A-Z]{2}$/, /^\?hub=\$\{/,
 ];

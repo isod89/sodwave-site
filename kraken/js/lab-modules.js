@@ -163,7 +163,7 @@ export const newMacros = () => MACRO_NAMES.map((name) => ({ name, v: 0.5 }));
 export function newPatch(kind = 'inst') {
   if (kind === 'fx') return { v: LAB_VERSION, kind: 'fx', name: 'My effect', macros: newMacros().map((m, i) => ({ ...m, name: ['MIX', 'DRIVE', 'TONE', 'TIME', 'FEEDBACK', 'RATE', 'DEPTH', 'OUTPUT'][i] })),
     mods: [newModule('in', 40, 120, 'in'), newModule('out', 520, 120, 'out')], cables: [{ from: ['in', 'l'], to: ['out', 'l'], amt: 1 }, { from: ['in', 'r'], to: ['out', 'r'], amt: 1 }], fx: [] };
-  const note = newModule('note', 20, 40, 'note'), osc = newModule('osc', 220, 30, 'osc'), flt = newModule('filter', 420, 30, 'filter'), env = newModule('adsr', 220, 260, 'env'), vca = newModule('vca', 620, 30, 'vca'), out = newModule('out', 820, 30, 'out');
+  const note = newModule('note', 20, 30, 'note'), osc = newModule('osc', 250, 30, 'osc'), flt = newModule('filter', 480, 30, 'filter'), env = newModule('adsr', 250, 300, 'env'), vca = newModule('vca', 710, 30, 'vca'), out = newModule('out', 940, 30, 'out');
   return { v: LAB_VERSION, kind: 'inst', name: 'My instrument', voice: { poly: 8, mode: 'poly', glide: 0, bend: 2 }, macros: newMacros(),
     mods: [note, osc, flt, env, vca, out],
     cables: [{ from: ['osc', 'out'], to: ['filter', 'in'], amt: 1 }, { from: ['filter', 'out'], to: ['vca', 'in'], amt: 1 }, { from: ['env', 'out'], to: ['vca', 'cv'], amt: 1 },

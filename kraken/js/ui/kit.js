@@ -72,7 +72,7 @@ export function knob({ label, min, max, value, def = min, format = (v) => v, onC
   };
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    e.preventDefault(); el.focus();
+    e.preventDefault(); el.focus({ preventScroll: true });
     el.setPointerCapture(e.pointerId);
     const y0 = e.clientY, v0 = v, range = max - min;
     const move = (m) => set(v0 + ((y0 - m.clientY) / (m.shiftKey ? 600 : 160)) * range);

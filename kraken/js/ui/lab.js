@@ -4,6 +4,8 @@
 // a cable for its amount, click a module to see everything about it on the right (its help, every knob, what each of
 // its outputs does on a test note). Below: the eight MACROS (the knobs you automate and map), the voices and the
 // effects after them. Every change is a project change: Ctrl+Z takes it back, it plays at once.
+// On a phone the same editor in three tabs: PLAY (the macros and a keyboard), PATCH (the canvas; a module's settings in a
+// sheet from below) and MODULES (the list to add from). Cables by touch: tap an output, then an input (or the reverse).
 import { h, knob, fmt } from './kit.js';
 import { MODULES, CATS, FX_TYPES, newModule, newPatch, validatePatch, LAB_VERSION, ENG_TP_NAMES, MAX_ENGINES } from '../lab-modules.js';
 import { probe, formulaError, engineInfo, labEnginesReady } from '../lab-dsp.js';
@@ -13,10 +15,15 @@ import { listPresets, addPreset, removePreset } from '../presets.js';
 import { saveFile } from '../io.js';
 import { freezeModule } from './instruments.js';
 
-const KIND_COLOR = { audio: '#4cb3ff', mod: '#ff9f3a', gate: '#3ddc84', pitch: '#c287ff' };
-const CAT_COLOR = { io: '#9aa3ad', src: '#4cb3ff', flt: '#ff6b6b', mod: '#ff9f3a', util: '#3ddc84', fx: '#c287ff' };
+// the four kinds of signal (cables, dots, scopes) and the module families (a bar on each module): calm enough to read
+// for hours on the dark screen, apart enough to tell at a glance
+const KIND_COLOR = { audio: '#5aa7ea', mod: '#e9a245', gate: '#4fc487', pitch: '#a58bf0' };
+const CAT_COLOR = { io: '#8c95a1', src: '#5aa7ea', flt: '#e8716b', mod: '#e9a245', util: '#4fc487', fx: '#a58bf0' };
 const W = 196;                                            // a module's width on the canvas
 const phone = () => matchMedia('(max-width: 760px)').matches;
+const TIP_KEY = 'kraken.labTips';
+const tipsSeen = () => { try { return !!localStorage.getItem(TIP_KEY); } catch { return true; } };
+const tipsDone = () => { try { localStorage.setItem(TIP_KEY, '1'); } catch { /* */ } };
 
 // ------------------------------------------------------------------ where the patch lives
 // target: { track } (an instrument) · { track, fx } (an effect of a track) · { bus: 'master' | 'ret<i>', fx }
@@ -64,16 +71,20 @@ class LabEditor {
     this.app = app; this.target = target; this.r = r;
     this.view = { x: 40, y: 30, z: 1 };
     this.sel = null;                                       // { mod: id } | { cable: index }
+    this.pending = null;                                   // a cable begun by a tap: { from } or { to }, waiting for its other end
     this.knobs = new Map();
     this.root = h('div', { class: 'lab-ed', tabindex: -1, role: 'dialog', 'aria-label': 'LAB editor' });
+    this.tab = r.kind === 'inst' ? 'play' : 'patch';     // (the phone's tabs; on a computer everything shows at once)
     this.build();
     document.body.append(this.root);
     this.root.focus();
+    const toast = document.getElementById('toast'); if (toast) toast.hidden = true;   // (what Kraken just said is not about the LAB)
     this.off = app.store.on(() => this.sync());
     this.onKey = (e) => this.key(e);
     window.addEventListener('keydown', this.onKey, true);
     this.lastShape = '';
     this.render(true);
+    this.setTab(this.tab);
     requestAnimationFrame(() => this.fit());
   }
   get patch() { return this.r.get(); }
@@ -88,33 +99,75 @@ class LabEditor {
   // ---- the frame
   build() {
     const app = this.app, p = this.patch, isFx = this.r.kind === 'fx';
-    const name = h('input', { class: 'lab-name', value: p.name, maxlength: 60, 'aria-label': 'Patch name', onkeydown: (e) => { e.stopPropagation(); if (e.key === 'Enter') e.target.blur(); },
+    const name = h('input', { class: 'lab-name', value: p.name, maxlength: 60, 'aria-label': 'Patch name', spellcheck: 'false', onkeydown: (e) => { e.stopPropagation(); if (e.key === 'Enter') e.target.blur(); },
       onchange: (e) => this.edit((q) => { q.name = e.target.value.trim().slice(0, 60) || 'Untitled'; }) });
     this.nameEl = name;
-    const btn = (text, title, onclick, cls = 'add') => h('button', { class: cls, title, onclick }, text);
+    const btn = (text, title, onclick, cls = 'lab-btn') => h('button', { class: cls, title, onclick }, text);
+    const icon = (text, title, onclick, cls = '') => h('button', { class: 'lab-ib ' + cls, title, 'aria-label': title, onclick }, text);
+    const publish = app.hub?.publishLab ? () => app.hub.publishLab(validatePatch(this.patch, this.r.kind), this.patch.name) : null;
     this.top = h('div', { class: 'lab-top' },
-      h('b', { class: 'lab-logo', text: 'LAB' }), h('span', { class: 'lab-kind', text: isFx ? `EFFECT · ${this.r.owner()}` : `INSTRUMENT · ${this.r.owner()}` }), name,
+      icon('←', 'Back to Kraken (Esc)', () => this.close(), 'lab-back'),
+      h('div', { class: 'lab-title' }, h('span', { class: 'lab-kind', text: isFx ? `Effect on ${this.r.owner()}` : `Instrument on ${this.r.owner()}` }), name),
       h('span', { class: 'lab-sp' }),
-      phone() ? btn('+ MODULE', 'Add a module', () => this.paletteSheet()) : null,
-      btn('PATCHES ▾', 'Factory patches and yours: start from one', () => this.patchSheet()),
-      btn('SAVE', 'Keep this patch in MY PATCHES (this browser)', () => this.savePatch()),
-      btn('FILE ▾', 'Export the patch to a file, or import one', () => this.fileSheet()),
-      app.hub?.publishLab ? btn('☁ PUBLISH', 'Share it on the Kraken hub', () => app.hub.publishLab(validatePatch(this.patch, this.r.kind), this.patch.name)) : null,
-      btn('FIT', 'Show the whole patch', () => this.fit()),
-      btn('?', 'How LAB works', () => this.guide()),
-      btn('CLOSE', 'Back to Kraken (Esc)', () => this.close(), 'add go'));
+      h('div', { class: 'lab-acts' },
+        icon('↶', 'Undo (Ctrl+Z)', () => app.store.undo(), 'wide-only'), icon('↷', 'Redo (Ctrl+Shift+Z)', () => app.store.redo(), 'wide-only'),
+        btn('Patches', 'Factory patches and yours: start from one', () => this.patchSheet(), 'lab-btn wide-only'),
+        btn('Save', 'Keep this patch in My patches (this browser)', () => this.savePatch(), 'lab-btn wide-only'),
+        publish ? btn('Publish', 'Share it on the Kraken hub', publish, 'lab-btn primary wide-only') : null,
+        icon('⋯', 'More: file, help, the whole patch', (e) => this.moreMenu(e.currentTarget))));
     this.pal = h('div', { class: 'lab-pal' });
-    this.buildPalette(this.pal);
+    this.buildPalette(this.pal, (t) => { this.addModule(t); if (phone()) this.setTab('patch'); });
     this.cables = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.cables.setAttribute('class', 'lab-cables');
     this.world = h('div', { class: 'lab-world' }, this.cables);
+    this.banner = h('div', { class: 'lab-banner', hidden: true });
     this.viewEl = h('div', { class: 'lab-view', 'aria-label': 'Patch canvas: drag the background to move, wheel or pinch to zoom, double-click to add a module' }, this.world,
-      h('div', { class: 'lab-zoom' }, btn('−', 'Zoom out', () => this.zoomBy(1 / 1.2), 'tb'), btn('+', 'Zoom in', () => this.zoomBy(1.2), 'tb')),
+      this.banner, this.tipsEl(),
+      h('div', { class: 'lab-zoom' }, icon('−', 'Zoom out', () => this.zoomBy(1 / 1.2)), icon('+', 'Zoom in', () => this.zoomBy(1.2)), icon('⤢', 'Show the whole patch', () => this.fit())),
       h('div', { class: 'lab-count' }));
     this.insp = h('div', { class: 'lab-insp' });
     this.bottom = h('div', { class: 'lab-bottom' });
-    this.root.replaceChildren(this.top, h('div', { class: 'lab-main' }, this.pal, this.viewEl, this.insp), this.bottom);
+    // the phone's tabs (a computer shows everything at once and hides them)
+    const tab = (k, glyph, label) => h('button', { class: 'lab-tab', 'data-tab': k, role: 'tab', onclick: () => this.setTab(k) }, h('i', { text: glyph, 'aria-hidden': 'true' }), h('span', { text: label }));
+    this.tabs = h('nav', { class: 'lab-tabs', role: 'tablist', 'aria-label': 'LAB' },
+      tab('play', isFx ? '◎' : '♪', isFx ? 'Knobs' : 'Perform'), tab('patch', '◈', 'Patch'), tab('mods', '+', 'Modules'));
+    this.root.replaceChildren(this.top, h('div', { class: 'lab-main' }, this.pal, this.viewEl, this.insp), this.bottom, this.tabs);
     this.bindCanvas();
+  }
+  // the phone's tabs: PLAY (macros, keys), PATCH (the canvas), MODULES (the list to add from)
+  setTab(k) {
+    this.tab = k;
+    for (const t of ['play', 'patch', 'mods']) this.root.classList.toggle(`tab-${t}`, t === k);
+    this.tabs?.querySelectorAll('.lab-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === k)));
+    if (k === 'patch' && phone()) requestAnimationFrame(() => { if (!this.fitted) this.home(); });
+  }
+  // the first time: how it works, in three lines, over the canvas
+  tipsEl() {
+    if (tipsSeen()) return null;
+    const box = h('div', { class: 'lab-tips' },
+      h('b', { text: 'How it works' }),
+      h('ol', {}, h('li', { text: 'Each box is a module: it makes, shapes or moves a sound.' }),
+        h('li', { text: 'Connect an output (right) to an input (left): drag, or tap one then the other.' }),
+        h('li', { text: 'Tap a module or a cable to see and change its settings.' })),
+      h('button', { class: 'lab-btn', onclick: () => { tipsDone(); box.remove(); } }, 'Got it'));
+    return box;
+  }
+  // ⋯: what does not need to be on screen all the time
+  moreMenu(anchor) {
+    const app = this.app, r = anchor.getBoundingClientRect();
+    const items = [
+      ['Undo', () => app.store.undo(), 'narrow-only'], ['Redo', () => app.store.redo(), 'narrow-only'],
+      ['Patches…', () => this.patchSheet(), 'narrow-only'], ['Save in My patches', () => this.savePatch(), 'narrow-only'],
+      app.hub?.publishLab ? ['Publish on the hub…', () => app.hub.publishLab(validatePatch(this.patch, this.r.kind), this.patch.name), 'narrow-only'] : null,
+      ['Export or import a file…', () => this.fileSheet()], ['Show the whole patch', () => { if (phone()) this.setTab('patch'); requestAnimationFrame(() => this.fit()); }],
+      ['How the LAB works', () => this.guide()], ['Back to Kraken', () => this.close()]].filter(Boolean);
+    document.querySelector('.lab-menu')?.remove();
+    const box = h('div', { class: 'lab-menu', role: 'menu', style: { top: `${r.bottom + 6}px`, right: `${Math.max(8, innerWidth - r.right)}px` } },
+      items.map(([l, fn, cls]) => h('button', { class: cls || '', role: 'menuitem', onclick: () => { box.remove(); fn(); } }, l)));
+    document.body.append(box);
+    box.querySelector('button:not([hidden])')?.focus({ preventScroll: true });
+    const away = (e) => { if (!box.contains(e.target)) { box.remove(); window.removeEventListener('pointerdown', away, true); } };
+    setTimeout(() => window.addEventListener('pointerdown', away, true), 0);
   }
   buildPalette(box, onPick = null) {
     const search = h('input', { class: 'lab-search', placeholder: 'Find a module…', 'aria-label': 'Find a module', onkeydown: (e) => e.stopPropagation(), oninput: () => fill() });
@@ -125,8 +178,9 @@ class LabEditor {
       list.replaceChildren(...CATS.flatMap(([c, label]) => {
         const items = Object.entries(MODULES).filter(([t, d]) => d.cat === c && (!d.only || d.only === kind) && (!q || d.name.toLowerCase().includes(q) || d.help.toLowerCase().includes(q)));
         if (!items.length) return [];
-        return [h('h6', { text: label, style: { color: CAT_COLOR[c] } }), ...items.map(([t, d]) => {
-          const b = h('button', { class: 'lab-pal-item', draggable: 'true', title: d.help, onclick: () => (onPick ? onPick(t) : this.addModule(t)) }, h('b', { text: d.name }), h('span', { text: d.help.split(/[.:]/)[0] }));
+        return [h('h6', { text: label, style: { '--c': CAT_COLOR[c] } }), ...items.map(([t, d]) => {
+          const b = h('button', { class: 'lab-pal-item', draggable: 'true', title: d.help, style: { '--c': CAT_COLOR[c] }, onclick: () => (onPick ? onPick(t) : this.addModule(t)) },
+            h('b', { text: d.name }), h('span', { text: d.help.split(/[.:]/)[0] }), h('i', { class: 'lab-pal-add', text: '+', 'aria-hidden': 'true' }));
           b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-kraken-lab', t); e.dataTransfer.effectAllowed = 'copy'; });
           return b;
         })];
@@ -155,6 +209,7 @@ class LabEditor {
     const els = p.mods.map((m) => this.moduleEl(m));
     this.world.replaceChildren(this.cables, ...els);
     this.modEls = new Map(els.map((e) => [e.dataset.id, e]));
+    if (this.pending) { const end = this.pending; this.cancelPending(); if (this.patch.mods.some((x) => x.id === (end.from || end.to)[0])) this.startPending(end); }
     this.applyView();
     requestAnimationFrame(() => this.drawCables());
     this.viewEl.querySelector('.lab-count').textContent = `${p.mods.length} modules · ${p.cables.length} cables`;
@@ -173,7 +228,7 @@ class LabEditor {
     if (m.type === 'steps') body.push(this.stepsEl(m, 'small'));
     if (m.type === 'expr') body.push(this.formulaEl(m, true));
     const knobs = this.paramEls(m, d.params.filter((q) => !/^s\d+$/.test(q.k)), 28, 'm');
-    const el = h('div', { class: 'lab-mod' + (sel ? ' sel' : ''), 'data-id': m.id, style: { left: `${m.x}px`, top: `${m.y}px`, width: `${W}px` } },
+    const el = h('div', { class: 'lab-mod' + (sel ? ' sel' : ''), 'data-id': m.id, style: { left: `${m.x}px`, top: `${m.y}px`, width: `${W}px`, '--c': CAT_COLOR[d.cat] } },
       head, h('div', { class: 'lab-ports' }, h('div', {}, ins), h('div', {}, outs)), knobs.length ? h('div', { class: 'lab-knobs' }, knobs) : null, ...body);
     el.addEventListener('pointerdown', (e) => { if (e.target.closest('.dot, .knob, select, textarea, input, button, canvas')) return; this.select({ mod: m.id }); });
     head.addEventListener('pointerdown', (e) => this.dragModule(e, m));
@@ -291,18 +346,41 @@ class LabEditor {
     if (!p.mods.length || !r.width) return;
     const x0 = Math.min(...p.mods.map((m) => m.x)), y0 = Math.min(...p.mods.map((m) => m.y));
     const x1 = Math.max(...p.mods.map((m) => m.x + W)), y1 = Math.max(...p.mods.map((m) => m.y + (this.modEls?.get(m.id)?.offsetHeight || 200)));
-    const z = Math.max(0.3, Math.min(1.1, Math.min((r.width - 40) / (x1 - x0), (r.height - 40) / (y1 - y0))));
+    const z = Math.max(0.2, Math.min(1.1, Math.min((r.width - 40) / (x1 - x0), (r.height - 40) / (y1 - y0))));
     this.view = { z, x: (r.width - (x1 - x0) * z) / 2 - x0 * z, y: (r.height - (y1 - y0) * z) / 2 - y0 * z };
+    this.fitted = true;
+    this.applyView();
+  }
+  // a phone's first look: the patch's start (top left) at a size you can read and touch; ⤢ shows it all
+  home() {
+    const p = this.patch, r = this.viewEl.getBoundingClientRect();
+    if (!p.mods.length || !r.width) return;
+    const z = 0.72, x0 = Math.min(...p.mods.map((m) => m.x)), y0 = Math.min(...p.mods.map((m) => m.y));
+    this.view = { z, x: 14 - x0 * z, y: 14 - y0 * z };
+    this.fitted = true;
+    this.applyView();
+  }
+  // a phone: the module just selected comes to the top of the canvas, above its settings' sheet
+  reveal(id) {
+    const m = this.patch.mods.find((x) => x.id === id), r = this.viewEl.getBoundingClientRect();
+    if (!m || !r.width) return;
+    const z = Math.max(this.view.z, 0.72);
+    this.view = { z, x: (r.width - W * z) / 2 - m.x * z, y: 14 - m.y * z };
     this.applyView();
   }
   toWorld(cx, cy) { const r = this.viewEl.getBoundingClientRect(), v = this.view; return { x: (cx - r.left - v.x) / v.z, y: (cy - r.top - v.y) / v.z }; }
   bindCanvas() {
     const el = this.viewEl;
+    // the canvas moves by its own view only: a focused knob or a test tool must not scroll it sideways (overflow: hidden scrolls too)
+    el.addEventListener('scroll', () => { if (el.scrollLeft || el.scrollTop) { el.scrollLeft = 0; el.scrollTop = 0; } });
     const pointers = new Map();
     el.addEventListener('pointerdown', (e) => {
+      if (!e.target.closest('.lab-tips') && this.viewEl.querySelector('.lab-tips')) { tipsDone(); this.viewEl.querySelector('.lab-tips').remove(); }   // (read, or not needed)
       const dot = e.target.closest('.dot');
+      if (dot && this.pending) { e.preventDefault(); e.stopPropagation(); this.finishPending(dot.dataset.port); return; }
       if (dot) { this.dragCable(e, dot.dataset.port); return; }
-      if (e.target.closest('.lab-mod, .lab-zoom, .lab-amount')) return;
+      if (e.target.closest('.lab-mod, .lab-zoom, .lab-amount, .lab-banner, .lab-tips')) return;
+      if (this.pending) { this.cancelPending(); return; }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture(e.pointerId);
       if (pointers.size === 1) { this.select(null); this.panStart = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y }; }
@@ -347,26 +425,39 @@ class LabEditor {
     };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   }
+  // from a dot: drag to another dot (or let go on the canvas: a module already connected); a tap without moving
+  // starts a cable that the next tapped dot finishes (touch screens); from an input already plugged: its cable moves
   dragCable(e, key) {
     e.preventDefault(); e.stopPropagation();
     const [id, dir, port] = key.split('.'), start = this.portXY(key), NS = 'http://www.w3.org/2000/svg';
-    const tmp = document.createElementNS(NS, 'path'); tmp.setAttribute('class', 'wire tmp'); this.cables.append(tmp);
-    // an input already plugged: dragging from it takes its cable away (to move it elsewhere)
+    const plugged = dir === 'in' ? this.patch.cables.find((x) => x.to[0] === id && x.to[1] === port) : null;
     let from = dir === 'out' ? [id, port] : null, to = dir === 'in' ? [id, port] : null;
-    if (to) {
-      const c = this.patch.cables.find((x) => x.to[0] === id && x.to[1] === port);
-      if (c) { from = [...c.from]; to = null; this.edit((pp) => { pp.cables = pp.cables.filter((x) => !(x.to[0] === id && x.to[1] === port && x.from[0] === c.from[0] && x.from[1] === c.from[1])); }); }
-    }
-    const anchor = from ? this.portXY(`${from[0]}.out.${from[1]}`) || start : start;
-    this.world.classList.add(from ? 'want-in' : 'want-out');
-    this.dragging = true;
+    let tmp = null, anchor = start, moved = false;
+    const sx = e.clientX, sy = e.clientY;
+    const begin = () => {                                    // (the drag really starts: past a few pixels)
+      moved = true;
+      if (plugged) {                                         // dragging from a plugged input takes its cable (to move it)
+        from = [...plugged.from]; to = null;
+        this.edit((pp) => { pp.cables = pp.cables.filter((x) => !(x.to[0] === id && x.to[1] === port && x.from[0] === plugged.from[0] && x.from[1] === plugged.from[1])); });
+        anchor = this.portXY(`${from[0]}.out.${from[1]}`) || start;
+      }
+      tmp = document.createElementNS(NS, 'path'); tmp.setAttribute('class', 'wire tmp'); this.cables.append(tmp);
+      this.world.classList.add(from ? 'want-in' : 'want-out');
+      this.dragging = true;
+    };
     const mv = (ev) => {
+      if (!moved) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; begin(); }
       const w = this.toWorld(ev.clientX, ev.clientY), a = from ? anchor : w, b = from ? w : anchor, dx = Math.max(40, Math.abs(b.x - a.x) * 0.5);
       tmp.setAttribute('d', `M${a.x} ${a.y}C${a.x + dx} ${a.y} ${b.x - dx} ${b.y} ${b.x} ${b.y}`);
     };
     const up = (ev) => {
-      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
-      this.dragging = false; tmp.remove(); this.world.classList.remove('want-in', 'want-out');
+      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+      if (!moved) {                                           // a tap: a plugged input shows its cable; any other dot waits for its pair
+        if (plugged) this.select({ cable: this.patch.cables.indexOf(plugged) });
+        else this.startPending(from ? { from } : { to });
+        return;
+      }
+      this.dragging = false; tmp?.remove(); this.world.classList.remove('want-in', 'want-out');
       const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.dot');
       if (hit) {
         const [hid, hdir, hport] = hit.dataset.port.split('.');
@@ -374,20 +465,46 @@ class LabEditor {
         if (to && hdir === 'out') { this.connect([hid, hport], to); return; }
         this.sync(); return;
       }
-      if (ev.target.closest?.('.lab-view') || this.viewEl.contains(document.elementFromPoint(ev.clientX, ev.clientY))) {
+      if (ev.type !== 'pointercancel' && this.viewEl.contains(document.elementFromPoint(ev.clientX, ev.clientY))) {
         // let go on the canvas: a module to plug it into, there
         const w = this.toWorld(ev.clientX, ev.clientY);
-        this.quickAdd(ev.clientX, ev.clientY, (t) => {
-          const d = MODULES[t];
-          if (from) { const inp = d.ins.find((x) => x.kind === this.kindOf(from, 'out')) || d.ins[0]; this.addModule(t, w.x, w.y - 30, (nid) => inp && this.connect(from, [nid, inp.k])); }
-          else { const out = d.outs.find((x) => x.kind === this.kindOf(to, 'in')) || d.outs[0]; this.addModule(t, w.x - W, w.y - 30, (nid) => out && this.connect([nid, out.k], to)); }
-        }, from ? 'ins' : 'outs');
+        this.quickAdd(ev.clientX, ev.clientY, (t) => this.addLinked(t, from, to, w), from ? 'ins' : 'outs');
         return;
       }
       this.sync();
     };
-    mv(e);
-    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  }
+  // a module added already plugged into a cable's free end
+  addLinked(t, from, to, w) {
+    const d = MODULES[t];
+    if (from) { const inp = d.ins.find((x) => x.kind === this.kindOf(from, 'out')) || d.ins[0]; this.addModule(t, w.x, w.y - 30, (nid) => inp && this.connect(from, [nid, inp.k])); }
+    else { const out = d.outs.find((x) => x.kind === this.kindOf(to, 'in')) || d.outs[0]; this.addModule(t, w.x - W, w.y - 30, (nid) => out && this.connect([nid, out.k], to)); }
+  }
+  // a cable begun by a tap: the dots that can finish it light up, a bar says what to do
+  startPending(end) {
+    this.pending = end;
+    this.world.classList.add(end.from ? 'want-in' : 'want-out', 'pending');
+    const [id, k] = end.from || end.to, m = this.patch.mods.find((x) => x.id === id), d = MODULES[m?.type];
+    const port = d?.[end.from ? 'outs' : 'ins'].find((x) => x.k === k);
+    this.banner.replaceChildren(h('div', {}, h('b', { text: `${d?.name || ''} · ${port?.l || k}` }), h('span', { text: end.from ? 'Now tap the input to connect it to.' : 'Now tap the output that feeds it.' })),
+      h('button', { class: 'lab-btn', onclick: () => this.cancelPending() }, 'Cancel'));
+    this.banner.hidden = false;
+    this.world.querySelector(`[data-port="${CSS.escape(`${id}.${end.from ? 'out' : 'in'}.${k}`)}"]`)?.classList.add('armed');
+  }
+  finishPending(key) {
+    const end = this.pending, [hid, hdir, hport] = key.split('.');
+    if (end.from && hdir === 'in') { this.cancelPending(); this.connect(end.from, [hid, hport]); return; }
+    if (end.to && hdir === 'out') { this.cancelPending(); this.connect([hid, hport], end.to); return; }
+    // the same side again: start over from that one
+    this.cancelPending();
+    this.startPending(hdir === 'out' ? { from: [hid, hport] } : { to: [hid, hport] });
+  }
+  cancelPending() {
+    this.pending = null;
+    this.world.classList.remove('want-in', 'want-out', 'pending');
+    this.world.querySelectorAll('.dot.armed').forEach((x) => x.classList.remove('armed'));
+    this.banner.hidden = true;
   }
   kindOf([id, k], dir) { const m = this.patch.mods.find((x) => x.id === id); return MODULES[m?.type]?.[dir === 'out' ? 'outs' : 'ins'].find((x) => x.k === k)?.kind; }
   // a little searchable menu of modules at a point (need: only those with inputs / outputs)
@@ -432,17 +549,29 @@ class LabEditor {
     this.edit((pp) => { pp.mods.push(c); });
     this.select({ mod: c.id });
   }
-  select(s) { this.sel = s; this.sync(); }
+  select(s) {
+    const was = this.sel?.mod;
+    this.sel = s; this.root.classList.toggle('has-sel', !!s); this.sync();
+    if (s?.mod && s.mod !== was && phone() && !this.dragging) requestAnimationFrame(() => this.reveal(s.mod));
+  }
   key(e) {
     if (!this.root.isConnected || document.querySelector('.modal-bg')) return;
     const tag = e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (tag === 'SELECT' && e.key !== 'Escape')) return;
     const mod = e.ctrlKey || e.metaKey;
-    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); if (document.querySelector('.lab-quick')) document.querySelector('.lab-quick').remove(); else if (this.sel) this.select(null); else this.close(); return; }
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (document.querySelector('.lab-menu')) document.querySelector('.lab-menu').remove();
+      else if (document.querySelector('.lab-quick')) document.querySelector('.lab-quick').remove();
+      else if (this.pending) this.cancelPending();
+      else if (this.sel) this.select(null);
+      else this.close();
+      return;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && this.sel) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (this.sel.mod) this.removeModule(this.sel.mod);
-      else if (this.sel.cable != null) { const i = this.sel.cable; this.sel = null; this.edit((pp) => { pp.cables.splice(i, 1); }); }
+      else if (this.sel.cable != null) { const i = this.sel.cable; this.select(null); this.edit((pp) => { pp.cables.splice(i, 1); }); }
       return;
     }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); e.stopImmediatePropagation(); return; }   // (never the song's clips from here)
@@ -460,19 +589,25 @@ class LabEditor {
       const inSpec = MODULES[p.mods.find((x) => x.id === c.to[0])?.type]?.ins.find((x) => x.k === c.to[1]);
       const k = knob({ label: 'AMOUNT', min: -100, max: 100, value: Math.round(c.amt * 100), def: 100, size: 46, color: KIND_COLOR[inSpec?.kind || 'audio'], format: (v) => `${v}%`,
         onChange: (v) => { const i = this.sel.cable; this.edit((pp) => { if (pp.cables[i]) pp.cables[i].amt = v / 100; }, `labamt${i}`); }, onEnd: () => this.app.store.endGesture() });
-      box.replaceChildren(h('h4', { text: 'CABLE' }), h('p', { class: 'lab-help', text: `${nm(c.from[0], c.from[1], 'outs')} → ${nm(c.to[0], c.to[1], 'ins')}` }),
+      box.replaceChildren(this.sheetBar('Cable'), h('h4', { text: 'Cable' }), h('p', { class: 'lab-help lab-route', text: `${nm(c.from[0], c.from[1], 'outs')} → ${nm(c.to[0], c.to[1], 'ins')}` }),
         h('div', { class: 'lab-knobs big' }, k),
         h('p', { class: 'lab-help', text: inSpec && inSpec.range !== 1 ? `At 100 %, a full signal moves ${inSpec.l} by ${inSpec.range}${inSpec.unit ? ' ' + inSpec.unit : ''}. Negative amounts turn it upside down.` : 'How much of the signal goes through; a negative amount turns it upside down.' }),
-        h('button', { class: 'add danger', onclick: () => { const i = this.sel.cable; this.sel = null; this.edit((pp) => { pp.cables.splice(i, 1); }); } }, 'REMOVE THE CABLE'));
+        h('div', { class: 'row' }, h('button', { class: 'lab-btn danger', onclick: () => { const i = this.sel.cable; this.select(null); this.edit((pp) => { pp.cables.splice(i, 1); }); } }, 'Remove the cable')));
       return;
     }
     const m = this.sel?.mod && p.mods.find((x) => x.id === this.sel.mod);
     if (!m) {
-      box.replaceChildren(h('h4', { text: this.r.kind === 'fx' ? 'YOUR EFFECT' : 'YOUR INSTRUMENT' }),
-        h('p', { class: 'lab-help', text: 'Click a module to see what it does and all its knobs. Drag from an output dot (right) to an input dot (left) to connect; let go on empty canvas to add a module already connected. Click a cable to set how much goes through.' }),
+      box.replaceChildren(h('h4', { text: this.r.kind === 'fx' ? 'Your effect' : 'Your instrument' }),
+        h('p', { class: 'lab-help', text: 'Select a module or a cable to see what it does and change it.' }),
+        h('h6', { text: 'Cable colours' }),
         h('div', { class: 'lab-legend' }, Object.entries(KIND_LABEL).map(([k, l]) => h('span', {}, h('i', { style: { background: KIND_COLOR[k] } }), l))),
-        this.r.kind === 'inst' ? h('p', { class: 'lab-help', text: 'Play it with your keyboard (A W S E D…), a MIDI keyboard, or the keys below. Each note plays the whole patch as a voice.' })
-          : h('p', { class: 'lab-help', text: 'Play the song: the track\'s sound goes through AUDIO IN and comes out of OUTPUT.' }));
+        h('h6', { text: 'Tips' }),
+        h('ul', { class: 'lab-hints' },
+          h('li', { text: 'Drag from an output to an input, or click one then the other.' }),
+          h('li', { text: 'Let go of a cable on empty space: a module comes already connected.' }),
+          h('li', { text: 'Double-click the canvas to add a module there.' }),
+          this.r.kind === 'inst' ? h('li', { text: 'Play it with the keys below, your computer keyboard (A W S E D…) or a MIDI keyboard.' })
+            : h('li', { text: 'Play the song: the track\'s sound goes through AUDIO IN and comes out of OUTPUT.' })));
       return;
     }
     const d = MODULES[m.type];
@@ -487,13 +622,17 @@ class LabEditor {
         onChange: (v) => this.edit((pp) => { const x = pp.mods.find((y) => y.id === m.id); if (x) { x.fx ||= { p: {} }; x.fx.p[q.k] = fromNorm(q, v / 1000); } }, `labfx${m.id}${q.k}`), onEnd: () => this.app.store.endGesture() }))));
     }
     this.scopes = h('div', { class: 'lab-scopes' });
-    box.replaceChildren(h('h4', {}, h('span', { text: d.name }), h('em', { text: CATS.find(([c]) => c === d.cat)[1] })),
+    box.replaceChildren(this.sheetBar(d.name), h('h4', { style: { '--c': CAT_COLOR[d.cat] } }, h('span', { text: d.name }), h('em', { text: CATS.find(([c]) => c === d.cat)[1] })),
       h('p', { class: 'lab-help', text: d.help }),
       d.params.filter((q) => !/^s\d+$/.test(q.k)).length ? h('div', { class: 'lab-knobs big' }, this.paramEls(m, d.params.filter((q) => !/^s\d+$/.test(q.k)), 40, 'i')) : null,
       ...extra,
-      d.outs.length ? h('h6', { text: this.r.kind === 'fx' ? 'ITS OUTPUTS ON A TEST SOUND' : 'ITS OUTPUTS ON A TEST NOTE' }) : null, this.scopes,
-      h('div', { class: 'row' }, h('button', { class: 'add', onclick: () => this.duplicate(m.id) }, 'DUPLICATE'), h('button', { class: 'add danger', onclick: () => this.removeModule(m.id) }, 'REMOVE')));
+      d.outs.length ? h('h6', { text: this.r.kind === 'fx' ? 'Its outputs on a test sound' : 'Its outputs on a test note' }) : null, this.scopes,
+      h('div', { class: 'row' }, h('button', { class: 'lab-btn', onclick: () => this.duplicate(m.id) }, 'Duplicate'), h('button', { class: 'lab-btn danger', onclick: () => this.removeModule(m.id) }, 'Remove')));
     this.drawScopes(m);
+  }
+  // on a phone the inspector is a sheet over the canvas: its bar closes it
+  sheetBar(title) {
+    return h('div', { class: 'lab-sheetbar', 'aria-label': title }, h('button', { class: 'lab-btn', onclick: () => this.select(null) }, 'Done'));
   }
   // ---- ENGINE: the firmware's engines, sounds and settings, by name
   engCat(m) { return this.app.lib?.[m.p.bank ? 'clipper' : 'sloop']; }
@@ -580,12 +719,12 @@ class LabEditor {
     if (sig === this.bottomSig) { this.macroKnobs?.forEach((k, i) => k.setValue(Math.round(this.r.macro(i) * 1000))); return; }
     this.bottomSig = sig;
     this.macroKnobs = p.macros.map((mc, i) => {
-      const k = knob({ label: '', min: 0, max: 1000, size: 36, value: Math.round(this.r.macro(i) * 1000), def: 500, format: (v) => `${Math.round(v / 10)}%`,
+      const k = knob({ label: '', min: 0, max: 1000, size: 40, value: Math.round(this.r.macro(i) * 1000), def: 500, format: (v) => `${Math.round(v / 10)}%`,
         onChange: (v) => this.r.setMacro(i, v / 1000, `labmacro${i}`), onEnd: () => this.app.store.endGesture() });
       if (this.r.kind === 'inst') k.dataset.learn = `sel:p:${i}`;
       return k;
     });
-    const macros = h('div', { class: 'lab-macros' }, h('h6', { text: 'MACROS', title: 'The plugin\'s eight knobs: automate them, map them (LEARN), modulate them. A MACRO module in the patch gives a knob\'s value.' }),
+    const macros = h('div', { class: 'lab-macros' }, h('h6', { text: 'Macros', title: 'The plugin\'s eight knobs: automate them, map them (LEARN), modulate them. A MACRO module in the patch gives a knob\'s value.' }),
       h('div', { class: 'lab-mrow' }, p.macros.map((mc, i) => h('div', { class: 'lab-macro' }, this.macroKnobs[i],
         h('input', { value: mc.name, maxlength: 16, 'aria-label': `Macro ${i + 1} name`, onkeydown: (e) => { e.stopPropagation(); if (e.key === 'Enter') e.target.blur(); },
           onchange: (e) => this.edit((pp) => { pp.macros[i].name = e.target.value.trim().toUpperCase().slice(0, 16) || `MACRO ${i + 1}`; }) })))));
@@ -595,12 +734,12 @@ class LabEditor {
       const sel = (label, value, opts, set) => h('label', { class: 'lab-sel-w' }, h('span', { text: label }),
         h('select', { class: 'lab-sel', 'aria-label': label, onchange: (e) => this.edit((pp) => set(pp.voice, e.target.value)) }, opts.map(([val, l]) => h('option', { value: val, selected: String(val) === String(value) ? true : null }, l))));
       const glide = knob({ label: 'GLIDE', min: 0, max: 2000, size: 30, value: v.glide, def: 0, format: (x) => `${Math.round(x)}ms`, onChange: (x) => this.edit((pp) => { pp.voice.glide = x; }, 'labglide'), onEnd: () => this.app.store.endGesture() });
-      parts.push(h('div', { class: 'lab-voice' }, h('h6', { text: 'VOICES' }),
+      parts.push(h('div', { class: 'lab-voice' }, h('h6', { text: 'Voices' }),
         sel('MODE', v.mode, [['poly', 'POLY'], ['mono', 'MONO'], ['legato', 'LEGATO']], (q, x) => { q.mode = x; }),
         v.mode === 'poly' ? sel('VOICES', v.poly, [1, 2, 3, 4, 6, 8, 10, 12, 16].map((n) => [n, String(n)]), (q, x) => { q.poly = +x; }) : null,
         sel('BEND', v.bend, [0, 1, 2, 3, 5, 7, 12, 24].map((n) => [n, `±${n}`]), (q, x) => { q.bend = +x; }), glide));
       const fxs = p.fx || [];
-      parts.push(h('div', { class: 'lab-fxchain' }, h('h6', { text: 'EFFECTS AFTER THE VOICES' }),
+      parts.push(h('div', { class: 'lab-fxchain' }, h('h6', { text: 'Effects after the voices' }),
         h('div', { class: 'lab-chips' }, fxs.map((f) => h('span', { class: 'lab-chip' + (f.on ? '' : ' off') + (this.fxOpen === f.id ? ' sel' : '') },
           h('button', { class: 'tb', onclick: () => { this.fxOpen = this.fxOpen === f.id ? null : f.id; this.renderBottom(); } }, DEVICES[f.type].name),
           h('button', { class: 'tb', title: 'On / off', onclick: () => this.edit((pp) => { const x = pp.fx.find((y) => y.id === f.id); if (x) x.on = !x.on; }) }, '⏻'),
@@ -618,28 +757,33 @@ class LabEditor {
       def: Math.round(toNorm(q, q.def) * 1000), format: (v) => fmtParam(q, fromNorm(q, v / 1000)),
       onChange: (v) => this.edit((pp) => { const x = pp.fx.find((y) => y.id === f.id); if (x) x.p[q.k] = fromNorm(q, v / 1000); }, `labpfx${f.id}${q.k}`), onEnd: () => this.app.store.endGesture() })));
   }
+  // a keyboard to play the patch: two octaves, moved by octaves (the computer's keys and a MIDI keyboard play it too)
   keys() {
     const t = this.r.track?.();
     if (!t) return null;
-    const app = this.app, base = 48;
+    const app = this.app, base = this.kbBase ??= 48;
     const keys = [];
     for (let n = base; n < base + 25; n++) {
       const black = [1, 3, 6, 8, 10].includes(n % 12);
-      const k = h('button', { class: 'lab-key' + (black ? ' b' : ''), 'aria-label': `Note ${n}` });
+      const k = h('button', { class: 'lab-key' + (black ? ' b' : ''), 'aria-label': `Note ${n}` }, !black && n % 12 === 0 ? h('span', { text: `C${n / 12 - 1}` }) : null);
       const on = (e) => { e.preventDefault(); k.setPointerCapture?.(e.pointerId); app.noteOn(t.id, n, 100, true); k.classList.add('on'); };
       const off = () => { if (!k.classList.contains('on')) return; app.noteOff(t.id, n, true); k.classList.remove('on'); };
       k.addEventListener('pointerdown', on); k.addEventListener('pointerup', off); k.addEventListener('pointercancel', off); k.addEventListener('pointerleave', off);
       keys.push(k);
     }
-    return h('div', { class: 'lab-kb' }, h('h6', { text: 'PLAY' }), h('div', { class: 'lab-keys' }, keys));
+    const oct = (d) => { this.kbBase = Math.max(24, Math.min(84, base + d * 12)); this.bottomSig = null; this.renderBottom(); };
+    return h('div', { class: 'lab-kb' }, h('div', { class: 'lab-kbhead' }, h('h6', { text: 'Keyboard' }),
+      h('button', { class: 'lab-ib', title: 'Octave down', 'aria-label': 'Octave down', onclick: () => oct(-1) }, '‹'), h('span', { class: 'lab-oct', text: `C${base / 12 - 1}` }),
+      h('button', { class: 'lab-ib', title: 'Octave up', 'aria-label': 'Octave up', onclick: () => oct(1) }, '›')),
+      h('div', { class: 'lab-keys' }, keys));
   }
 
   // ---- patches: factory, yours, files
   async patchSheet() {
     const app = this.app, kind = this.r.kind;
     const mine = (await listPresets()).filter((q) => q.kind === 'lab' && q.type === kind);
-    const use = (patch) => { m.close(); this.edit((pp, holder) => { const fresh = validatePatch(structuredClone(patch), kind); for (const k of Object.keys(pp)) delete pp[k]; Object.assign(pp, fresh); if (holder?.params) holder.params = {}; if (holder?.p) for (let i = 0; i < 8; i++) holder.p[`m${i}`] = fresh.macros[i].v; }); this.sel = null; requestAnimationFrame(() => this.fit()); app.toast(`${patch.name} loaded. Ctrl+Z brings the previous patch back.`); };
-    const row = (q, del = null) => h('div', { class: 'lab-prow' }, h('button', { class: 'add', title: q.tags || '', onclick: () => use(q.patch || q.data) }, h('b', { text: q.name }), q.tags ? h('span', { text: q.tags }) : null),
+    const use = (patch) => { m.close(); this.edit((pp, holder) => { const fresh = validatePatch(structuredClone(patch), kind); for (const k of Object.keys(pp)) delete pp[k]; Object.assign(pp, fresh); if (holder?.params) holder.params = {}; if (holder?.p) for (let i = 0; i < 8; i++) holder.p[`m${i}`] = fresh.macros[i].v; }); this.select(null); requestAnimationFrame(() => this.fit()); app.toast(`${patch.name} loaded. Ctrl+Z brings the previous patch back.`); };
+    const row = (q, del = null) => h('div', { class: 'lab-prow' }, h('button', { class: 'add', title: q.tags || '', onclick: () => use(q.patch || q.data) }, h('b', { text: q.name }), q.tags ? h('span', { text: q.tags.split(/\s+/).join(', ') }) : null),
       del ? h('button', { class: 'tb', title: 'Delete', 'aria-label': `Delete the patch ${q.name}`, onclick: async () => { await removePreset(q.id); m.close(); this.patchSheet(); } }, '×') : null);
     const m = app.modal('Patches', [
       h('p', { class: 'hint', text: kind === 'fx' ? 'Effects to start from: load one, play, then open its modules to see how it works.' : 'Instruments to start from: load one, play it, then open its modules to see how it works.' }),
@@ -675,11 +819,6 @@ class LabEditor {
     };
     const m = app.modal('Patch file', [h('p', { class: 'hint', text: 'A patch is a small .json file: send it to anyone, they open it in their LAB.' })],
       [['Import a patch…', imp], ['Export this patch', exp, true]]);
-  }
-  paletteSheet() {
-    const box = h('div', { class: 'lab-pal sheet' });
-    const m = this.app.modal('Add a module', [box], [['Close', null, true]]);
-    this.buildPalette(box, (t) => { m.close(); this.addModule(t); });
   }
   guide() {
     this.app.modal('How LAB works', [h('div', { class: 'lab-guide' },
@@ -722,7 +861,7 @@ export function buildLab(dev, t) {
 export async function labPicker(app, kind, pick, title = 'Choose a patch') {
   const mine = (await listPresets()).filter((q) => q.kind === 'lab' && q.type === kind);
   const m = app.modal(title, [h('div', { class: 'lab-plist' }, h('h6', { text: 'FACTORY' }),
-    ...LAB_FACTORY.filter((f) => f.kind === kind).map((f) => h('button', { class: 'add', onclick: () => { m.close(); pick(f.patch, f.name); } }, h('b', { text: f.name }), h('span', { text: f.tags }))),
+    ...LAB_FACTORY.filter((f) => f.kind === kind).map((f) => h('button', { class: 'add', onclick: () => { m.close(); pick(f.patch, f.name); } }, h('b', { text: f.name }), h('span', { text: f.tags.split(/\s+/).join(', ') }))),
     mine.length ? h('h6', { text: 'MY PATCHES' }) : null, ...mine.map((q) => h('button', { class: 'add', onclick: () => { m.close(); pick(q.data, q.name); } }, h('b', { text: q.name }))),
     h('h6', { text: 'START OVER' }), h('button', { class: 'add', onclick: () => { m.close(); pick(newPatch(kind), kind === 'fx' ? 'Empty effect' : 'Basic synth'); } }, h('b', { text: kind === 'fx' ? 'Empty effect' : 'Basic synth' })))], [['Cancel', null, true]]);
   m.box.classList.add('lab-psheet');

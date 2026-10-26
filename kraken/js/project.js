@@ -26,7 +26,7 @@ const SESSION = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0'
 let n = 0;
 export const uid = (p = 'x') => `${p}${SESSION}${(n++).toString(36)}`;
 
-const KIND_NAME = { drum: 'DRUMS', audio: 'AUDIO', group: 'GROUP', sampler: 'SAMPLER', external: 'EXT MIDI', synth: 'SYNTH', vca: 'VCA', wam: 'PLUGIN' };
+const KIND_NAME = { drum: 'DRUMS', audio: 'AUDIO', group: 'GROUP', sampler: 'SAMPLER', external: 'EXT MIDI', synth: 'SYNTH', vca: 'VCA', wam: 'PLUGIN', lab: 'LAB' };
 // kinds: synth (SLOOP / Clipper engines), drum, audio, sampler, external (a MIDI device), wam (a plugin instrument,
 // wam.js), group (a bus), vca (a fader that moves others)
 export function newTrack(kind, i, opts = {}) {

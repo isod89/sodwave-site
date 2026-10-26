@@ -6,12 +6,12 @@ AddType text/javascript .js .mjs
   # several cores for the audio (multi-core playback): the page isolated from other sites' windows
   Header set Cross-Origin-Opener-Policy "same-origin"
   Header set Cross-Origin-Embedder-Policy "credentialless"
-  # the app updates itself: these three must never be served stale
-  <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest)$">
-    Header set Cache-Control "no-cache"
-  </FilesMatch>
   <FilesMatch "\.(wasm|js|svg|png|json)$">
     Header set Cache-Control "public, max-age=3600"
+  </FilesMatch>
+  # the app updates itself: these three must never be served stale (after the rule above, so it wins for sw.js)
+  <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest|hub\.html)$">
+    Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>
 <IfModule mod_deflate.c>
