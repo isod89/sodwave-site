@@ -6,6 +6,8 @@
 import { h } from './ui/kit.js';
 import { initI18n, toggleLang, getLang, onLang } from './i18n.js';
 import { initHub } from './ui/hub.js';
+import { session } from './hub.js';
+import { landing } from './hub-landing.js';
 import { loadEngines } from './audio.js';
 import { RATE, beatsToSeconds } from './engine-core.js';
 import { wamPlan } from './wam.js';
@@ -118,5 +120,26 @@ hub.publishLab = hub.publish;
 const q = new URLSearchParams(location.search);
 const item = q.get('item'), user = q.get('user'), tab = q.get('tab'), kind = q.get('kind');
 if (kind && ['song', 'preset', 'plugin', 'template'].includes(kind)) hub.filters.kind = kind;
-await hub.open(/^\d{1,9}$/.test(item || '') ? { item: +item } : /^\d{1,9}$/.test(user || '') ? { user: +user } : ['discover', 'following', 'world', 'me'].includes(tab) ? tab : null);
+const target = /^\d{1,9}$/.test(item || '') ? { item: +item } : /^\d{1,9}$/.test(user || '') ? { user: +user } : ['discover', 'following', 'world', 'me'].includes(tab) ? tab : null;
+// someone not signed in, on the plain address: the front page first (hub-landing.js); else the hub itself
+const front = landing({ open: (t) => showHub(t), openKraken: () => go() });
+front.hidden = true;
+document.body.append(front);
+async function showHub(t = null) {
+  front.hidden = true;
+  document.body.classList.remove('landing');
+  await hub.open(t || 'discover');
+}
+function showFront() {
+  hub.bg && (hub.bg.hidden = true);
+  front.hidden = false;
+  document.body.classList.add('landing');
+  front.scrollTop = 0;
+}
+$('explore').onclick = () => showHub('discover');
+$('signin').onclick = () => (session.token ? showHub('me') : (showFront(), setTimeout(() => front.querySelector('#lp-email-1')?.focus({ preventScroll: false }), 50)));
+document.querySelector('.site-bar .brand').addEventListener('click', (e) => { if (!session.token) { e.preventDefault(); showFront(); } });
+const signLabel = () => { $('signin').textContent = session.token ? 'MY PROFILE' : 'SIGN IN'; };
+signLabel(); setInterval(signLabel, 2000);                          // (signed in or out from the hub itself)
+if (target || session.token) await showHub(target); else showFront();
 document.body.classList.add('ready');

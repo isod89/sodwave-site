@@ -43,6 +43,8 @@ export const HUB_CSS = `
 .hub-card:hover, .hub-card:focus-visible { border-color: var(--accent); transform: translateY(-1px); }
 .hub-thumb { position: relative; aspect-ratio: 16 / 9; background: var(--g, linear-gradient(135deg, #14323f, #0b0c0d)); display: grid; place-items: center; overflow: hidden; }
 .hub-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hub-thumb .art { position: absolute; inset: 0; display: block; }
+.hub-thumb .art svg { width: 100%; height: 100%; display: block; }
 .hub-thumb .glyph { font: 400 38px/1 var(--f-ui); color: #ffffffcc; text-shadow: 0 2px 12px #0008; }
 .hub-thumb .kind { position: absolute; left: 8px; top: 8px; padding: 4px 7px; border-radius: 4px; background: #000b; color: #fff; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase; }
 .hub-thumb .yt { position: absolute; right: 8px; bottom: 8px; width: 30px; height: 21px; border-radius: 6px; background: #f00; display: grid; place-items: center; }

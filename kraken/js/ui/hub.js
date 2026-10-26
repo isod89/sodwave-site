@@ -23,6 +23,7 @@ import { RATE } from '../engine-core.js';
 import { getLang, t } from '../i18n.js';
 import { HUB_CSS, PRESET_ROW_CSS } from './hub-style.js';
 import { saveFile } from '../io.js';
+import { cover } from '../hub-art.js';
 
 const KIND = { song: 'Song', preset: 'Preset', plugin: 'Plugin', template: 'Template' };
 const KINDS = [['', 'All'], ['song', 'Songs'], ['preset', 'Presets'], ['plugin', 'Plugins'], ['template', 'Templates']];
@@ -787,9 +788,15 @@ class Hub {
 
 // -------------------------------------------------------------------------------------------------- pieces ---
 const linkish = { background: 'none', border: '0', padding: '0', color: 'var(--accent)', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit', cursor: 'pointer' };
+// a cover drawn for it (hub-art.js: from its id and title, in Kraken's colours), the kind's sign over it
+function coverEl(it) {
+  const el = h('span', { class: 'art', 'aria-hidden': 'true' });
+  el.innerHTML = cover(`${it.id}${it.title}`, it.kind);
+  return el;
+}
 function thumb(it, big = false) {
   return h('div', { class: 'hub-thumb', '--g': grad(`${it.kind}${it.id}${it.title}`) },
-    it.youtube ? h('img', { src: thumbUrl(it.youtube), alt: '', loading: 'lazy', decoding: 'async', onerror: (e) => e.target.remove() }) : h('span', { class: 'glyph', 'aria-hidden': 'true' }, KIND_ICONS[it.kind] || '♪'),
+    it.youtube ? h('img', { src: thumbUrl(it.youtube), alt: '', loading: 'lazy', decoding: 'async', onerror: (e) => e.target.remove() }) : coverEl(it),
     big ? null : h('span', { class: 'kind', text: KIND[it.kind] }),
     it.youtube && !big ? h('span', { class: 'yt', title: 'YouTube video' }) : null,
     it.status && it.status !== 'visible' ? h('span', { class: 'tag-hidden', text: 'Hidden' }) : null);
