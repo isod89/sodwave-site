@@ -804,6 +804,10 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 .lab-cables .wire.tmp { stroke: #fff; stroke-dasharray: 5 4; }
 .lab-cables .amt { fill: var(--lb-tx); font: 600 10px/1 var(--f-mono); text-anchor: middle; paint-order: stroke; stroke: var(--lb-bg); stroke-width: 4px; }
 .lab-mod { position: absolute; z-index: 1; background: var(--lb-1); border: 1px solid var(--lb-line-2); border-radius: 10px; color: var(--lb-tx); box-shadow: 0 1px 0 #ffffff08 inset, 0 8px 22px #0008; user-select: none; }
+.lab-mod { cursor: grab; touch-action: none; }
+.lab-mod.lifted { cursor: grabbing; z-index: 2; box-shadow: 0 0 0 1px var(--lb-acc), 0 18px 40px #000c; }
+.lab-mod .knob, .lab-mod select, .lab-mod textarea, .lab-mod canvas { cursor: auto; }
+.lab-mod .knob { cursor: ns-resize; }
 .lab-mod.sel { border-color: var(--lb-acc); box-shadow: 0 0 0 1px var(--lb-acc), 0 10px 28px #000a; }
 .lab-mod h5 { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0; padding: 8px 8px 7px 14px; border-bottom: 1px solid var(--lb-line);
   font: 700 11px/1 var(--f-ui); letter-spacing: 0.06em; cursor: move; touch-action: none; }
@@ -860,10 +864,9 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 .lab-banner div { display: grid; gap: 2px; min-width: 0; }
 .lab-banner b { font: 700 11px/1.2 var(--f-ui); letter-spacing: 0.04em; color: var(--lb-tx2); }
 .lab-banner span { font: 600 13px/1.3 var(--f-ui); }
-.lab-tips { position: absolute; left: 14px; bottom: 40px; z-index: 4; width: min(330px, calc(100% - 28px)); box-sizing: border-box; padding: 14px 16px; border-radius: 12px;
-  background: #1f242bf2; border: 1px solid var(--lb-line-2); box-shadow: 0 14px 40px #000a; display: grid; gap: 8px; justify-items: start; }
-.lab-tips b { font: 700 14px/1.2 var(--f-ui); }
-.lab-tips ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--lb-tx2); font: 500 13px/1.45 var(--f-ui); }
+.lab-tips { position: absolute; left: 10px; right: 10px; bottom: 74px; z-index: 4; display: flex; align-items: center; gap: 6px; padding: 8px 6px 8px 12px; border-radius: 10px;
+  background: #1f242bee; border: 1px solid var(--lb-line-2); box-shadow: 0 8px 24px #0009; font: 500 12.5px/1.4 var(--f-ui); color: var(--lb-tx2); }
+.lab-tips span { flex: 1; }
 /* the inspector */
 .lab-insp { overflow-y: auto; padding: 14px 16px 18px; border-left: 1px solid var(--lb-line); background: var(--lb-0); color: var(--lb-tx); }
 .lab-insp h4 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font: 700 17px/1.2 var(--f-ui); letter-spacing: 0.01em; }
@@ -970,7 +973,6 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   .lab-ed.has-sel .lab-zoom { display: none; }
   .lab-port.in .dot::after { inset: -8px -22px -8px -6px; }
   .lab-port.out .dot::after { inset: -8px -6px -8px -22px; }
-  .lab-tips { bottom: 76px; }
   .lab-banner { top: 10px; width: calc(100% - 20px); justify-content: space-between; }
   /* PLAY: the macros big, then the voices and effects, the keys at the bottom */
   .lab-bottom { flex-direction: column; align-items: stretch; gap: 4px; padding: 4px 14px 12px; border: 0; overflow-x: hidden; overflow-y: auto; }

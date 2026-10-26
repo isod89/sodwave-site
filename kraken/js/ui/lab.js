@@ -141,15 +141,13 @@ class LabEditor {
     this.tabs?.querySelectorAll('.lab-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === k)));
     if (k === 'patch' && phone()) requestAnimationFrame(() => { if (!this.fitted) this.home(); });
   }
-  // the first time: how it works, in three lines, over the canvas
+  // the first time on a phone: one small line at the bottom of the canvas, gone at the first touch (a computer has
+  // the same tips in the inspector, nothing over the patch)
   tipsEl() {
-    if (tipsSeen()) return null;
-    const box = h('div', { class: 'lab-tips' },
-      h('b', { text: 'How it works' }),
-      h('ol', {}, h('li', { text: 'Each box is a module: it makes, shapes or moves a sound.' }),
-        h('li', { text: 'Connect an output (right) to an input (left): drag, or tap one then the other.' }),
-        h('li', { text: 'Tap a module or a cable to see and change its settings.' })),
-      h('button', { class: 'lab-btn', onclick: () => { tipsDone(); box.remove(); } }, 'Got it'));
+    if (tipsSeen() || !phone()) return null;
+    const box = h('div', { class: 'lab-tips', role: 'note' },
+      h('span', { text: 'Tap a module to set it, drag it to move it. A cable: tap an output, then an input.' }),
+      h('button', { class: 'lab-ib', title: 'Close', 'aria-label': 'Close', onclick: () => { tipsDone(); box.remove(); } }, '×'));
     return box;
   }
   // ⋯: what does not need to be on screen all the time
@@ -230,8 +228,8 @@ class LabEditor {
     const knobs = this.paramEls(m, d.params.filter((q) => !/^s\d+$/.test(q.k)), 28, 'm');
     const el = h('div', { class: 'lab-mod' + (sel ? ' sel' : ''), 'data-id': m.id, style: { left: `${m.x}px`, top: `${m.y}px`, width: `${W}px`, '--c': CAT_COLOR[d.cat] } },
       head, h('div', { class: 'lab-ports' }, h('div', {}, ins), h('div', {}, outs)), knobs.length ? h('div', { class: 'lab-knobs' }, knobs) : null, ...body);
-    el.addEventListener('pointerdown', (e) => { if (e.target.closest('.dot, .knob, select, textarea, input, button, canvas')) return; this.select({ mod: m.id }); });
-    head.addEventListener('pointerdown', (e) => this.dragModule(e, m));
+    // anywhere on it but its controls: a press selects it, a drag moves it
+    el.addEventListener('pointerdown', (e) => { if (e.button > 0 || e.target.closest('.dot, .knob, select, textarea, input, button, canvas')) return; this.dragModule(e, m); });
     return el;
   }
   // a module's knobs (names: a menu); where: 'm' on the canvas, 'i' in the inspector
@@ -360,10 +358,12 @@ class LabEditor {
     this.fitted = true;
     this.applyView();
   }
-  // a phone: the module just selected comes to the top of the canvas, above its settings' sheet
-  reveal(id) {
+  // a phone: the module just selected comes to the top of the canvas when its settings' sheet would hide it
+  reveal(id, onlyIfHidden = false) {
     const m = this.patch.mods.find((x) => x.id === id), r = this.viewEl.getBoundingClientRect();
     if (!m || !r.width) return;
+    const box = this.modEls?.get(id)?.getBoundingClientRect();
+    if (onlyIfHidden && box && box.top >= r.top && box.top < r.top + r.height * 0.3 && box.left >= r.left - 20 && box.left < r.right - 60) return;
     const z = Math.max(this.view.z, 0.72);
     this.view = { z, x: (r.width - W * z) / 2 - m.x * z, y: 14 - m.y * z };
     this.applyView();
@@ -406,24 +406,44 @@ class LabEditor {
     el.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('application/x-kraken-lab')) e.preventDefault(); });
     el.addEventListener('drop', (e) => { const t = e.dataTransfer.getData('application/x-kraken-lab'); if (!t) return; e.preventDefault(); const w = this.toWorld(e.clientX, e.clientY); this.addModule(t, w.x - W / 2, w.y - 14); });
   }
+  // a module moved by a drag (its title or its body): it follows the finger from where it was taken, on a grid of 10;
+  // near an edge of the canvas the view moves along so it can go anywhere; a press without moving only selects it
   dragModule(e, m) {
-    if (e.target.closest('button')) return;
     e.preventDefault(); e.stopPropagation();
     this.select({ mod: m.id });
-    const el = this.modEls.get(m.id), x0 = m.x, y0 = m.y, sx = e.clientX, sy = e.clientY;
-    let x = x0, y = y0;
+    const el = this.modEls.get(m.id), grab = this.toWorld(e.clientX, e.clientY), x0 = m.x, y0 = m.y, sx = e.clientX, sy = e.clientY;
+    grab.x -= m.x; grab.y -= m.y;
+    let x = x0, y = y0, moved = false, last = e, raf = 0;
+    el.classList.add('lifted');
     this.dragging = true;
-    const mv = (ev) => {
-      x = Math.round((x0 + (ev.clientX - sx) / this.view.z) / 10) * 10; y = Math.round((y0 + (ev.clientY - sy) / this.view.z) / 10) * 10;
+    const place = () => {
+      const w = this.toWorld(last.clientX, last.clientY);
+      x = Math.round((w.x - grab.x) / 10) * 10; y = Math.round((w.y - grab.y) / 10) * 10;
       el.style.left = `${x}px`; el.style.top = `${y}px`;
       this.drawCables();
     };
-    const up = () => {
-      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
-      this.dragging = false;
-      if (x !== x0 || y !== y0) this.edit((pp) => { const q = pp.mods.find((z) => z.id === m.id); if (q) { q.x = x; q.y = y; } }); else this.sync();
+    const edge = () => {                                     // the view follows when the module is taken to an edge
+      raf = 0;
+      if (!this.dragging || !moved) return;
+      const r = this.viewEl.getBoundingClientRect(), M = 36, sp = 9;
+      const dx = last.clientX < r.left + M ? sp : last.clientX > r.right - M ? -sp : 0, dy = last.clientY < r.top + M ? sp : last.clientY > r.bottom - M ? -sp : 0;
+      if (dx || dy) { this.view.x += dx; this.view.y += dy; this.applyView(); place(); raf = requestAnimationFrame(edge); }
     };
-    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    const mv = (ev) => {
+      last = ev;
+      if (!moved) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return; moved = true; }
+      place();
+      if (!raf) raf = requestAnimationFrame(edge);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+      cancelAnimationFrame(raf); raf = 0;
+      el.classList.remove('lifted');
+      this.dragging = false;
+      if (moved && (x !== x0 || y !== y0)) this.edit((pp) => { const q = pp.mods.find((z) => z.id === m.id); if (q) { q.x = x; q.y = y; } });
+      else { this.sync(); if (!moved && phone()) requestAnimationFrame(() => this.reveal(m.id, true)); }
+    };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
   }
   // from a dot: drag to another dot (or let go on the canvas: a module already connected); a tap without moving
   // starts a cable that the next tapped dot finishes (touch screens); from an input already plugged: its cable moves
@@ -550,9 +570,7 @@ class LabEditor {
     this.select({ mod: c.id });
   }
   select(s) {
-    const was = this.sel?.mod;
-    this.sel = s; this.root.classList.toggle('has-sel', !!s); this.sync();
-    if (s?.mod && s.mod !== was && phone() && !this.dragging) requestAnimationFrame(() => this.reveal(s.mod));
+    this.sel = s; this.root.classList.toggle('has-sel', !!s); this.sync();   // (a phone brings a tapped module into view: dragModule)
   }
   key(e) {
     if (!this.root.isConnected || document.querySelector('.modal-bg')) return;
