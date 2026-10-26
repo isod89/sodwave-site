@@ -206,6 +206,29 @@ export function migrate(p) {
   for (let v = f; v < FORMAT; v++) { p = MIGRATIONS[v](p); p.kraken = v + 1; }
   return p;
 }
+// a drum track's 16 sounds, each its own (engine kraken_host.c k_lane): lane -> what differs from the kit
+export const LANE_DEF = { lv: 0, pan: 0, tune: 0, dec: 0, cut: 20000, res: 0, drv: 0, lc: 0, choke: 0, mute: false };
+export function drumLanes(raw) {
+  const o = raw && typeof raw === 'object' ? raw : {}, out = {};
+  for (const [k, l] of Object.entries(o)) {
+    const n = +k;
+    if (!Number.isInteger(n) || n < 0 || n > 15 || !l || typeof l !== 'object') continue;
+    const c = (x, a, b, d) => (Number.isFinite(+x) ? Math.max(a, Math.min(b, +x)) : d);
+    const q = { lv: c(l.lv, -60, 12, 0), pan: c(l.pan, -1, 1, 0), tune: Math.round(c(l.tune, -8, 7, 0)), dec: Math.round(c(l.dec, -4, 3, 0)), cut: c(l.cut, 20, 20000, 20000),
+      res: c(l.res, 0, 1, 0), drv: c(l.drv, 0, 1, 0), lc: c(l.lc, 0, 2000, 0), choke: Math.round(c(l.choke, 0, 8, 0)), mute: !!l.mute };
+    if (Object.keys(LANE_DEF).some((key) => q[key] !== LANE_DEF[key])) out[n] = q;
+  }
+  return Object.keys(out).length ? out : null;
+}
+// the drum synth (kit SYN1): as SLOOP's DRUM SYNTH page keeps it: a name, the crush, the factory kit it started from,
+// and its 16 sounds as the firmware's 22 bytes each (drum_synth.c dsnd_t; the engine checks them again)
+export function drumSynth(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.sounds) || raw.sounds.length !== 16) return null;
+  const sounds = raw.sounds.map((x) => (Array.isArray(x) && x.length === 22 ? x.map((v) => (Number.isFinite(+v) ? Math.round(+v) & 255 : 0)) : null));
+  if (sounds.some((x) => !x)) return null;
+  return { name: String(raw.name || 'MY KIT').replace(/[^\x20-\x7E]/g, '').slice(0, 8) || 'MY KIT', crush: Math.round(+raw.crush || 0) & 255, src: Math.max(0, Math.min(31, Math.round(+raw.src || 0))), sounds };
+}
+
 // every audio file a track plays (clips, takes, slots, its sampler's zones, its pads, its frozen render)
 export function trackSources(t) {
   const out = [];
@@ -409,6 +432,8 @@ export function validate(p) {
           choke: Math.round(clampN(pd.choke, 0, 8, 0)), start: en > st ? st : 0, end: en > st ? en : 1, cut: clampN(pd.cut, 30, 20000, 20000) };
       }
       if (Object.keys(pads).length) t.pads = pads; else delete t.pads;
+      t.lanes = drumLanes(t.lanes); if (!t.lanes) delete t.lanes;
+      t.dsyn = drumSynth(t.dsyn); if (!t.dsyn) delete t.dsyn;
     }
     if (t.kind === 'audio') {                                  // its input channels (b null: mono) and its monitoring
       const ip = obj(t.input) || {}; t.input = { a: Math.round(clampN(ip.a, 0, 31, 0)), b: ip.b === null ? null : Math.round(clampN(ip.b, 0, 31, 1)) };

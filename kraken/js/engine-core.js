@@ -539,8 +539,38 @@ export class KrakenEngine {
       tr.params = {}; tr.modBase = {}; tr.modLast = {};
       if (!this.offline) this.post({ t: 'params', track: tr.id, values: tr.readParams() });
     }
+    if (def.kind === 'drum') this.applyDrum(tr, def);
     for (const k in def.params) {
       if (tr.params[k] !== def.params[k]) { tr.w.k_param(+k, def.params[k]); tr.params[k] = def.params[k]; }
+    }
+  }
+  // a drum track's own sounds (kraken_host.c k_lane: level, pan, tune, decay, filter, drive, choke, mute for each of
+  // the 16) and its drum synth kit (k_dsu: SYN1, the firmware's 22 bytes a sound): only what changed. (An engine built
+  // before these: nothing to do, the kit plays as it is.)
+  applyDrum(tr, def) {
+    const w = tr.w;
+    if (w.k_lane) {
+      const lk = JSON.stringify(def.lanes || null);
+      if (lk !== tr.lanesKey) {
+        tr.lanesKey = lk;
+        for (let l = 0; l < 16; l++) {
+          const q = { lv: 0, pan: 0, tune: 0, dec: 0, cut: 20000, res: 0, drv: 0, lc: 0, choke: 0, mute: false, ...(def.lanes?.[l] || {}) };
+          w.k_lane(l, 0, q.lv <= -60 ? -600 : Math.round(q.lv * 10)); w.k_lane(l, 1, Math.round(q.pan * 100)); w.k_lane(l, 2, q.tune); w.k_lane(l, 3, q.dec);
+          w.k_lane(l, 6, Math.round(q.drv * 100)); w.k_lane(l, 7, q.choke); w.k_lane(l, 8, q.mute ? 1 : 0); w.k_lane(l, 9, Math.round(q.lc));
+          w.k_lane_filter(l, q.cut >= 20000 ? 0 : Math.round(q.cut), Math.round(q.res * 100));
+        }
+      }
+    }
+    if (w.k_dsu && def.dsyn) {
+      const dk = JSON.stringify(def.dsyn);
+      if (dk !== tr.dsynKey) {
+        tr.dsynKey = dk;
+        const d = def.dsyn, at = w.k_dsu() + 8, m = new Uint8Array(w.memory.buffer);   // (SYN1: the bank's first kit)
+        for (let i = 0; i < 8; i++) m[at + i] = d.name.charCodeAt(i) || 0;
+        m[at + 8] = d.crush; m[at + 9] = d.src;
+        d.sounds.forEach((x, l) => m.set(x, at + 12 + l * 22));
+        w.k_dsu_fix();
+      }
     }
   }
   // the modulators of a track; a target no longer modulated goes back to its knob

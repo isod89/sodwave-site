@@ -11,6 +11,7 @@ import { noteFxModules, refreshNoteKnobs } from './notes.js';
 import { modModules, refreshModKnobs, modMeters } from './mods.js';
 import { wamFxModule, buildWamInstrument, wamDialog } from './wam.js';
 import { buildLab, labFxButton } from './lab.js';
+import { laneSound, drumMixer, drumSynthModule, synthKitIndex, newDrumSynth, drumSynthReady } from './drums.js';
 import { newPatch } from '../lab-modules.js';
 
 // the knobs of a sound, grouped; the two firmwares share ids 0..44 and 49..52 (core.h), Clipper adds its macros,
@@ -256,16 +257,25 @@ export class Device {
   }
   buildDrums(t) {
     const app = this.app, lib = app.lib.sloop;
+    const syn = synthKitIndex(lib);
     const kits = lib.kits.map((n, i) => [n, i]).filter(([n]) => !/^USR|^SYN/.test(n));
+    if (syn >= 0 && drumSynthReady(app)) kits.push(['DRUM SYNTH', syn]);   // (your synthesised kit: SYN1)
+    const setKit = (k) => {
+      if (k === syn && !app.store.track(t.id).dsyn) {                 // the first time: from the synth kit playing now (else 808)
+        const cur = app.store.track(t.id).kit, nk = newDrumSynth(app, cur >= 5 && cur < 37 ? cur - 5 : 0);
+        if (nk) app.store.change((p) => { p.tracks.find((x) => x.id === t.id).dsyn = nk; });
+      }
+      app.setKit(t.id, k);
+    };
     const step = (d) => {
       const i = kits.findIndex(([, k]) => k === t.kit);
-      app.setKit(t.id, kits[(i + d + kits.length) % kits.length][1]);
+      setKit(kits[(i + d + kits.length) % kits.length][1]);
     };
     if (!lib.laneNotes.includes(app.view.padSel)) app.view.padSel = lib.laneNotes[0];
     const padBox = h('div', { class: 'module pad-edit', style: { width: '250px' } });
     const pads = lib.lanes.map((name, l) => {
       const n = lib.laneNotes[l], u = t.pads?.[n];
-      const pad = h('button', { class: 'pad' + (u ? ' user' : '') + (app.view.padSel === n ? ' sel' : ''), 'aria-label': `Play ${name}`, 'data-note': n,
+      const pad = h('button', { class: 'pad' + (u ? ' user' : '') + (t.lanes?.[l] ? ' tweak' : '') + (app.view.padSel === n ? ' sel' : ''), 'aria-label': `Play ${name}`, 'data-note': n,
         title: `${name}${u ? ` · ${u.name}` : ''}\nClick: play and edit · drop a sample here to replace its sound` }, name, u ? h('span', { class: 'pad-smp', text: u.name }) : null);
       pad.addEventListener('pointerdown', (e) => {
         e.preventDefault(); app.noteOn(t.id, n, e.shiftKey ? 127 : 100); pad.classList.add('hit'); setTimeout(() => pad.classList.remove('hit'), 120);
@@ -279,10 +289,11 @@ export class Device {
     this.padPanel(t, padBox);
     this.wrap.replaceChildren(
       h('div', { class: 'module sound-lcd' }, h('h4', {}, 'KIT', h('em', { text: 'SLOOP' })),
-        h('div', { class: 'screen' }, h('span', { class: 'eng', text: `DRUMS · ${kits.findIndex(([, k]) => k === t.kit) + 1}/${kits.length}` }), h('span', { class: 'pre', text: lib.kits[t.kit] })),
+        h('div', { class: 'screen' }, h('span', { class: 'eng', text: `DRUMS · ${kits.findIndex(([, k]) => k === t.kit) + 1}/${kits.length}` }), h('span', { class: 'pre', text: t.kit === syn && t.dsyn ? `${t.dsyn.name} · DRUM SYNTH` : lib.kits[t.kit] })),
         h('div', { class: 'row' }, h('button', { class: 'add', onclick: () => step(-1) }, '◀ PREV'), h('button', { class: 'add', onclick: () => step(1) }, 'NEXT ▶')),
-        h('select', { 'aria-label': 'Kit', onchange: (e) => app.setKit(t.id, +e.target.value) }, kits.map(([n, i]) => h('option', { value: i, selected: i === t.kit ? true : null }, n)))),
-      h('div', { class: 'module' }, h('h4', {}, 'PADS', h('em', { text: 'SHIFT = ACCENT · DROP A SAMPLE' })), h('div', { class: 'pads' }, pads)), padBox, freezeModule(this, t));
+        h('select', { 'aria-label': 'Kit', onchange: (e) => setKit(+e.target.value) }, kits.map(([n, i]) => h('option', { value: i, selected: i === t.kit ? true : null }, n)))),
+      h('div', { class: 'module' }, h('h4', {}, 'PADS', h('em', { text: 'SHIFT = ACCENT · DROP A SAMPLE' })), h('div', { class: 'pads' }, pads)), padBox,
+      ...(t.kit === syn ? [drumSynthModule(this, t)] : []).filter(Boolean), drumMixer(this, t), freezeModule(this, t));
   }
   // the selected pad: the kit's sound, or your sample (load, gain, tune, decay, filter, choke group)
   padPanel(t, box) {
@@ -294,7 +305,7 @@ export class Device {
     const proj = assets.length ? h('select', { 'aria-label': 'A project audio file', onchange: (e) => { const id = e.target.value; if (!id) return; app.store.change((p) => { const tt = p.tracks.find((x) => x.id === t.id); tt.pads ||= {}; tt.pads[n] = { ...(tt.pads[n] || {}), src: id, name: p.assets[id]?.name || 'SAMPLE', start: 0, end: 1 }; }); app.audition(t.id, [n], 300); } },
       h('option', { value: '' }, 'PROJECT AUDIO…'), assets.map(([id, m]) => h('option', { value: id, selected: u?.src === id ? true : null }, m.name))) : null;
     const kids = [h('h4', {}, `PAD · ${name}`, h('em', { text: u ? 'YOUR SAMPLE' : 'KIT SOUND' }))];
-    if (!u) kids.push(h('p', { class: 'ctl-note', text: 'This pad plays the kit. Load a sample, drop one on the pad, or drag one from SOUNDS › SAMPLES: it plays instead.' }), h('div', { class: 'row', style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, load, proj));
+    if (!u) kids.push(...laneSound(this, t, n, t.color), h('p', { class: 'ctl-note', text: 'Or load a sample, drop one on the pad, or drag one from SOUNDS › SAMPLES: it plays instead of the kit.' }), h('div', { class: 'row', style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, load, proj));
     else {
       const kn = (label, key, min, max, def, fmtf, step = 1) => knob({ label, min, max, def, step, value: u[key] ?? def, color: t.color, size: 30, format: fmtf, onChange: (v) => set((x) => { x[key] = v; }, `pad${n}${key}`), onEnd: () => app.store.endGesture() });
       kids.push(h('p', { class: 'ctl-note', style: { color: '#ffc21a' }, text: u.name }),

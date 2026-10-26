@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "6a4da0529613";
+const VERSION = "a0c35ee8f179";
 const FILES = [
 "./",
 "hub.html",
@@ -63,6 +63,7 @@ const FILES = [
 "js/ui/controllers.js",
 "js/ui/device.js",
 "js/ui/diagnostic.js",
+"js/ui/drums.js",
 "js/ui/editor.js",
 "js/ui/hub-style.js",
 "js/ui/hub.js",

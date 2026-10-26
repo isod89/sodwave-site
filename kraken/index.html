@@ -406,6 +406,26 @@ canvas { display: block; }
 .pad.user { box-shadow: inset 0 -3px 0 #ffc21a; }
 .pad .pad-smp { display: block; font: 500 8px/1.1 var(--f-mono); color: #ffc21a; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; text-transform: none; }
 .pad.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pad.tweak { box-shadow: inset 0 -3px 0 #4cb3ff; }
+.pad.user.tweak { box-shadow: inset 0 -3px 0 #ffc21a, inset 0 -6px 0 #4cb3ff; }
+/* the drum track: the kit's 16 sounds side by side, the drum synth */
+.drm-strips { display: grid; grid-template-columns: repeat(8, 54px); gap: 4px 6px; }
+.drm-strip { display: grid; justify-items: center; gap: 2px; padding: 3px 0; border-radius: 5px; cursor: pointer; }
+.drm-strip.sel { background: #ffffff10; outline: 1px solid var(--accent); }
+.drm-strip .knob .lbl { max-width: 50px; }
+.drm-m { height: 18px; width: 26px; padding: 0; border-radius: 3px; border: 1px solid var(--line-2); background: var(--screen-3); color: var(--dim); font: 700 9px/1 var(--f-ui); }
+.drm-m.on { background: #ffc21a; border-color: #ffc21a; color: #1a1400; }
+.module.dsyn { max-width: 640px; }
+.dsyn-name { width: 9ch; height: 26px; box-sizing: border-box; background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 4px; font: 600 12px/1 var(--f-mono); padding: 0 6px; }
+.dsyn-lanes { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0 2px; }
+.dsyn-lanes .add { height: 22px; padding: 0 6px; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.05em; }
+.dsyn-lanes .add.on { background: #ff8a3d; border-color: #ff8a3d; color: #1f0c00; }
+.dsyn-now { margin: 4px 0; font: 400 13px/1 var(--f-lcd); color: #ff8a3d; }
+.dsyn-groups { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.dsyn-g h6 { margin: 4px 0; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.14em; color: var(--dim); }
+.dsyn-sel { display: grid; gap: 3px; justify-items: center; font: 700 8px/1 var(--f-ui); letter-spacing: 0.08em; color: var(--dim); }
+.dsyn-sel select { max-width: 76px; }
+@media (max-width: 700px) { .drm-strips { grid-template-columns: repeat(4, 54px); } }
 .pad.dropping, .smp-wave.dropping { outline: 2px dashed #ffc21a; outline-offset: -2px; }
 .zone-map { display: block; width: 100%; height: 46px; background: #0b0c0d; border-radius: 3px; margin-top: 6px; }
 .zone-list { display: grid; gap: 3px; max-height: 150px; overflow: auto; margin-top: 6px; font: 500 10px/1 var(--f-mono); }
