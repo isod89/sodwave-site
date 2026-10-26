@@ -87,6 +87,9 @@
   .proj .stat b{font-family:var(--mono);font-size:18px;display:block}
   .proj .stat span{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
   .proj.sloop .stat b{color:var(--green)} .proj.clipper .stat b{color:var(--orange)} .proj.kraken .stat b{color:var(--yellow)} .proj.pro .stat b{color:var(--blue)}
+  .proj .subgo{display:flex;gap:8px;margin-top:8px}
+  .proj .subgo a{flex:1;text-align:center;font-family:var(--mono);font-size:12px;font-weight:700;text-decoration:none;padding:9px 8px;border-radius:9px;border:1px solid var(--line);color:var(--yellow)}
+  .proj .subgo a:hover{border-color:var(--yellow)}
   .proj .go{display:block;text-align:center;font-family:var(--mono);font-size:13.5px;font-weight:700;text-decoration:none;padding:12px 14px;border-radius:9px;margin-top:auto}
   .proj.sloop .go{background:var(--green);color:#042313} .proj.clipper .go{background:var(--orange);color:#200a02} .proj.kraken .go{background:var(--yellow);color:#1a1400} .proj.pro .go{background:var(--blue);color:#06121f}
   .proj.sloop .go:hover{background:#3ad683} .proj.clipper .go:hover{background:#ff7a3d} .proj.kraken .go:hover{background:#ffd34d} .proj.pro .go:hover{background:#4a95ff}
@@ -269,6 +272,10 @@
           <div class="stat"><b>WASM</b><span><span class="en">in browser</span><span class="fr">navigateur</span></span></div>
         </div>
         <a class="go" href="/kraken/"><span class="en">Open Kraken →</span><span class="fr">Ouvrir Kraken →</span></a>
+        <div class="subgo">
+          <a href="/hub/"><span class="en">☁ The hub</span><span class="fr">☁ Le hub</span></a>
+          <a href="/lab/"><span class="en">◈ LAB: make a plugin</span><span class="fr">◈ LAB : crée un plugin</span></a>
+        </div>
       </div>
 
     </div>
