@@ -24,6 +24,12 @@ return [
   // ---- the sign-in emails (hPanel > Emails: create this address first, e.g. hub@example.com)
   'mail_from' => 'hub@example.com',
   'mail_from_name' => 'Kraken hub',
+  // sent through that mailbox's SMTP server (Hostinger: smtp.hostinger.com, port 465, the mailbox and its password).
+  // Without it Kraken uses PHP mail(), which Gmail and others often put in spam or refuse.
+  'smtp_host' => 'smtp.hostinger.com',
+  'smtp_port' => 465,
+  'smtp_user' => 'hub@example.com',
+  'smtp_pass' => '',
 
   // ---- the moderators: their emails (they see the MODERATION tab once signed in)
   'admins' => ['you@example.com'],

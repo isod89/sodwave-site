@@ -39,6 +39,7 @@ function cfg(?string $key = null) {
     if (!$found) { send_json(['error' => 'not_configured'], 503); }
     $c = (require $found) + [
       'db_host' => 'localhost', 'db_port' => 3306, 'db_socket' => null, 'site_url' => '', 'mail_from' => '', 'mail_from_name' => 'Kraken hub',
+      'smtp_host' => '', 'smtp_port' => 465, 'smtp_user' => '', 'smtp_pass' => '',
       'admins' => [], 'report_threshold' => 3, 'secret' => '', 'cache_dir' => __DIR__ . '/cache', 'dev_return_link' => false,
       'trust_proxy' => false, 'min_account_age' => 3600, 'privacy_url' => '', 'terms_url' => '', 'thumb_url' => 'https://i.ytimg.com/vi/%s/hqdefault.jpg', 'rate' => [],
     ];

@@ -185,10 +185,56 @@ function send_mail(string $to, string $subject, string $text): bool {
   $from = (string) cfg('mail_from');
   if (!filter_var($from, FILTER_VALIDATE_EMAIL)) { error_log('kraken hub: mail_from is not set in config.php'); return false; }
   $name = preg_replace('/[^\w .-]/u', '', (string) cfg('mail_from_name')) ?: 'Kraken hub';
+  $subject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+  // SMTP with the real mailbox when config.php has it (signed by the mail server: Gmail and co. take it); else PHP mail()
+  if ((string) cfg('smtp_host') !== '' && (string) cfg('smtp_pass') !== '') return smtp_send($from, $name, $to, $subject, $text);
   $headers = ['From' => "$name <$from>", 'Reply-To' => $from, 'MIME-Version' => '1.0', 'Content-Type' => 'text/plain; charset=UTF-8',
     'Content-Transfer-Encoding' => '8bit', 'X-Mailer' => 'Kraken hub'];
-  try { return mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $text, $headers, '-f' . $from); }
+  try { return mail($to, $subject, $text, $headers, '-f' . $from); }
   catch (Throwable $e) { error_log('kraken hub: mail: ' . $e->getMessage()); return false; }
+}
+
+// one message through the mailbox's SMTP server: port 465 TLS from the start, 587 STARTTLS; AUTH LOGIN.
+// The log never gets the password (each step is logged by its name only).
+function smtp_send(string $from, string $name, string $to, string $subject, string $text): bool {
+  $host = (string) cfg('smtp_host');
+  $port = (int) (cfg('smtp_port') ?: 465);
+  $user = (string) (cfg('smtp_user') ?: $from);
+  $tls_now = $port === 465;
+  $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $host]]);
+  $s = @stream_socket_client(($tls_now ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $err, 15, STREAM_CLIENT_CONNECT, $ctx);
+  if (!$s) { error_log("kraken hub: smtp: no connection to $host:$port ($err)"); return false; }
+  stream_set_timeout($s, 20);
+  $step = function (?string $line, array $want, string $what) use ($s): bool {
+    if ($line !== null && fwrite($s, $line . "\r\n") === false) { error_log("kraken hub: smtp: $what: write failed"); return false; }
+    $code = 0; $msg = '';
+    while (($l = fgets($s, 2048)) !== false) {
+      $msg .= $l; $code = (int) substr($l, 0, 3);
+      if (strlen($l) < 4 || $l[3] !== '-') break;
+    }
+    if (!in_array($code, $want, true)) { error_log("kraken hub: smtp: $what: " . trim($msg ?: 'no answer')); return false; }
+    return true;
+  };
+  $me = parse_url((string) cfg('site_url'), PHP_URL_HOST) ?: 'localhost';
+  $ok = $step(null, [220], 'greeting') && $step("EHLO $me", [250], 'EHLO');
+  if ($ok && !$tls_now) {
+    $ok = $step('STARTTLS', [220], 'STARTTLS');
+    if ($ok && !stream_socket_enable_crypto($s, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) { error_log('kraken hub: smtp: STARTTLS failed'); $ok = false; }
+    $ok = $ok && $step("EHLO $me", [250], 'EHLO');
+  }
+  $ok = $ok && $step('AUTH LOGIN', [334], 'AUTH') && $step(base64_encode($user), [334], 'AUTH user')
+    && $step(base64_encode((string) cfg('smtp_pass')), [235], 'AUTH password (smtp_user / smtp_pass in config.php)')
+    && $step("MAIL FROM:<$from>", [250], 'MAIL FROM') && $step("RCPT TO:<$to>", [250, 251], 'RCPT TO') && $step('DATA', [354], 'DATA');
+  if ($ok) {
+    $domain = substr((string) strrchr($from, '@'), 1);
+    $head = 'Date: ' . date(DATE_RFC2822) . "\r\n" . "From: $name <$from>\r\n" . "To: <$to>\r\n" . "Reply-To: $from\r\n"
+      . "Subject: $subject\r\n" . 'Message-ID: <' . bin2hex(random_bytes(12)) . "@$domain>\r\n"
+      . "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\nX-Mailer: Kraken hub\r\n";
+    $ok = $step($head . "\r\n" . chunk_split(base64_encode($text), 76, "\r\n") . '.', [250], 'message');
+  }
+  @fwrite($s, "QUIT\r\n");
+  fclose($s);
+  return $ok;
 }
 
 // the link's token -> a session (an account is made at the first sign-in)
