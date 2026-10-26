@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# The Kraken hub's API folder (Apache, LiteSpeed: Hostinger and most shared hosting)
+Options -Indexes
+DirectoryIndex index.php
+
+# never served to the web: the settings, the shared code, the thumbnails' folder, notes
+<FilesMatch "^(config.*\.php|kraken-hub-config\.php|lib\.php|.*\.(sql|md|txt|log|bak|ini))$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+# (config.sample.php is harmless, but refused too by the rule above)
+
+# the sign-in token travels in the Authorization header: some hosts drop it on its way to PHP unless told
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  RewriteRule ^cache(/|$) - [F,L]
+</IfModule>
+<IfModule mod_setenvif.c>
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "same-origin"
+</IfModule>

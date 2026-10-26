@@ -43,6 +43,8 @@ import { MultiCore, mcMode, mcSupported } from './multicore.js';
 import { reportDialog } from './ui/report.js';
 import { welcome, startTour } from './ui/welcome.js';
 import { initI18n, toggleLang } from './i18n.js';
+import { openLab, installLab, labPicker } from './ui/lab.js';
+import { initHub } from './ui/hub.js';                       // the community hub (ui/hub.js, hub.js, hub/api)
 
 const $ = (id) => document.getElementById(id);
 const BOOTING = 'kraken.booting';        // set while a project opens: still there at the next start, it did not
@@ -224,8 +226,10 @@ async function openUi(project) {
   const touch = matchMedia('(pointer: coarse)').matches;
   let welcomed = false;
   try { welcomed = !!localStorage.getItem('kraken.welcomed'); } catch { /* */ }
+  const hubLink = initHub(app);                                  // (opened by a hub link, /?hub=ID or /?hub_login=…: the hub first)
   // the first visit: the welcome (not under automation: the test suites start from the demo song)
-  if (!project && !welcomed && !app.pendingFiles?.length && !navigator.webdriver) { welcome(app, { modal, first: true }); return; }
+  if (!project && !welcomed && !hubLink && !app.pendingFiles?.length && !navigator.webdriver) { welcome(app, { modal, first: true }); return; }
+  if (hubLink) { if (app.pendingFiles?.length) openPending(); return; }
   if (app.missingAtStart) toast(`Your last session is back. ${missingText(app.missingAtStart)}`);
   else toast(project ? `Your last session is back. ${touch ? '☰' : 'PROJECT'} > Open demo song for the demo.` : touch ? 'Demo song loaded: tap ▶ to play. Hold a clip or a track for its menu.' : 'Demo song loaded: press Space to play.');
   if (app.pendingFiles?.length) openPending();
@@ -527,6 +531,16 @@ app.addAssetFiles = async (files) => {
   }
 };
 app.addAudio = (id, a) => addAsset(id, a);
+// LAB: open the editor (target: { track } or { track | bus, fx }); a patch from the hub or a file, kept and used
+app.openLab = (target) => openLab(app, target);
+app.installLab = (patch, meta) => installLab(app, patch, meta);
+// the LAB patches of this project (its LAB tracks and LAB effects), for the hub's "Publish… > A LAB plugin"
+app.hubLabs = async () => {
+  const p = app.store.p, out = [];
+  for (const t of p.tracks) { if (t.kind === 'lab' && t.lab) out.push({ name: t.lab.name, lab: t.lab }); for (const d of t.fx || []) if (d.type === 'lab' && d.lab) out.push({ name: d.lab.name, lab: d.lab }); }
+  for (const d of [...p.master.fx, ...p.returns.flatMap((r) => r.fx)]) if (d.type === 'lab' && d.lab) out.push({ name: d.lab.name, lab: d.lab });
+  return out;
+};
 app.restoreAssets = (p) => restoreAssets(p);
 async function restoreAssets(p) {
   let missing = 0;
@@ -1113,9 +1127,10 @@ Object.assign(app, {
     app.view.selTrack = t.id; app.view.selClip = null;
     app.store.emit('select');
     app.arrange.reveal(t.id);
-    if (kind === 'drum') app.audition(t.id, [36, 42]); else if (kind === 'synth') app.audition(t.id, [60, 64, 67]);
+    if (kind === 'drum') app.audition(t.id, [36, 42]); else if (kind === 'synth' || kind === 'lab') app.audition(t.id, [60, 64, 67]);
     toast({ audio: `${t.name}: drop audio files on its lane, or arm it and press R to record.`, sampler: `${t.name}: load a sample in INSTRUMENT, then play it.`,
-      external: `${t.name}: choose the MIDI device and channel in INSTRUMENT. Its clips play that device.`, group: `${t.name}: route tracks to it from the mixer (OUT).` }[kind]
+      external: `${t.name}: choose the MIDI device and channel in INSTRUMENT. Its clips play that device.`, group: `${t.name}: route tracks to it from the mixer (OUT).`,
+      lab: `${t.name}: your own instrument. INSTRUMENT > OPEN THE LAB to see and change how it is made.` }[kind]
       || `${t.name}: new track. ${matchMedia('(pointer: coarse)').matches ? 'Double-tap' : 'Double-click'} its lane to write a clip.`);
     return t;
   },
@@ -1278,6 +1293,7 @@ function bindTop() {
   popMenu($('addbtn'), addMenu, 'left');
   addMenu.addEventListener('click', (e) => { if (e.target.closest('button')) addMenu.hidden = true; });
   $('add-sampler').onclick = () => app.addTrack('sampler', { sends: [0.1, 0] });
+  $('add-lab').onclick = () => labPicker(app, 'inst', (patch, name) => { const t = app.addTrack('lab', { lab: patch, name: String(name || 'LAB').toUpperCase().slice(0, 16), sends: [0.1, 0] }); app.audition(t.id, [60, 64, 67]); }, 'A LAB instrument: start from');
   $('add-ext').onclick = () => app.addTrack('external', { sends: [0, 0] });
   $('add-wam').onclick = () => wamDialog(app, { instrument: true });
   $('add-group').onclick = () => app.addGroup();
@@ -1472,6 +1488,8 @@ async function fileAction(act) {
   if (act === 'template') return saveTemplate(app);
   if (act === 'collab') return collabDialog(app);
   if (act === 'presets') return managePresets(app);
+  if (act === 'hub') return app.hub.open();
+  if (act === 'publish') return app.hub.publish({ kind: 'song' });
   if (act === 'rename') {
     const inp = h('input', { value: p.name, maxlength: 40, style: { width: '100%' }, 'aria-label': 'Project name' });
     const ok = () => { const v = inp.value.trim().slice(0, 40); if (v) app.store.change((pp) => { pp.name = v; }); };

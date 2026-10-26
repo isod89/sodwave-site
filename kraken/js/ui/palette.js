@@ -26,12 +26,12 @@ export class Palette {
       ['Paste the range at the playhead', () => app.rangeAction('paste'), 'Ctrl+Shift+V'], ['Delete the time of the loop range', () => app.rangeAction('delete'), 'what follows moves back'],
       ['Insert time at the loop range', () => app.rangeAction('insert'), 'its length'], ['Clear the loop range', () => app.rangeAction('clear'), 'leave a gap']]) add('EDIT', l, run, hint);
     for (const x of p.tracks) add('TRACK', `Go to ${x.name}`, () => app.selectTrack(x.id), x.kind);
-    const warm = p.tracks.filter((x) => ['synth', 'drum', 'sampler'].includes(x.kind) && !x.frozen && x.clips.length);
+    const warm = p.tracks.filter((x) => ['synth', 'drum', 'sampler', 'lab'].includes(x.kind) && !x.frozen && x.clips.length);
     if (warm.length > 1) add('TRACK', `Freeze every instrument track (${warm.length})`, () => app.freezeMany(warm.map((x) => x.id)), 'renders side by side, one per core');
     if (t) {
       add('TRACK', `Delete ${t.name}…`, () => app.deleteTrack(t.id));
       add('TRACK', `Duplicate ${t.name}`, () => app.duplicateTrack(t.id));
-      if (['synth', 'drum', 'sampler'].includes(t.kind)) add('TRACK', t.frozen ? `Unfreeze ${t.name}` : `Freeze ${t.name}`, () => (t.frozen ? app.unfreeze(t.id) : app.freeze(t.id)));
+      if (['synth', 'drum', 'sampler', 'lab'].includes(t.kind)) add('TRACK', t.frozen ? `Unfreeze ${t.name}` : `Freeze ${t.name}`, () => (t.frozen ? app.unfreeze(t.id) : app.freeze(t.id)));
       for (const type of DEVICE_ORDER) add('EFFECT', `Add ${DEVICES[type].name} to ${t.name}`, () => { app.store.change((pp) => pp.tracks.find((x) => x.id === t.id).fx.push({ id: uid('f'), type, on: true, p: defaults(type) })); app.showTab('device'); });
     }
     for (const type of DEVICE_ORDER) add('EFFECT', `Add ${DEVICES[type].name} to the master`, () => { app.store.change((pp) => pp.master.fx.push({ id: uid('f'), type, on: true, p: defaults(type) })); app.view.selBus = 'master'; app.showTab('device'); });

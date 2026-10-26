@@ -372,7 +372,7 @@ export class Control {
     if (what === 'select') return { label: `Select ${label.toLowerCase()}`, kind: 'trig', press: () => { const t = getT(); if (t) app.selectTrack(t.id); } };
     if (what === 'p') {
       const pid = +parts[2];
-      const desc = () => { const t = getT(); if (!t || t.kind !== 'synth') return null; const cat = app.lib[t.bank]; return pid >= cat.e0 ? cat.engines[t.engine].edit[pid - cat.e0] : cat.tp[pid]; };
+      const desc = () => { const t = getT(); if (t?.kind === 'lab') return pid < 8 ? { l: t.lab?.macros?.[pid]?.name || `MACRO ${pid + 1}`, min: 0, max: 127, def: 64 } : null; if (!t || t.kind !== 'synth') return null; const cat = app.lib[t.bank]; return pid >= cat.e0 ? cat.engines[t.engine].edit[pid - cat.e0] : cat.tp[pid]; };
       const cur = () => { const t = getT(); return t?.params[pid] ?? app.params.get(t?.id)?.[pid] ?? desc()?.def ?? 0; };
       const d0 = desc();
       return { label: `${label} ${d0?.l || 'param ' + pid}`, kind: 'cont',
@@ -382,6 +382,7 @@ export class Control {
     }
     if (what === 'knob') {                                         // the selected instrument's 8 engine knobs
       const k = +parts[2], t = getT(), cat = t && t.kind === 'synth' ? app.lib[t.bank] : null;
+      if (t?.kind === 'lab') return { ...this.target(`${prefix}:p:${k}`), label: `${label} knob ${k + 1}` };   // (a LAB: its macros)
       if (!cat) return { label: `${label} knob ${k + 1}`, kind: 'cont', get: () => 0, set: () => {} };
       return { ...this.target(`${prefix}:p:${cat.e0 + k}`), label: `${label} knob ${k + 1}` };
     }

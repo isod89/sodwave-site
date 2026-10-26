@@ -724,6 +724,116 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
   .device .module { max-width: 100%; box-sizing: border-box; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---- LAB: the patch editor ---- */
+.lab-ed { position: fixed; inset: 0; z-index: 70; background: var(--chassis); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; outline: none; font-family: var(--f-ui); }
+.lab-top { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--edge); flex-wrap: wrap; background: var(--chassis-hi); }
+.lab-logo { font: 700 13px/1 var(--f-lcd); color: var(--accent); letter-spacing: 0.12em; }
+.lab-kind { font: 700 9px/1 var(--f-ui); letter-spacing: 0.14em; color: var(--ink-2); text-transform: uppercase; }
+.lab-name { font: 600 13px/1 var(--f-ui); padding: 6px 8px; border: 1px solid var(--edge); border-radius: 5px; background: #fff; color: var(--ink); min-width: 120px; max-width: 260px; }
+.lab-sp { flex: 1; }
+.lab-main { display: grid; grid-template-columns: 196px minmax(0, 1fr) 300px; min-height: 0; }
+.lab-pal { overflow-y: auto; padding: 8px; border-right: 1px solid var(--edge); display: grid; align-content: start; gap: 4px; }
+.lab-pal.sheet { border: 0; max-height: 60vh; padding: 0; }
+.lab-search, .lab-quick input { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid var(--edge); border-radius: 5px; font: 500 12px/1 var(--f-ui); background: #fff; color: var(--ink); }
+.lab-pal h6, .lab-insp h6, .lab-bottom h6, .lab-plist h6 { margin: 8px 0 2px; font: 700 9px/1 var(--f-ui); letter-spacing: 0.16em; color: var(--ink-3); text-transform: uppercase; }
+.lab-pal-list { display: grid; gap: 3px; }
+.lab-pal-item { display: grid; gap: 2px; text-align: left; padding: 6px 8px; border: 1px solid var(--edge); border-radius: 5px; background: var(--chassis-hi); cursor: grab; color: var(--ink); }
+.lab-pal-item:hover { border-color: var(--accent); }
+.lab-pal-item b { font: 700 10.5px/1.1 var(--f-ui); letter-spacing: 0.06em; }
+.lab-pal-item span { font: 500 9.5px/1.25 var(--f-ui); color: var(--ink-2); }
+.lab-view { position: relative; overflow: hidden; background-color: var(--screen); background-image: radial-gradient(#ffffff14 1px, transparent 1px); background-size: 20px 20px; touch-action: none; cursor: grab; }
+.lab-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.lab-cables { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 0; }   /* (behind the modules: their dots stay on top) */
+.lab-cables .hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+.lab-cables .wire { fill: none; stroke-width: 2.6; stroke-linecap: round; }
+.lab-cables .wire.sel { stroke-width: 4.5; filter: drop-shadow(0 0 4px currentColor); }
+.lab-cables .wire.tmp { stroke: #fff; stroke-dasharray: 5 4; }
+.lab-cables .amt { fill: #fff; font: 600 10px/1 var(--f-mono); text-anchor: middle; paint-order: stroke; stroke: var(--screen); stroke-width: 3px; }
+.lab-mod { position: absolute; z-index: 1; background: var(--screen-2); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); box-shadow: 0 6px 18px #0007; user-select: none; }
+.lab-mod.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 6px 18px #0009; }
+.lab-mod h5 { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 6px 8px; border-bottom: 1px solid var(--line-2); border-top: 3px solid var(--c); border-radius: 7px 7px 0 0; font: 700 10px/1 var(--f-ui); letter-spacing: 0.1em; cursor: move; touch-action: none; }
+.lab-mod h5 span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-x { background: none; border: 0; color: var(--dim); font-size: 15px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.lab-x:hover { color: var(--rec); }
+.lab-ports { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; padding: 4px 0; }
+.lab-port { position: relative; display: flex; align-items: center; gap: 4px; min-height: 18px; font: 600 8.5px/1 var(--f-ui); letter-spacing: 0.06em; color: var(--dim); }
+.lab-port.in { padding-left: 12px; }
+.lab-port.out { justify-content: flex-end; padding-right: 12px; }
+.lab-port .dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--screen-2); box-sizing: border-box; cursor: crosshair; top: 3px; }
+.lab-port.in .dot { left: -6px; }
+.lab-port.out .dot { right: -6px; }
+.lab-port .dot:hover, .want-in .lab-port.in .dot, .want-out .lab-port.out .dot { transform: scale(1.35); box-shadow: 0 0 0 2px #fff6; }
+.lab-knobs { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 4px 6px 8px; justify-content: flex-start; }
+.lab-knobs .knob .lbl { max-width: 44px; }
+.lab-knobs.big { gap: 8px 10px; padding: 6px 0; }
+.lab-mod .knob .lbl, .lab-mod .knob .val { color: var(--dim); }
+.lab-mod .knob .val { color: var(--text); font-size: 9px; }
+.lab-sel-w { display: grid; gap: 2px; font: 700 8px/1 var(--f-ui); letter-spacing: 0.08em; color: var(--dim); }
+.lab-sel-w.wide { grid-column: 1 / -1; width: 100%; }
+.lab-sel { background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 4px; font: 600 10px/1 var(--f-ui); padding: 4px; max-width: 120px; }
+.lab-insp .lab-sel, .lab-bottom .lab-sel { background: #fff; color: var(--ink); border-color: var(--edge); }
+.lab-steps { display: block; width: calc(100% - 12px); margin: 0 6px 8px; height: auto; background: var(--screen); border-radius: 4px; cursor: crosshair; touch-action: none; }
+.lab-insp .lab-steps { width: 100%; margin: 6px 0; }
+.lab-fwrap { padding: 0 6px 8px; }
+.lab-insp .lab-fwrap { padding: 6px 0; }
+.lab-formula { width: 100%; box-sizing: border-box; background: var(--screen); color: #9fe7b5; border: 1px solid var(--line-2); border-radius: 4px; font: 500 11px/1.35 var(--f-mono); padding: 6px; resize: vertical; }
+.lab-err { font: 600 9.5px/1.3 var(--f-mono); color: var(--go); margin-top: 3px; }
+.lab-err.bad { color: var(--warn); }
+.lab-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; z-index: 3; }
+.lab-count { position: absolute; left: 10px; bottom: 10px; font: 600 9px/1 var(--f-mono); color: var(--dim); z-index: 3; pointer-events: none; }
+.lab-insp { overflow-y: auto; padding: 10px 12px; border-left: 1px solid var(--edge); color: var(--ink); }
+.lab-insp h4 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 4px; font: 700 13px/1.1 var(--f-ui); letter-spacing: 0.08em; }
+.lab-insp h4 em { font: 700 8.5px/1 var(--f-ui); color: var(--ink-3); font-style: normal; letter-spacing: 0.14em; }
+.lab-help { font: 500 11.5px/1.45 var(--f-ui); color: var(--ink-2); margin: 4px 0 8px; }
+.lab-insp .knob .val { color: var(--ink); }
+.lab-insp .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.lab-legend { display: grid; gap: 4px; font: 600 10px/1 var(--f-ui); color: var(--ink-2); }
+.lab-legend span { display: flex; align-items: center; gap: 6px; }
+.lab-legend i, .lab-quick-list i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.lab-scopes { display: grid; gap: 6px; }
+.lab-scope-w { display: grid; gap: 2px; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.1em; color: var(--ink-3); }
+.lab-scope { width: 100%; height: 56px; background: var(--screen); border-radius: 4px; }
+.lab-bottom { display: flex; gap: 14px; align-items: flex-start; padding: 6px 10px 10px; border-top: 1px solid var(--edge); overflow-x: auto; background: var(--chassis-hi); }
+.lab-bottom h6 { margin-top: 2px; }
+.lab-mrow { display: flex; gap: 6px; }
+.lab-macro { display: grid; justify-items: center; gap: 2px; width: 64px; }
+.lab-bottom .knob .val, .lab-insp .knob .val { color: var(--ink); }
+.lab-macro input { width: 62px; box-sizing: border-box; text-align: center; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.06em; border: 1px solid transparent; background: transparent; color: var(--ink-2); padding: 3px 2px; border-radius: 3px; }
+.lab-macro input:hover, .lab-macro input:focus { border-color: var(--edge); background: #fff; color: var(--ink); }
+.lab-voice { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; max-width: 260px; }
+.lab-voice h6 { width: 100%; }
+.lab-fxchain { min-width: 220px; max-width: 420px; }
+.lab-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.lab-chip { display: inline-flex; border: 1px solid var(--edge); border-radius: 5px; background: #fff; }
+.lab-chip.off { opacity: 0.5; }
+.lab-chip.sel { border-color: var(--accent); }
+.lab-kb h6 { margin-bottom: 4px; }
+.lab-keys { display: flex; height: 54px; position: relative; }
+.lab-key { width: 18px; height: 54px; border: 1px solid var(--edge); background: #fff; border-radius: 0 0 3px 3px; padding: 0; touch-action: none; }
+.lab-key.b { width: 12px; height: 32px; margin: 0 -6px; z-index: 1; background: var(--ink); border-color: var(--ink); }
+.lab-key.on { background: var(--accent); }
+.lab-quick { position: fixed; z-index: 90; width: 230px; background: var(--chassis-hi); border: 1px solid var(--edge); border-radius: 8px; box-shadow: 0 10px 30px #0006; padding: 6px; display: grid; gap: 4px; }
+.lab-quick-list { max-height: 260px; overflow-y: auto; display: grid; gap: 1px; }
+.lab-quick-list button { display: flex; gap: 8px; align-items: center; text-align: left; background: none; border: 0; padding: 6px; border-radius: 4px; font: 700 10.5px/1 var(--f-ui); letter-spacing: 0.06em; color: var(--ink); cursor: pointer; }
+.lab-quick-list button:hover, .lab-quick-list button:focus { background: #fff; }
+.lab-plist { display: grid; gap: 4px; max-height: 60vh; overflow-y: auto; min-width: min(420px, 80vw); }
+.lab-plist .add, .lab-prow .add { display: grid; gap: 2px; text-align: left; width: 100%; }
+.lab-plist .add span { font: 500 10px/1.2 var(--f-ui); opacity: 0.7; }
+.lab-prow { display: flex; gap: 4px; align-items: center; }
+.lab-guide { display: grid; gap: 10px; max-width: 520px; }
+.lab-guide b { font: 700 12px/1.2 var(--f-ui); }
+.lab-guide p { margin: 3px 0 0; font: 500 12px/1.45 var(--f-ui); }
+.lab-fxrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 2px 0 6px; }
+.lab-fxname { font: 600 11px/1.2 var(--f-ui); flex: 1; min-width: 80px; }
+@media (max-width: 760px) {
+  .lab-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .lab-main > .lab-pal { display: none; }
+  .lab-insp { border-left: 0; border-top: 1px solid var(--edge); max-height: 34vh; }
+  .lab-top .lab-kind { display: none; }
+  .lab-name { max-width: 140px; min-width: 80px; }
+  .lab-bottom { max-height: 30vh; }
+}
 </style>
 
 <div id="boot">
@@ -778,6 +888,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <button class="key icon" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" data-learn="act:undo">↶</button>
       <button class="key icon" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" data-learn="act:redo">↷</button>
       <button class="key" id="libbtn" title="Sound library (B)" data-learn="act:library">SOUNDS</button>
+      <button class="key" id="hubbtn" title="The Kraken hub: songs, presets and plugins from people everywhere">☁ HUB</button>
       <div class="menu">
         <button class="key" id="filebtn" aria-haspopup="true" aria-label="Project menu"><span class="lg">PROJECT</span><span class="sm" aria-hidden="true">☰</span></button>
         <div class="menu-list" id="filemenu" hidden>
@@ -793,6 +904,9 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
           <button data-act="collab">Play together (live)… <kbd>INVITE · JOIN</kbd></button>
           <button data-act="template">Save as a template…</button>
           <button data-act="presets">My presets… <kbd>EXPORT · IMPORT</kbd></button>
+          <hr>
+          <button data-act="hub">☁ The hub <kbd>SONGS · PLUGINS · WORLD</kbd></button>
+          <button data-act="publish">Publish to the hub…</button>
           <hr>
           <button data-act="export">Export audio… <kbd>WAV FLAC MP3 OPUS</kbd></button>
           <button data-act="stems">Export stems…</button>
@@ -827,6 +941,7 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
           <button id="add-drum">Drums <kbd>KITS</kbd></button>
           <button id="add-audio">Audio <kbd>FILES · MIC</kbd></button>
           <button id="add-sampler">Sampler <kbd>KEYS · SLICES</kbd></button>
+          <button id="add-lab">LAB instrument <kbd>BUILD YOUR OWN</kbd></button>
           <button id="add-ext">External MIDI <kbd>FM-1 · HARDWARE</kbd></button>
           <button id="add-wam">Plugin instrument (WAM)… <kbd>WEB AUDIO MODULES</kbd></button>
           <button id="add-group">Group <kbd>BUS</kbd></button>

@@ -365,7 +365,7 @@ export function planParts(p, { workers, monitor = [], prev = {}, keys }) {
   const randomFollow = (t) => (t.slots || []).some((c) => c?.follow && ((c.follow.p ?? 1) < 1 || chancy(c.follow.a) || chancy(c.follow.b)));
   // in the worklet: what has to react at once (armed, monitored, plugins), costs nothing (frozen, groups) or depends on a
   // chance the worklet must share (a random follow action shown in the session view)
-  const ok = (t) => ['synth', 'drum', 'sampler', 'audio'].includes(t.kind) && !t.frozen && !t.arm && !mon.has(t.id)
+  const ok = (t) => ['synth', 'drum', 'sampler', 'audio', 'lab'].includes(t.kind) && !t.frozen && !t.arm && !mon.has(t.id)
     && !(t.kind === 'audio' && t.monitor === 'in') && !(t.fx || []).some((d) => d.type === 'wam') && !randomFollow(t)
     && !(wam && (t.mods || []).some((m) => m.type === 'follow'));     // (with plugins, a follower hears a delayed key)
   // a sidechain or a follower ties two tracks: they play in the same thread (the key first, in the same block)

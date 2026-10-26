@@ -10,6 +10,8 @@ import { fxPresetSheet, chainPresetSheet } from './presets.js';
 import { noteFxModules, refreshNoteKnobs } from './notes.js';
 import { modModules, refreshModKnobs, modMeters } from './mods.js';
 import { wamFxModule, buildWamInstrument, wamDialog } from './wam.js';
+import { buildLab, labFxButton } from './lab.js';
+import { newPatch } from '../lab-modules.js';
 
 // the knobs of a sound, grouped; the two firmwares share ids 0..44 and 49..52 (core.h), Clipper adds its macros,
 // a second envelope / LFO, a modulation matrix and moves the INSERT
@@ -45,6 +47,7 @@ export class Device {
   }
   value(t, id) {
     if (t.params[id] != null) return t.params[id];
+    if (t.kind === 'lab') return Math.round((t.lab?.macros?.[id]?.v ?? 0.5) * 127);   // (LAB: its macros)
     const v = this.app.params.get(t.id)?.[id];
     if (v != null) return v;
     const cat = this.app.lib[t.bank], e0 = cat.e0;
@@ -60,9 +63,9 @@ export class Device {
   }
   refresh(force = false) {
     const t = this.app.store.track(this.app.view.selTrack), o = this.owner();
-    const fxSig = o ? o.fx.map((d) => d.id + d.type + (d.on !== false) + (d.p.sc || '')).join(',') : '';
+    const fxSig = o ? o.fx.map((d) => d.id + d.type + (d.on !== false) + (d.p.sc || '') + (d.lab ? d.lab.name + d.lab.macros.map((m) => m.name).join('') : '')).join(',') : '';
     const extra = t ? JSON.stringify([t.sample && [t.sample.src, t.sample.mode, t.sample.slices, t.sample.name, t.sample.loop, (t.sample.zones || []).map((z) => [z.src, z.root, z.lo, z.hi, z.vlo, z.vhi])], t.pads && Object.entries(t.pads).map(([k, x]) => k + x.src + x.choke), t.ext, t.frozen, t.mpe, t.dx7?.name, t.wam?.url, (t.nfx || []).map((d) => d.id + d.type + (d.on !== false)),
-      (t.mods || []).map((m) => [m.id, m.type, m.on !== false, m.src, Math.round(m.p.sy ?? 1), (m.to || []).map((x) => x.key)]), (t.fx || []).length, t.kind === 'group' ? this.app.store.p.tracks.filter((x) => x.out === t.id).length : 0, Object.keys(this.app.store.p.assets || {}).length]) : '';
+      (t.mods || []).map((m) => [m.id, m.type, m.on !== false, m.src, Math.round(m.p.sy ?? 1), (m.to || []).map((x) => x.key)]), (t.fx || []).length, t.kind === 'group' ? this.app.store.p.tracks.filter((x) => x.out === t.id).length : 0, t.lab && [t.lab.name, t.lab.mods.length, t.lab.voice, t.lab.macros.map((m) => m.name)], Object.keys(this.app.store.p.assets || {}).length]) : '';
     const sig = this.app.view.selBus ? `bus:${this.app.view.selBus}:${fxSig}:${this.app.store.p.tracks.length}`
       : t ? `${t.id}:${t.kind}:${t.bank}:${t.engine}:${t.preset}:${t.kit}:${this.app.params.has(t.id)}:${t.kind === 'audio' ? t.clips.length : ''}:${fxSig}:${this.app.store.p.tracks.length}:${extra}` : '';
     if (sig !== this.sig || force) { this.sig = sig; this.build(t); return; }
@@ -89,7 +92,7 @@ export class Device {
       if (d.type === 'wam') return wamFxModule(this, o, d, i);      // a plugin (WAM): its own panel
       const spec = DEVICES[d.type];
       const knobs = spec.params.filter((p) => p.k !== 'sc').map((p) => {
-        const k = knob({ label: p.l, min: 0, max: 1000, value: Math.round(toNorm(p, d.p[p.k] ?? p.def) * 1000), def: Math.round(toNorm(p, p.def) * 1000), color,
+        const k = knob({ label: d.type === 'lab' && /^m\d$/.test(p.k) ? (d.lab?.macros?.[+p.k[1]]?.name || p.l) : p.l, min: 0, max: 1000, value: Math.round(toNorm(p, d.p[p.k] ?? p.def) * 1000), def: Math.round(toNorm(p, p.def) * 1000), color,
           format: (v) => fmtParam(p, fromNorm(p, v / 1000)),
           onChange: (v) => o.edit((fx) => { const x = fx.find((y) => y.id === d.id); if (x) x.p[p.k] = fromNorm(p, v / 1000); }, `fx${d.id}${p.k}`),
           onEnd: () => app.store.endGesture() });
@@ -120,10 +123,11 @@ export class Device {
             });
             else o.edit((fx) => { const j = fx.findIndex((y) => y.id === d.id); fx.splice(j, 1); });
           } }, '×'))),
+        d.type === 'lab' ? labFxButton(app, o, d) : null,
         h('div', { class: 'knobs', '--cols': spec.params.length > 8 ? 6 : 4 }, knobs), ...extra);
     });
     const add = h('div', { class: 'module fx-add' }, h('h4', {}, 'ADD EFFECT', h('em', { text: o.name })),
-      h('div', { class: 'fx-list' }, DEVICE_ORDER.map((type) => h('button', { class: 'add', onclick: () => o.edit((fx) => { fx.push({ id: uid('f'), type, on: true, p: defaults(type) }); }) }, DEVICES[type].name)),
+      h('div', { class: 'fx-list' }, DEVICE_ORDER.map((type) => h('button', { class: 'add', onclick: () => o.edit((fx) => { fx.push({ id: uid('f'), type, on: true, p: defaults(type), ...(type === 'lab' ? { lab: newPatch('fx') } : {}) }); }) }, DEVICES[type].name)),
         o.t ? h('button', { class: 'add wam-add', title: 'A Web Audio Module from its address', onclick: () => wamDialog(app, { trackId: o.t.id }) }, 'PLUGIN (WAM)…') : null));
     const head = h('div', { class: 'rack-head' }, 'EFFECTS', h('em', { text: `${o.name} · ${o.fx.length}` }),
       o.fx.length ? null : h('span', { style: { letterSpacing: '0.04em', fontWeight: 500 }, text: 'Signal flows left to right. Every knob is learnable and automatable.' }),
@@ -178,6 +182,7 @@ export class Device {
     if (t.kind === 'group') return buildGroup(this, t);
     if (t.kind === 'vca') return buildVca(this, t);
     if (t.kind === 'wam') return buildWamInstrument(this, t);
+    if (t.kind === 'lab') return buildLab(this, t);
     const app = this.app, cat = app.lib[t.bank], eng = cat.engines[t.engine], e0 = cat.e0;
     const mk = (id, d, label) => {
       const k = knob({ label: label || d.l, min: d.min, max: d.max, def: d.def, value: this.value(t, id), color: t.color,

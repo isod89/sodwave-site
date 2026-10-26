@@ -9,7 +9,7 @@ import { zip, unzip, saveFile } from '../io.js';
 import { encodeWav } from '../wav.js';
 import { validate, uid } from '../project.js';
 
-const KIND_LABEL = { fx: 'EFFECTS', chain: 'EFFECT CHAINS', track: 'TRACKS & SOUNDS', template: 'PROJECT TEMPLATES' };
+const KIND_LABEL = { fx: 'EFFECTS', chain: 'EFFECT CHAINS', track: 'TRACKS & SOUNDS', template: 'PROJECT TEMPLATES', lab: 'LAB PATCHES' };
 
 // a name, asked in a small dialog: -> the name, or null
 export function askName(app, title, def = '', note = '') {
@@ -38,6 +38,10 @@ export async function fxPresetSheet(app, o, d) {
       const cur = (o.t ? app.store.track(o.t.id)?.fx : null)?.find((y) => y.id === d.id) || d;
       app.toast((await addPreset({ kind: 'fx', type: d.type, name, data: fxData(cur) })) ? `Preset "${name}" saved.` : 'The preset could not be saved (storage?).');
     }, 'go'],
+    ['☁ PUBLISH THESE SETTINGS TO THE HUB…', () => {                // (the community hub: ui/hub.js)
+      const cur = (o.t ? app.store.track(o.t.id)?.fx : null)?.find((y) => y.id === d.id) || d;
+      app.hub?.publish({ preset: { kind: 'fx', type: d.type, name: DEVICES[d.type].name, data: fxData(cur) } });
+    }],
   ]);
 }
 
@@ -61,6 +65,10 @@ export async function chainPresetSheet(app, o) {
       const data = o.t ? chainData(src) : { fx: chainData({ fx: o.fx }).fx, nfx: [], mods: [] };
       app.toast((await addPreset({ kind: 'chain', name, data })) ? `Chain "${name}" saved.` : 'The preset could not be saved (storage?).');
     }, 'go'],
+    ['☁ PUBLISH THIS CHAIN TO THE HUB…', () => {
+      const data = o.t ? chainData(app.store.track(o.t.id)) : { fx: chainData({ fx: o.fx }).fx, nfx: [], mods: [] };
+      app.hub?.publish({ preset: { kind: 'chain', name: o.name, data } });
+    }],
   ]);
 }
 
@@ -126,13 +134,14 @@ export async function openTemplate(app, q) {
 export async function managePresets(app) {
   const list = await listPresets();
   const rows = [];
-  for (const kind of ['fx', 'chain', 'track', 'template']) {
+  for (const kind of ['fx', 'chain', 'track', 'template', 'lab']) {
     const qs = list.filter((x) => x.kind === kind).sort((a, b) => (a.type || '').localeCompare(b.type || '') || a.name.localeCompare(b.name));
     if (!qs.length) continue;
     rows.push(h('div', { class: 'eng-h open' }, h('span', { text: KIND_LABEL[kind] }), h('span', { text: String(qs.length) })));
     for (const q of qs) rows.push(h('div', { class: 'preset-row' },
       h('span', { text: q.name }), h('span', { class: 'tag', text: kind === 'fx' ? DEVICES[q.type]?.name || q.type : kind === 'track' ? q.type.toUpperCase() : '' }),
       h('button', { class: 'tb', title: 'Rename', onclick: async () => { const n = await askName(app, 'Rename the preset', q.name); if (!n) return; const all = await listPresets(); const x = all.find((y) => y.id === q.id); if (x) { x.name = n.slice(0, 40); await writePresets(all); } m.close(); managePresets(app); } }, '✎'),
+      h('button', { class: 'tb', title: 'Publish to the hub', onclick: () => { m.close(); app.hub?.publish({ preset: q }); } }, '☁'),
       h('button', { class: 'tb', title: 'Delete', onclick: async () => { await removePreset(q.id); m.close(); managePresets(app); app.library?.render(true); } }, '×')));
   }
   const m = app.modal('My presets', [

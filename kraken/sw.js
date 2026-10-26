@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "6a0ad8b942f3";
+const VERSION = "4e723a797806";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -26,10 +26,15 @@ const FILES = [
 "js/flac.js",
 "js/fx.js",
 "js/gensounds.js",
+"js/hub.js",
 "js/i18n.js",
+"js/i18n/fr-hub.js",
 "js/i18n/fr.js",
 "js/input.js",
 "js/io.js",
+"js/lab-dsp.js",
+"js/lab-modules.js",
+"js/lab-presets.js",
 "js/launchpad.js",
 "js/levels.js",
 "js/main.js",
@@ -57,9 +62,12 @@ const FILES = [
 "js/ui/device.js",
 "js/ui/diagnostic.js",
 "js/ui/editor.js",
+"js/ui/hub-style.js",
+"js/ui/hub.js",
 "js/ui/instruments.js",
 "js/ui/keys.js",
 "js/ui/kit.js",
+"js/ui/lab.js",
 "js/ui/library.js",
 "js/ui/macros.js",
 "js/ui/meters.js",
@@ -99,6 +107,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
+  if (url.origin === location.origin && url.pathname.includes('/api/')) return;   // the hub's API: always the network
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     e.respondWith(caches.open(FONTS).then(async (c) => {
       const hit = await c.match(e.request);

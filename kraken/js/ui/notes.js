@@ -4,7 +4,7 @@ import { h, knob } from './kit.js';
 import { NOTE_FX, NOTE_FX_ORDER, noteFxDefaults, fmtNoteParam } from '../notefx.js';
 import { uid } from '../project.js';
 
-export const NOTE_KINDS = ['synth', 'drum', 'sampler', 'external'];
+export const NOTE_KINDS = ['synth', 'drum', 'sampler', 'external', 'lab'];
 
 export function noteFxModules(dev, t) {
   if (!NOTE_KINDS.includes(t.kind)) return [];

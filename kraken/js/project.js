@@ -9,6 +9,7 @@ import { NOTE_FX } from './notefx.js';
 import { MODS } from './mods.js';
 import { meterList, cleanMeters } from './meter.js';
 import { cleanPlugin, cleanWamFx } from './wam.js';
+import { validatePatch, newPatch } from './lab-modules.js';
 
 // FORMAT: the project file's own version. It goes up only when a saved project must be changed to be read by the
 // new Kraken; MIGRATIONS[n] turns a format-n project into format n + 1. Every format ever saved keeps a reference
@@ -40,7 +41,8 @@ export function newTrack(kind, i, opts = {}) {
   };
   if (kind === 'sampler') t.sample = { src: opts.src || null, name: opts.sampleName || '', root: 60, mode: opts.mode || 'keys', slices: 16, start: 0, end: 1, att: 2, rel: 150, gain: 0, loop: false, tune: 0 };
   if (kind === 'external') t.ext = { port: '', ch: 1, latency: 0 };
-  if (kind === 'wam') t.wam = cleanPlugin(opts.wam);              // { url, name, state }, or none chosen yet
+  if (kind === 'wam') t.wam = cleanPlugin(opts.wam);
+  if (kind === 'lab') t.lab = opts.lab ? structuredClone(opts.lab) : newPatch('inst');              // { url, name, state }, or none chosen yet
   return t;
 }
 export const newReturn = (type, name) => ({ id: uid('r'), name, type, vol: -4, mute: false, fx: [],
@@ -214,7 +216,7 @@ export function trackSources(t) {
   for (const pd of Object.values(t.pads || {})) out.push(pd?.src);
   return [...new Set(out.filter((x) => typeof x === 'string'))];
 }
-const KINDS = new Set(['synth', 'drum', 'audio', 'sampler', 'external', 'group', 'vca', 'wam']);
+const KINDS = new Set(['synth', 'drum', 'audio', 'sampler', 'external', 'group', 'vca', 'wam', 'lab']);
 const num = (x, d) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
 const clampN = (x, a, b, d) => Math.max(a, Math.min(b, num(x, d)));
 const str = (x, d, max = 64) => (typeof x === 'string' ? x.slice(0, max) : typeof x === 'number' ? String(x) : d);
@@ -236,7 +238,10 @@ const devices = (list, table, prefix) => {
   const seen = new Set();
   return arr(list).filter((d) => obj(d) && table[d.type]).map((d) => {
     let id = str(d.id, '', 40); if (!id || seen.has(id)) id = uid(prefix); seen.add(id);
-    return { ...d, id, on: d.on !== false, p: knobs(table[d.type], d.p, table === DEVICES && d.type === 'comp') };
+    const o = { ...d, id, on: d.on !== false, p: knobs(table[d.type], d.p, table === DEVICES && d.type === 'comp') };
+    if (table === DEVICES && d.type === 'lab' && d.lab) o.lab = validatePatch(d.lab, 'fx');   // (an effect of your own: its patch, made safe; none yet: the sound passes)
+    else delete o.lab;
+    return o;
   });
 };
 function note(nt) {
@@ -379,6 +384,7 @@ export function validate(p) {
     if (t.h != null) { t.h = Math.round(clampN(t.h, 30, 240, 58)); }                   // its height in the arrangement (px)
     if (t.fold != null) { if (t.kind === 'group' && t.fold) t.fold = true; else delete t.fold; }   // a group folded: its tracks hidden
     if (t.vca != null && typeof t.vca !== 'string') delete t.vca;
+    if (t.kind === 'lab') t.lab = validatePatch(t.lab, 'inst'); else delete t.lab;   // LAB: an instrument of your own (lab-modules.js)
     if (t.kind === 'sampler') {
       const s = obj(t.sample) || {};
       t.sample = { ...s, src: typeof s.src === 'string' ? s.src : null, name: str(s.name, '', 80), root: Math.round(clampN(s.root, 0, 127, 60)), mode: s.mode === 'slice' ? 'slice' : 'keys',

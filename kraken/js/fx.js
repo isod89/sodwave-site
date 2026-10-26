@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken's audio effects: the devices of a track, return or master rack. Each processes planar
 // stereo blocks in place. Shared by the live engine, the offline export and the Node tests.
+import { LabFxDev } from './lab-dsp.js';         // (LAB: your own effect, a patch; used only inside createDevice)
 export const RATE = 44100;
 const TAU = Math.PI * 2;
 const dbg = (db) => Math.pow(10, db / 20);
@@ -152,8 +153,10 @@ export const DEVICES = {
   space: { name: 'SPACE', params: [P('si', 'SIZE', 0, 1, 0.6, '%'), P('dc', 'DECAY', 0.2, 20, 2.5, 'sec', 'log'), P('da', 'DAMP', 0, 1, 0.4, '%'), P('pr', 'PREDELAY', 0, 0.25, 0.02, 's'),
     P('lc', 'LOW CUT', 20, 1000, 20, 'Hz', 'log'), P('mo', 'MOD', 0, 1, 0.5, '%'), P('wi', 'WIDTH', 0, 1, 1, '%'), P('mx', 'MIX', 0, 1, 0.3, '%')] },
   limiter: { name: 'LIMITER', params: [P('ga', 'GAIN', 0, 24, 0, 'dB'), P('ce', 'CEILING', -12, 0, -0.3, 'dB'), P('re', 'RELEASE', 10, 1000, 80, 'ms', 'log')] },
+  // LAB: an effect you build from modules (its patch in the device's `lab`); its eight macros are its knobs
+  lab: { name: 'LAB', params: [...[...Array(8)].map((_, i) => P(`m${i}`, `MACRO ${i + 1}`, 0, 1, 0.5, '%')), P('mx', 'MIX', 0, 1, 1, '%')] },
 };
-export const DEVICE_ORDER = ['eq', 'comp', 'mband', 'deess', 'trans', 'sat', 'amp', 'filter', 'chorus', 'flanger', 'phaser', 'pitch', 'delay', 'reverb', 'space', 'crush', 'gate', 'slicer', 'utility', 'limiter'];
+export const DEVICE_ORDER = ['eq', 'comp', 'mband', 'deess', 'trans', 'sat', 'amp', 'filter', 'chorus', 'flanger', 'phaser', 'pitch', 'delay', 'reverb', 'space', 'crush', 'gate', 'slicer', 'utility', 'limiter', 'lab'];
 
 export function defaults(type) {
   const o = {};
@@ -186,7 +189,7 @@ export const fromNorm = (p, x) => {
 export function createDevice(type) {
   const C = { eq: EqDev, comp: CompDev, sat: SatDev, amp: AmpDev, filter: FilterDev, chorus: ChorusDev, phaser: PhaserDev, delay: DelayDev, reverb: ReverbDev,
     crush: CrushDev, gate: GateDev, slicer: SlicerDev, utility: UtilityDev, limiter: LimiterDev,
-    mband: MbandDev, deess: DeessDev, trans: TransDev, flanger: FlangerDev, pitch: PitchDev, space: SpaceDev }[type];
+    mband: MbandDev, deess: DeessDev, trans: TransDev, flanger: FlangerDev, pitch: PitchDev, space: SpaceDev, lab: LabFxDev }[type];
   return C ? new C() : null;
 }
 

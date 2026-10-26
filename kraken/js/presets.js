@@ -49,7 +49,7 @@ export const FACTORY_FX = {
 export const factoryFx = (type) => (FACTORY_FX[type] || []).map(([name, p]) => ({ id: `f:${type}:${name}`, kind: 'fx', type, name, factory: true, data: { ...defaults(type), ...p } }));
 
 // ------------------------------------------------------------- your presets ---
-const clean = (x) => (Array.isArray(x) ? x : []).filter((q) => q && typeof q === 'object' && typeof q.name === 'string' && ['fx', 'chain', 'track', 'template'].includes(q.kind) && q.data && typeof q.data === 'object');
+const clean = (x) => (Array.isArray(x) ? x : []).filter((q) => q && typeof q === 'object' && typeof q.name === 'string' && ['fx', 'chain', 'track', 'template', 'lab'].includes(q.kind) && q.data && typeof q.data === 'object');
 export async function listPresets() { return clean(await tx('readonly', (s) => s.get(KEY), 'projects')); }
 export async function writePresets(list) { return (await tx('readwrite', (s) => s.put(clean(list), KEY), 'projects')) !== null; }
 export async function addPreset(q) {

@@ -18,6 +18,7 @@ import { Sampler } from './sampler.js';
 import { meterList, barOf } from './meter.js';
 import { Levels } from './levels.js';
 import { pdc, Lag } from './wam.js';
+import { LabSynth } from './lab-dsp.js';
 
 export const RATE = 44100;
 export const BLOCK = 32;                       // the firmware's control block (CTL)
@@ -154,6 +155,10 @@ class Track {
       this.w.k_init(this.kind === 'drum' ? 1 : 0);
       this.out = new Float32Array(this.w.memory.buffer, this.w.k_render(), BLOCK * 2);
       this.nparams = this.w.k_nparams();
+    } else if (this.kind === 'lab') {                           // LAB: an instrument of your own, played like a firmware engine
+      this.w = new LabSynth(engine);
+      this.out = this.w.out;
+      this.nparams = 8;
     } else {
       this.w = null;
       this.out = new Float32Array(BLOCK * 2);
@@ -509,6 +514,13 @@ export class KrakenEngine {
     this.setProject(p, new Set(Object.keys(m.tracks || {})));
   }
   applySound(tr, def) {
+    if (def.kind === 'lab') {                                    // LAB: the patch (its knobs follow, a new structure rebuilds it)
+      const fresh = !tr.soundKey;
+      tr.w.setPatch(def.lab);
+      if (fresh) { tr.soundKey = 'lab'; tr.params = {}; if (!this.offline) this.post({ t: 'params', track: tr.id, values: tr.readParams() }); }
+      for (const k in def.params) if (tr.params[k] !== def.params[k]) { tr.w.k_param(+k, def.params[k]); tr.params[k] = def.params[k]; }
+      return;
+    }
     const key = def.kind === 'drum' ? `kit:${def.kit}` : `${def.bank}:${def.engine}:${def.preset}:${def.rev || 0}:${def.dx7?.name || ''}`;
     if (key !== tr.soundKey) {
       tr.allOff(this);

@@ -32,6 +32,7 @@ export function autoTargets(app, t) {
   for (const d of t.nfx || []) for (const p of NOTE_FX[d.type].params) {
     list.push({ key: `nfx:${d.id}:${p.k}`, label: `${NOTE_FX[d.type].name} ${p.l}`, min: p.min, max: p.max, def: p.def, fmt: (v) => fmtNoteParam(p, v) });
   }
+  if (t.kind === 'lab') (t.lab?.macros || []).forEach((m, i) => list.push({ key: `p${i}`, label: `LAB ${m.name}`, min: 0, max: 127, def: Math.round(m.v * 127), fmt: (v) => `${Math.round(v / 1.27)}%` }));   // (its macros)
   if (t.kind === 'synth') {
     const cat = app.lib[t.bank], e = cat.engines[t.engine], e0 = cat.e0;
     e.edit.forEach((d, i) => list.push({ key: `p${e0 + i}`, label: `${e.name} ${d.l}`, min: d.min, max: d.max, def: d.def, fmt: (v) => String(Math.round(v)) }));
@@ -149,6 +150,7 @@ export class Arrange {
         : t.kind === 'vca' ? `VCA · ${this.p.tracks.filter((x) => x.vca === t.id).length} TRACKS`
         : t.kind === 'wam' ? `PLUGIN · ${t.wam?.name || 'NONE'}`
         : t.kind === 'sampler' ? `SAMPLER · ${t.sample?.name || 'NO SAMPLE'}`
+        : t.kind === 'lab' ? `LAB · ${t.lab?.name || ''}`
         : t.kind === 'external' ? `MIDI OUT · ${t.ext?.port || 'NO PORT'} CH ${t.ext?.ch || 1}`
         : `${app.lib[t.bank].engines[t.engine]?.name} · ${app.lib[t.bank].engines[t.engine]?.presets[t.preset] ?? ''}${t.dx7 ? ' · ' + t.dx7.name : ''}${t.mpe ? ' · MPE' : ''}`);
       const LEARN = { m: 'mute', s: 'solo', r: 'arm' };
