@@ -2,7 +2,7 @@
 // The first minutes: a welcome that starts a song in a style (or the demo, or nothing), and a short tour that points
 // at the six things to know, one at a time, on the screen itself.
 import { h } from './kit.js';
-import { STARTERS, starterProject } from '../templates.js';
+import { STARTERS, FAMILIES, starterProject } from '../templates.js';
 import { newProject, newTrack } from '../project.js';
 import { listPresets } from '../presets.js';
 import { openTemplate } from './presets.js';
@@ -25,8 +25,10 @@ export function welcome(app, { modal, first = false }) {
     else if (p) app.toast(touch() ? 'Tap ▶ to hear it, then change anything while it plays.' : 'Press Space to hear it, then change anything while it plays.');
   };
   const card = (title, sub, make, cls = '') => h('button', { class: 'wel-card ' + cls, onclick: go(make) }, h('b', { text: title }), h('span', { text: sub }));
+  const fam = (name) => h('h4', { class: 'wel-fam', text: name });
   const cards = [
-    ...STARTERS.map((s) => card(s.name, `${s.bpm} BPM · ${s.text}`, () => starterProject(app.lib, s.id), 'starter')),
+    ...FAMILIES.flatMap((f, i) => [fam(f), ...STARTERS.filter((s) => s.fam === i).map((s) => card(s.name, `${s.bpm} BPM · ${s.text}`, () => starterProject(app.lib, s.id), 'starter'))]),
+    fam('Or start from'),
     card('The demo song', 'First Dive: hear what Kraken does', () => null, 'other'),
     card('Empty', 'A drum track and a synth, nothing written', () => {
       const p = newProject(); p.name = 'Untitled';
@@ -46,7 +48,7 @@ export function welcome(app, { modal, first = false }) {
     const mine = all.filter((x) => x.kind === 'template');
     const grid = m.box.querySelector('.wel-grid');
     if (!mine.length || !grid) return;
-    grid.prepend(...mine.map((q) => h('button', { class: 'wel-card mine', onclick: () => { m.close(); try { localStorage.setItem('kraken.welcomed', '1'); } catch { /* */ } openTemplate(app, q).catch((e) => app.toast(e.message)); } },
+    grid.prepend(fam('Your templates'), ...mine.map((q) => h('button', { class: 'wel-card mine', onclick: () => { m.close(); try { localStorage.setItem('kraken.welcomed', '1'); } catch { /* */ } openTemplate(app, q).catch((e) => app.toast(e.message)); } },
       h('b', { text: `★ ${q.name}` }), h('span', { text: 'Your template' }))));
   });
   return m;

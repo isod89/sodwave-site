@@ -449,7 +449,9 @@ canvas { display: block; }
 .rep-check input { margin-top: 2px; }
 .modal textarea { background: var(--screen-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 8px; font: 500 12px/1.4 var(--f-ui); }
 .modal.wel { width: min(620px, 100%); }
-.wel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.wel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; max-height: min(58vh, 560px); overflow-y: auto; padding-right: 2px; }
+.wel-fam { grid-column: 1 / -1; margin: 6px 0 0; font: 700 9px/1 var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+.wel-fam:first-child { margin-top: 0; }
 .wel-card { display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--screen-2); color: var(--text); cursor: pointer; }
 .wel-card:hover, .wel-card:focus-visible { border-color: var(--accent); }
 .wel-card b { font: 700 12px/1.2 var(--f-ui); letter-spacing: 0.08em; text-transform: uppercase; }

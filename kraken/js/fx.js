@@ -122,6 +122,10 @@ export const DEVICES = {
   sat: { name: 'SATURATOR', params: [
     P('dr', 'DRIVE', 0, 36, 6, 'dB'), P('ty', 'TYPE', 0, 3, 0, '', 'lin', ['SOFT', 'TUBE', 'FOLD', 'HARD']), P('to', 'TONE', -1, 1, 0, ''),
     P('mx', 'MIX', 0, 1, 1, '%'), P('ou', 'OUTPUT', -24, 6, -3, 'dB')] },
+  amp: { name: 'AMP', params: [
+    P('mo', 'MODEL', 0, 4, 1, '', 'lin', ['CLEAN', 'CRUNCH', 'LEAD', 'METAL', 'BASS']), P('ga', 'GAIN', 0, 10, 5, ''),
+    P('ba', 'BASS', 0, 10, 5, ''), P('mi', 'MID', 0, 10, 5, ''), P('tr', 'TREBLE', 0, 10, 5, ''), P('pr', 'PRESENCE', 0, 10, 5, ''),
+    P('ca', 'CABINET', 0, 4, 3, '', 'lin', ['OFF', '1×12', '2×12', '4×12', 'BASS 4×10']), P('ou', 'OUTPUT', -24, 12, 0, 'dB'), P('mx', 'MIX', 0, 1, 1, '%')] },
   filter: { name: 'AUTO FILTER', params: [
     P('ty', 'TYPE', 0, 3, 0, '', 'lin', ['LOW PASS', 'HIGH PASS', 'BAND', 'NOTCH']), P('fr', 'FREQ', 30, 18000, 2000, 'Hz', 'log'), P('q', 'RES', 0.5, 12, 1.2, '', 'log'),
     P('lr', 'LFO RATE', 0, 8, 5, '', 'lin', SYNC), P('ld', 'LFO DEPTH', 0, 1, 0, '%'), P('mx', 'MIX', 0, 1, 1, '%')] },
@@ -149,7 +153,7 @@ export const DEVICES = {
     P('lc', 'LOW CUT', 20, 1000, 20, 'Hz', 'log'), P('mo', 'MOD', 0, 1, 0.5, '%'), P('wi', 'WIDTH', 0, 1, 1, '%'), P('mx', 'MIX', 0, 1, 0.3, '%')] },
   limiter: { name: 'LIMITER', params: [P('ga', 'GAIN', 0, 24, 0, 'dB'), P('ce', 'CEILING', -12, 0, -0.3, 'dB'), P('re', 'RELEASE', 10, 1000, 80, 'ms', 'log')] },
 };
-export const DEVICE_ORDER = ['eq', 'comp', 'mband', 'deess', 'trans', 'sat', 'filter', 'chorus', 'flanger', 'phaser', 'pitch', 'delay', 'reverb', 'space', 'crush', 'gate', 'slicer', 'utility', 'limiter'];
+export const DEVICE_ORDER = ['eq', 'comp', 'mband', 'deess', 'trans', 'sat', 'amp', 'filter', 'chorus', 'flanger', 'phaser', 'pitch', 'delay', 'reverb', 'space', 'crush', 'gate', 'slicer', 'utility', 'limiter'];
 
 export function defaults(type) {
   const o = {};
@@ -180,7 +184,7 @@ export const fromNorm = (p, x) => {
 
 // a device instance: set(params) when they change, process(L, R, n, ctx) per block
 export function createDevice(type) {
-  const C = { eq: EqDev, comp: CompDev, sat: SatDev, filter: FilterDev, chorus: ChorusDev, phaser: PhaserDev, delay: DelayDev, reverb: ReverbDev,
+  const C = { eq: EqDev, comp: CompDev, sat: SatDev, amp: AmpDev, filter: FilterDev, chorus: ChorusDev, phaser: PhaserDev, delay: DelayDev, reverb: ReverbDev,
     crush: CrushDev, gate: GateDev, slicer: SlicerDev, utility: UtilityDev, limiter: LimiterDev,
     mband: MbandDev, deess: DeessDev, trans: TransDev, flanger: FlangerDev, pitch: PitchDev, space: SpaceDev }[type];
   return C ? new C() : null;
@@ -258,6 +262,101 @@ class SatDev extends Dev {
       else for (let i = 0; i < n; i++) { const x = X[i] * d; X[i] = (x > 1 ? 1 : x < -1 ? -1 : x) * o; }
     }
     if (Math.abs(p.to) > 0.02) { this.tl.run(L, R, n); this.th.run(L, R, n); }
+    this.mix(L, R, n, p.mx);
+  }
+}
+
+// AMP: a guitar (or bass) amplifier and its cabinet. The input tightened (a high-pass), the preamp driven into one or two
+// tube-like stages (asymmetric: even harmonics; at twice the rate, so the distortion does not fold back into the
+// audible band), the tone stack (BASS, MID, TREBLE), the power amp's softer squash and PRESENCE, then the speaker
+// cabinet: its low resonance, its mid character and the steep top end that turns fizz into a guitar sound.
+// Models: CLEAN, CRUNCH, LEAD (two stages), METAL (two stages, tight low end, a mid push before the clip), BASS.
+const AMP_MODELS = [
+  // in-HP Hz, gain dB at 0 / 10, push (a mid boost before the clip, dB), stages, bias (asymmetry), level after, mid offset (dB)
+  { hp: 60, g0: 0, g1: 20, push: 0, st: 1, bias: 0.1, lv: 1, mid: 0 },
+  { hp: 80, g0: 8, g1: 34, push: 2, st: 1, bias: 0.25, lv: 0.5, mid: 0 },
+  { hp: 100, g0: 18, g1: 44, push: 5, st: 2, bias: 0.2, lv: 0.4, mid: 1 },
+  { hp: 140, g0: 24, g1: 52, push: 8, st: 2, bias: 0.15, lv: 0.38, mid: -4 },
+  { hp: 28, g0: 0, g1: 30, push: 0, st: 1, bias: 0.3, lv: 0.6, mid: 0 },
+];
+// a biquad's coefficients at any rate (the oversampled stages run at 2 × RATE)
+function lpAt(f, q, rate) {
+  const w = TAU * f / rate, c = Math.cos(w), al = Math.sin(w) / (2 * q), a0 = 1 + al;
+  return [(1 - c) / 2 / a0, (1 - c) / a0, (1 - c) / 2 / a0, -2 * c / a0, (1 - al) / a0];
+}
+class AmpDev extends Dev {
+  constructor() {
+    super();
+    this.hp = new Biquad(); this.push = new Biquad();
+    this.tone = [new Biquad(), new Biquad(), new Biquad(), new Biquad()];         // bass, mid, treble, presence
+    this.cab = [...Array(6)].map(() => new Biquad());
+    // the 2× stages: an anti-imaging and an anti-aliasing low-pass (two biquads each), per channel; between stages,
+    // a gentler low-pass (the coupling and the Miller capacitance of a real preamp); a DC blocker per channel
+    this.os = lpAt(19000, 0.54, RATE * 2); this.os2 = lpAt(19000, 1.31, RATE * 2);
+    this.z = new Float64Array(2 * 4 * 2 * 2);                                      // channel × filter × section × state
+    this.mid = new Float64Array(4); this.dc = new Float64Array(4);
+  }
+  update() {
+    const p = this.p, m = AMP_MODELS[Math.round(p.mo)] || AMP_MODELS[1];
+    this.m = m;
+    this.hp.set('hp', m.hp, 0.707);
+    this.push.set('peak', 800, 0.9, m.push); this.push.on = m.push > 0;
+    this.g = dbg(m.g0 + (m.g1 - m.g0) * p.ga / 10);
+    const k = (v) => (v - 5) * 2.4;                                               // a knob, 0..10, to ±12 dB
+    this.tone[0].set('low', 120, 0.7, k(p.ba));
+    this.tone[1].set('peak', 650, 0.8, k(p.mi) + m.mid);
+    this.tone[2].set('high', 2800, 0.7, k(p.tr));
+    this.tone[3].set('high', 4200, 0.7, (p.pr - 5) * 1.6);
+    const ca = Math.round(p.ca), c = this.cab;
+    // the cabinets: [low cut, low resonance, mid character, upper presence, top roll-off ×2]
+    const cabs = [null,
+      [['hp', 70, 0.7, 0], ['peak', 100, 1, 2], ['peak', 420, 1, -2], ['peak', 2000, 1.1, 3], ['lp', 5600, 0.8, 0], ['lp', 5600, 0.6, 0]],
+      [['hp', 75, 0.8, 0], ['peak', 110, 1.2, 3], ['peak', 450, 1, -2.5], ['peak', 2200, 1.2, 3.5], ['lp', 5200, 0.8, 0], ['lp', 5200, 0.6, 0]],
+      [['hp', 80, 1.0, 0], ['peak', 110, 1.4, 4], ['peak', 450, 1, -3], ['peak', 2500, 1.2, 4], ['lp', 4600, 0.85, 0], ['lp', 4600, 0.6, 0]],
+      [['hp', 40, 0.8, 0], ['peak', 80, 1, 2], ['peak', 500, 1, -2], ['peak', 1500, 1, 2], ['lp', 4200, 0.8, 0], ['lp', 4200, 0.6, 0]]][ca];
+    for (let i = 0; i < 6; i++) { if (cabs) c[i].set(...cabs[i]); c[i].on = !!cabs; }
+    // the level after the cabinet: about the level of what came in, at noon (the OUTPUT knob from there)
+    this.o = dbg(p.ou) * m.lv * (cabs ? 0.9 : 1);
+  }
+  // one sample through a 2-biquad low-pass at 2× (state z from offset o)
+  static lp2(x, a, b, z, o) {
+    let y = a[0] * x + z[o]; z[o] = a[1] * x - a[3] * y + z[o + 1]; z[o + 1] = a[2] * x - a[4] * y;
+    const y2 = b[0] * y + z[o + 2]; z[o + 2] = b[1] * y - b[3] * y2 + z[o + 3]; z[o + 3] = b[2] * y - b[4] * y2;
+    return y2;
+  }
+  process(L, R, n) {
+    const p = this.p, m = this.m, g = this.g, z = this.z, a = this.os, b = this.os2, bias = m.bias, tb = Math.tanh(bias), two = m.st === 2;
+    this.keepDry(L, R, n);
+    this.hp.run(L, R, n);
+    if (this.push.on) this.push.run(L, R, n);
+    const lp = AmpDev.lp2, mid = this.mid, dc = this.dc, kMid = 0.55;              // (kMid: the inter-stage low-pass, ~ 8 kHz at 2×)
+    for (let c = 0; c < 2; c++) {
+      const X = c ? R : L, o = c * 16;
+      for (let i = 0; i < n; i++) {
+        let out = 0;
+        for (let k = 0; k < 2; k++) {                                              // two sub-samples: the sample, then a zero
+          let x = lp(k ? 0 : X[i] * 2, a, b, z, o) * g;                            // (×2: the zero-stuffing's lost half)
+          x = Math.tanh(x + bias) - tb;                                            // stage 1: asymmetric, like a triode
+          if (two) {
+            mid[c] += kMid * (x - mid[c]); x = mid[c];
+            x = Math.tanh(x * 6 + bias * 0.5) - Math.tanh(bias * 0.5);           // stage 2
+          }
+          const y = lp(x, a, b, z, o + 4);
+          if (!k) out = y;                                                         // (one sample in two kept)
+        }
+        // DC blocker (the asymmetry leaves an offset)
+        const d = out - dc[c] + 0.9995 * dc[c + 2]; dc[c] = out; dc[c + 2] = d;
+        X[i] = d;
+      }
+    }
+    for (const t of this.tone) t.run(L, R, n);
+    // the power amp: a gentle squash
+    for (let i = 0; i < n; i++) { L[i] = Math.tanh(L[i] * 0.9) * 1.1; R[i] = Math.tanh(R[i] * 0.9) * 1.1; }
+    for (const f of this.cab) if (f.on) f.run(L, R, n);
+    const o = this.o;
+    for (let i = 0; i < n; i++) { L[i] *= o; R[i] *= o; }
+    if (!(Math.abs(z[0]) < 1e6) || !(Math.abs(z[16]) < 1e6)) { z.fill(0); mid.fill(0); dc.fill(0); }
+    for (let i = 0; i < z.length; i++) if (Math.abs(z[i]) < 1e-25) z[i] = 0;
     this.mix(L, R, n, p.mx);
   }
 }

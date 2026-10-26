@@ -8,6 +8,7 @@ import { encodeWav } from './wav.js';
 import { encodeFlac } from './flac.js';
 import { encodeOpus, opusSupported } from './opus.js';
 import { encodeMp3Off, mp3Rate } from './mp3.js';
+import { genSound } from './gensounds.js';
 import { isFolder, addTake, renderFolder, setComp, isMidiFolder, compNotes, addMidiTake, expandFolder } from './comp.js';
 import { split, join, copyRange, pasteRange, clearRange, deleteTime, insertTime, moveClips, reversed } from './edit.js';
 import { saveFile, zip, unzip, exportMidi, parseMidi, hostedSave } from './io.js';
@@ -532,7 +533,7 @@ async function restoreAssets(p) {
   for (const id of Object.keys(p.assets || {})) {
     if (app.assets.has(id)) { app.audio.send({ t: 'asset', id, L: app.assets.get(id).L, R: app.assets.get(id).R }); continue; }
     const a = await loadAsset(id);
-    if (a?.L && a.R) addAsset(id, a, false); else missing++;
+    if (a?.L && a.R) addAsset(id, a, false); else if (genSound(id)) addAsset(id, genSound(id), false); else missing++;   // (a sound Kraken makes: made again)
   }
   if (missing) toast(missingText(missing));
   return missing;
@@ -1381,6 +1382,8 @@ function load(p) {
   app.params.clear();
   app.view.selTrack = p.tracks[0]?.id ?? null; app.view.selClip = null; app.view.autoOpen.clear();
   app.store.replace(p, true);
+  // the sounds Kraken makes itself (gensounds.js: a starter's log drum…), made here when this browser has not got them
+  for (const t of p.tracks) for (const id of trackSources(t)) if (!app.assets.has(id) && genSound(id)) addAsset(id, genSound(id), false);
   app.seek(0);
 }
 
