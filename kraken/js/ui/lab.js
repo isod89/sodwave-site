@@ -358,14 +358,16 @@ class LabEditor {
     this.fitted = true;
     this.applyView();
   }
-  // a phone: the module just selected comes to the top of the canvas when its settings' sheet would hide it
+  // a phone: the module just selected comes to the top of the canvas when its settings' sheet would hide it.
+  // The zoom never changes (a zoom on a tap made the module hard to move), and the view slides sideways only when the module is off the side.
   reveal(id, onlyIfHidden = false) {
     const m = this.patch.mods.find((x) => x.id === id), r = this.viewEl.getBoundingClientRect();
     if (!m || !r.width) return;
     const box = this.modEls?.get(id)?.getBoundingClientRect();
-    if (onlyIfHidden && box && box.top >= r.top && box.top < r.top + r.height * 0.3 && box.left >= r.left - 20 && box.left < r.right - 60) return;
-    const z = Math.max(this.view.z, 0.72);
-    this.view = { z, x: (r.width - W * z) / 2 - m.x * z, y: 14 - m.y * z };
+    const sideOk = box && box.left >= r.left - 20 && box.left < r.right - 60;
+    if (onlyIfHidden && sideOk && box.top >= r.top && box.top < r.top + r.height * 0.3) return;
+    const z = this.view.z;
+    this.view = { z, x: sideOk ? this.view.x : (r.width - W * z) / 2 - m.x * z, y: 14 - m.y * z };
     this.applyView();
   }
   toWorld(cx, cy) { const r = this.viewEl.getBoundingClientRect(), v = this.view; return { x: (cx - r.left - v.x) / v.z, y: (cy - r.top - v.y) / v.z }; }
