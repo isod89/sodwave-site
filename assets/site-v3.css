@@ -76,7 +76,8 @@ h1,h2,h3{margin:0;font-family:var(--ui);font-weight:800;letter-spacing:-.015em;l
 .float.k{left:0;top:0;width:78%;transform:rotate(-3deg);animation:bob 8s ease-in-out infinite}
 .float.s{right:0;top:44%;width:66%;transform:rotate(3deg);animation:bob 9s ease-in-out -3s infinite;background:#16181c}
 .float.s img{padding:14px 14px 0}
-.float.f{left:6%;bottom:-2%;width:34%;transform:rotate(-6deg);animation:bob 7s ease-in-out -5s infinite}
+.float.f{left:4%;bottom:-6%;width:46%;transform:rotate(-5deg);animation:bob 7s ease-in-out -5s infinite;background:#16181c}
+.float.f img{padding:12px 12px 0}
 .float:hover{border-color:var(--c,var(--o))}
 
 /* a device screen (FM-1 style bezel) */
@@ -277,7 +278,7 @@ footer{margin-top:100px;border-top:1px solid var(--line);background:#050607}
   .btn{height:46px;padding:0 18px}
   .hero h1{font-size:clamp(36px,11vw,48px)}
   .brand small{display:none}
-  .float.f{width:38%}
+  .float.f{width:50%}
   .fgrid{grid-template-columns:1fr 1fr;gap:24px}
   .fgrid > div:first-child{grid-column:1/-1}
   .cta-box{padding:48px 18px}
