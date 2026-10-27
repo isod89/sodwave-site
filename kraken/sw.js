@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "d91522a561e2";
+const VERSION = "a4e81f68f9a1";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -115,7 +115,7 @@ const HASHES = {
 "engines/categories.json": "0910c5df4892b672",
 "engines/clipper.wasm": "4e0a09e35eae8489",
 "engines/sloop.wasm": "c80ebdda46ff830f",
-"hub.html": "d0754e3272c54f53",
+"hub.html": "08ba8ca3b3acd7d4",
 "js/assets.js": "f9e37a5394c1996b",
 "js/audio.js": "0deda8cdeb9555bb",
 "js/audio2midi.js": "ae1895a605a204d7",
@@ -129,11 +129,11 @@ const HASHES = {
 "js/fx.js": "3ebaf56086d6a61e",
 "js/gensounds.js": "153bcb24ffacd831",
 "js/hub-art.js": "306bdd6cc9c5985a",
-"js/hub-landing.js": "a5a90de3a6a5cd37",
+"js/hub-landing.js": "d28d3cd0f026b504",
 "js/hub-page.js": "49c16f2787246adf",
-"js/hub.js": "e3590d4b8e2b3c9f",
+"js/hub.js": "32d2326547be79f7",
 "js/i18n.js": "5d26939e61333792",
-"js/i18n/fr-hub.js": "1db62497396d7640",
+"js/i18n/fr-hub.js": "43cca79436a312ba",
 "js/i18n/fr.js": "020035660cd92480",
 "js/input.js": "6380044ba9c51bc4",
 "js/io.js": "8dab5b01b2a1f361",
@@ -169,8 +169,8 @@ const HASHES = {
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
 "js/ui/editor.js": "2540722d7eb39f40",
-"js/ui/hub-style.js": "eb18d24139b78927",
-"js/ui/hub.js": "87ade19a5561c3ad",
+"js/ui/hub-style.js": "178e4530831e2db8",
+"js/ui/hub.js": "02fce2d586ee6cc0",
 "js/ui/instruments.js": "ff60f41d86a6c41b",
 "js/ui/keys.js": "778e6068734f0ffd",
 "js/ui/kit.js": "d47103e4cd83f192",

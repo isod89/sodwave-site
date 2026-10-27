@@ -58,6 +58,7 @@ export function landing({ open, openKraken, signedIn = null }) {
     ['⬆', 'Level up', 'Every song you publish, every like and download earns XP. Ten levels from Plankton to Legendary Kraken, and badges along the way.'],
     ['◈', 'Share your plugins', 'Build instruments and effects in the LAB, with the real SLOOP and Clipper engines, and let anyone play them.'],
     ['⧉', 'Remix and learn', 'Open any song in Kraken and any plugin in the LAB: see exactly how it was made, then make it yours.'],
+    ['🔒', 'Or keep it private', 'Publish only for yourself: a backup of your ideas on the hub, on every device, that nobody else can see. Share it when it is ready.'],
   ];
   const ladder = h('div', { class: 'lp-ladder' }, LEVELS.map(([xp, name], i) => h('div', { class: 'lp-rung', style: { '--i': i } }, h('i', { text: LEVEL_ICONS[i] }), h('b', { text: name }), h('small', { text: `${xp.toLocaleString('en')} XP` }))));
   const page = h('div', { class: 'lp' },

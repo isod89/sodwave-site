@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS hub_items (
   likes         INT           NOT NULL DEFAULT 0,
   downloads     INT           NOT NULL DEFAULT 0,
   reports       INT           NOT NULL DEFAULT 0,    -- reports not yet reviewed
-  status        VARCHAR(10)   NOT NULL DEFAULT 'visible',   -- visible, hidden
+  status        VARCHAR(10)   NOT NULL DEFAULT 'visible',   -- visible, hidden (by moderation), private (only its creator sees it)
   hidden_reason VARCHAR(16)   NULL,                  -- reports, admin
   created_at    DATETIME      NOT NULL,
   updated_at    DATETIME      NOT NULL,

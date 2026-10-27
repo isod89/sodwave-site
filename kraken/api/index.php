@@ -75,12 +75,15 @@ function r_items(): void {
 }
 function like(string $s): string { return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $s); }
 
-// an item shown to this visitor: visible, or theirs, or any for a moderator
+// an item shown to this visitor: visible, or theirs, or any for a moderator, except a private one: only its creator
+// ever sees that (a backup, an idea kept to oneself: not even the moderators)
 function item_row(int $id, ?array $me): array {
   $r = one(CARD_SQL . ', i.description, i.yt_xp, u.banned AS u_banned FROM hub_items i JOIN hub_users u ON u.id = i.user_id WHERE i.id = ?', [$id]);
   if (!$r) fail('not_found', 404);
+  $mine = $me && (int) $r['user_id'] === (int) $me['id'];
+  if ($r['status'] === 'private' && !$mine) fail('not_found', 404);
   $visible = $r['status'] === 'visible' && !$r['u_banned'];
-  if (!$visible && !($me && ((int) $r['user_id'] === (int) $me['id'] || is_admin($me)))) fail('not_found', 404);
+  if (!$visible && !($mine || is_admin($me))) fail('not_found', 404);
   return $r;
 }
 function r_item(): void {
@@ -140,8 +143,8 @@ function r_user(): void {
   $u = one('SELECT * FROM hub_users WHERE id = ?', [int_param('id')]);
   $self = $u && $me && (int) $u['id'] === (int) $me['id'];
   if (!$u || ($u['banned'] && !$self && !is_admin($me))) fail('not_found', 404);
-  $own = $self || is_admin($me);
-  $items = all(CARD_SQL . ' FROM hub_items i JOIN hub_users u ON u.id = i.user_id WHERE i.user_id = ?' . ($own ? '' : " AND i.status = 'visible'")
+  $only = $self ? '' : (is_admin($me) ? " AND i.status <> 'private'" : " AND i.status = 'visible'");
+  $items = all(CARD_SQL . ' FROM hub_items i JOIN hub_users u ON u.id = i.user_id WHERE i.user_id = ?' . $only
     . ' ORDER BY i.created_at DESC LIMIT 100', [$u['id']]);
   send_json(['user' => profile($u, $me), 'items' => cards($items, $me)]);
 }
@@ -414,20 +417,27 @@ function r_publish(): void {
   $bpm = ($kind === 'song' || $kind === 'template') && isset($data->bpm) && (is_int($data->bpm) || is_float($data->bpm)) ? max(20, min(300, round((float) $data->bpm, 2))) : null;
   $audio = count(audio_ids($kind === 'preset' ? $data->data : $data));
   $subkind = $kind === 'preset' ? $data->kind : null;
+  $private = ($b->private ?? false) === true;                       // only its creator sees it: a backup on the hub
   $pdo = db();
   $pdo->beginTransaction();
-  q('INSERT INTO hub_items (user_id, kind, subkind, title, description, genre, tags, bpm, youtube, has_audio, audio_count, size, data_hash, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
+  q('INSERT INTO hub_items (user_id, kind, subkind, title, description, genre, tags, bpm, youtube, has_audio, audio_count, size, data_hash, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
     [$u['id'], $kind, $subkind, $title, text($b->description ?? '', 2000, true), text($b->genre ?? '', 40), tag_field(tags($b->tags ?? [])), $bpm, $yt,
-      $audio ? 1 : 0, min($audio, 9999), strlen($json), $hash]);
+      $audio ? 1 : 0, min($audio, 9999), strlen($json), $hash, $private ? 'private' : 'visible']);
   $id = (int) $pdo->lastInsertId();
   q('INSERT INTO hub_item_data (item_id, data) VALUES (?, ?)', [$id, $json]);
-  $gained = [];
-  if (count_today((int) $u['id'], 'publish') < XP_PUBLISH_PER_DAY) $gained[] = ['publish', award((int) $u['id'], XP_PUBLISH, 'publish', $id, null, true)];
-  if ($yt) $gained = array_merge($gained, youtube_xp($u, $id, $kind));
+  $gained = $private ? [] : public_xp($u, $id, $kind, (bool) $yt);  // (XP is for what is shared: a private item earns it once made public)
   check_badges((int) $u['id']);
   $pdo->commit();
   respond_item($id, $u, $gained);
+}
+// the XP for sharing an item with everyone: publishing (once per item, a few a day) and its YouTube link
+function public_xp(array $u, int $id, string $kind, bool $yt): array {
+  $gained = [];
+  if (!val("SELECT 1 FROM hub_xp_events WHERE user_id = ? AND reason = 'publish' AND item_id = ? LIMIT 1", [$u['id'], $id])
+    && count_today((int) $u['id'], 'publish') < XP_PUBLISH_PER_DAY) $gained[] = ['publish', award((int) $u['id'], XP_PUBLISH, 'publish', $id, null, true)];
+  if ($yt) $gained = array_merge($gained, youtube_xp($u, $id, $kind));
+  return $gained;
 }
 function tag_field(array $tags): string { return $tags ? ',' . implode(',', $tags) . ',' : ''; }
 // +20 for a YouTube link on a song: once per song, for three songs a day
@@ -449,8 +459,16 @@ function r_edit(): void {
   rate('edit_user', (string) $u['id']);
   $b = body();
   $r = one('SELECT * FROM hub_items WHERE id = ?', [id_of($b->id ?? 0)]);
-  if (!$r || ((int) $r['user_id'] !== (int) $u['id'] && !is_admin($u))) fail('not_found', 404);
+  $mine = $r && (int) $r['user_id'] === (int) $u['id'];
+  if (!$r || (!$mine && (!is_admin($u) || $r['status'] === 'private'))) fail('not_found', 404);
   $set = []; $args = [];
+  // private or shared with everyone: its creator's choice, any time (an item a moderator hid stays hidden)
+  $going = null;
+  if (isset($b->private) && is_bool($b->private) && $mine) {
+    if ($r['status'] === 'hidden') fail('hidden', 403);
+    $going = $b->private ? 'private' : 'visible';
+    if ($going !== $r['status']) { $set[] = 'status = ?'; $args[] = $going; } else $going = null;
+  }
   if (isset($b->title)) { $t = text($b->title, 80); if ($t === '') fail('bad_title'); $set[] = 'title = ?'; $args[] = $t; }
   if (isset($b->description)) { $set[] = 'description = ?'; $args[] = text($b->description, 2000, true); }
   if (isset($b->genre)) { $set[] = 'genre = ?'; $args[] = text($b->genre, 40); }
@@ -465,14 +483,17 @@ function r_edit(): void {
   $gained = [];
   if ($set) {
     q('UPDATE hub_items SET ' . implode(', ', $set) . ', updated_at = UTC_TIMESTAMP() WHERE id = ?', array_merge($args, [$r['id']]));
-    if ($yt && (int) $r['user_id'] === (int) $u['id']) $gained = youtube_xp($u, (int) $r['id'], $r['kind']);
+    $status = $going ?? $r['status'];
+    if ($mine && $going === 'visible') $gained = public_xp($u, (int) $r['id'], $r['kind'], (bool) ($yt ?? (property_exists($b, 'youtube') ? null : $r['youtube'])));
+    elseif ($yt && $mine && $status !== 'private') $gained = youtube_xp($u, (int) $r['id'], $r['kind']);
+    if ($going) check_badges((int) $u['id']);
   }
   respond_item((int) $r['id'], $u, $gained);
 }
 function r_delete(): void {
   $u = need_user();
   $r = one('SELECT * FROM hub_items WHERE id = ?', [id_of(body()->id ?? 0)]);
-  if (!$r || ((int) $r['user_id'] !== (int) $u['id'] && !is_admin($u))) fail('not_found', 404);
+  if (!$r || ((int) $r['user_id'] !== (int) $u['id'] && (!is_admin($u) || $r['status'] === 'private'))) fail('not_found', 404);
   q('DELETE FROM hub_items WHERE id = ?', [$r['id']]);
   send_json(['ok' => true]);
 }
@@ -571,7 +592,7 @@ function r_report(): void {
 function r_admin_reports(): void {
   $me = need_admin();
   $rows = all(CARD_SQL . ", i.description FROM hub_items i JOIN hub_users u ON u.id = i.user_id
-    WHERE i.reports > 0 OR i.status <> 'visible' ORDER BY (i.status = 'hidden' AND i.hidden_reason = 'reports') DESC, i.reports DESC, i.updated_at DESC LIMIT 200");
+    WHERE (i.reports > 0 OR i.status = 'hidden') AND i.status <> 'private' ORDER BY (i.status = 'hidden' AND i.hidden_reason = 'reports') DESC, i.reports DESC, i.updated_at DESC LIMIT 200");
   $items = cards($rows, $me);
   foreach ($items as &$c) $c['report_list'] = all('SELECT r.reason, r.note, r.resolved, r.created_at, u.name FROM hub_reports r JOIN hub_users u ON u.id = r.user_id WHERE r.item_id = ? ORDER BY r.id DESC LIMIT 20', [$c['id']]);
   $banned = array_map(fn ($u) => ['id' => (int) $u['id'], 'name' => $u['name'], 'country' => $u['country'], 'level' => level_of((int) $u['xp'])],
@@ -585,7 +606,7 @@ function r_admin(): void {
   $act = is_string($b->action ?? null) ? $b->action : '';
   if (in_array($act, ['hide', 'restore', 'delete'], true)) {
     $id = id_of($b->id ?? 0);
-    if (!val('SELECT id FROM hub_items WHERE id = ?', [$id])) fail('not_found', 404);
+    if (!val("SELECT id FROM hub_items WHERE id = ? AND status <> 'private'", [$id])) fail('not_found', 404);
     if ($act === 'hide') q("UPDATE hub_items SET status = 'hidden', hidden_reason = 'admin' WHERE id = ?", [$id]);
     if ($act === 'restore') {                                      // (reviewed: its reports closed)
       q("UPDATE hub_items SET status = 'visible', hidden_reason = NULL, reports = 0 WHERE id = ?", [$id]);

@@ -274,7 +274,7 @@ function old_enough(array $u): bool { return strtotime($u['created_at'] . ' UTC'
 function check_badges(int $uid): void {
   $have = array_column(all('SELECT badge FROM hub_badges WHERE user_id = ?', [$uid]), 'badge');
   $want = [];
-  $kinds = array_column(all('SELECT DISTINCT kind FROM hub_items WHERE user_id = ?', [$uid]), 'kind');
+  $kinds = array_column(all("SELECT DISTINCT kind FROM hub_items WHERE user_id = ? AND status <> 'private'", [$uid]), 'kind');
   if (in_array('song', $kinds, true)) $want[] = 'first_song';
   if (in_array('plugin', $kinds, true)) $want[] = 'first_plugin';
   $likes = (int) val('SELECT COUNT(*) FROM hub_likes l JOIN hub_items i ON i.id = l.item_id WHERE i.user_id = ?', [$uid]);

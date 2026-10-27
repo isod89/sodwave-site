@@ -140,7 +140,7 @@ class Hub {
     if (target?.item) this.go('item', target.item);
     else if (target?.user) this.go('user', target.user);
     else this.go(typeof target === 'string' ? target : this.view?.name && this.view.name !== 'off' ? this.view.name : 'discover', this.view?.arg, true);
-    setTimeout(() => (phone() ? this.box : this.search).focus?.({ preventScroll: true }), 30);
+    setTimeout(() => (phone() || this.app.standalone ? this.box : this.search).focus?.({ preventScroll: true }), 30);
   }
   close() {
     if (!this.bg || this.app.standalone) return;                  // (the hub's own page: it is the page, it never closes)
@@ -244,9 +244,18 @@ class Hub {
       f.q ? h('button', { class: 'hub-chip on', title: 'Remove this filter', onclick: () => { f.q = ''; this.search.value = ''; this.go('discover', null, true); } }, h('span', NAME, `“${f.q}”`), ' ×') : null,
       h('div', { class: 'spacer', style: { flex: '1' } }),
       f.kind === 'plugin' && this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null,
-      h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…'));
+      this.app.standalone ? null : h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…'));
     const query = { kind: f.kind, sort: f.sort, genre: f.genre, tag: f.tag, country: f.country, q: f.q };
-    await this.feed(seq, chips, query, () => h('div', { class: 'hub-empty' }, h('p', { text: f.q || f.genre || f.tag || f.country || f.kind ? 'Nothing matches these filters yet.' : 'Nothing published yet: be the first!' }),
+    // the hub's own page: a welcome above the first page (not over a search: the results come first)
+    const intro = this.app.standalone && !f.q && !f.tag && !f.country ? h('div', { class: 'hub-intro' },
+      h('div', {}, h('h1', {}, h('b', { text: 'Discover what people' }), ' ', h('span', { text: 'make with Kraken' })),
+        h('p', { text: session.token ? 'Songs, sounds and plugins from creators everywhere. Listen in one click, open them in Kraken, make them yours. Publish yours for everyone, or keep them private: a backup only you can see.'
+          : 'Songs, sounds and plugins from creators everywhere. Listen in one click, open them in Kraken, make them yours. Join free to like, follow, and publish yours for everyone or privately.' })),
+      h('div', { class: 'acts' }, session.token
+        ? h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…')
+        : h('button', { class: 'hub-btn go', onclick: () => this.go('me') }, 'Join free'),
+      this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null)) : null;
+    await this.feed(seq, [intro, chips], query, () => h('div', { class: 'hub-empty' }, h('p', { text: f.q || f.genre || f.tag || f.country || f.kind ? 'Nothing matches these filters yet.' : 'Nothing published yet: be the first!' }),
       f.kind === 'plugin' && this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null,
       h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…')));
   }
@@ -320,7 +329,7 @@ class Hub {
     const kindLine = h('div', { class: 'hub-meta' }, h('span', { text: it.kind === 'preset' && it.subkind ? SUBKIND[it.subkind] || KIND.preset : KIND[it.kind] }),
       it.genre ? [' · ', h('button', { class: 'linkish', ...NAME, style: linkish, onclick: () => { Object.assign(this.filters, { genre: it.genre, tag: '', q: '' }); this.go('discover', null, true); } }, it.genre)] : null,
       it.bpm ? ` · ${+it.bpm.toFixed(2)} BPM` : null, ' · ', h('span', { text: when(it.created_at) }));
-    const own = it.mine, admin = me?.admin;
+    const own = it.mine, admin = me?.admin, priv = it.status === 'private';
     const left = h('div', {},
       hero,
       it.has_audio ? h('p', { class: 'hub-warn', style: { marginTop: '12px' }, text: audioNote(it) }) : null,
@@ -328,12 +337,15 @@ class Hub {
     const right = h('div', {},
       h('h2', { ...NAME, text: it.title }),
       kindLine,
-      it.status && it.status !== 'visible' ? h('p', { class: 'hub-warn', style: { marginTop: '10px' }, text: it.hidden_reason === 'reports' ? 'Hidden: reported by several people, waiting for a moderator.' : 'Hidden by a moderator.' }) : null,
+      priv ? h('div', { class: 'hub-private' }, h('b', { text: '🔒 Private' }),
+        h('span', { text: 'Only you can see it: a backup kept on the hub. Nobody else can find it, open it or download it, not even with its link.' }),
+        h('button', { class: 'hub-btn go', onclick: () => this.setPrivate(it, false) }, 'Share with everyone'))
+        : it.status === 'hidden' ? h('p', { class: 'hub-warn', style: { marginTop: '10px' }, text: it.hidden_reason === 'reports' ? 'Hidden: reported by several people, waiting for a moderator.' : 'Hidden by a moderator.' }) : null,
       h('div', { class: 'hub-actions' }, listenBtn,
         it.kind === 'song' ? h('button', { class: 'hub-btn go', onclick: () => this.openSong(it) }, 'Open in Kraken') : h('button', { class: 'hub-btn go', onclick: () => this.install(it) }, '⬇ Install'),
         it.kind === 'plugin' && this.app.labOpenPatch ? h('button', { class: 'hub-btn', onclick: () => this.openInLab(it) }, '◈ Open in the LAB') : null,
-        likeBtn,
-        h('button', { class: 'hub-btn', onclick: () => this.share(it) }, '↗ Share')),
+        priv ? null : likeBtn,
+        priv ? null : h('button', { class: 'hub-btn', onclick: () => this.share(it) }, '↗ Share')),
       stats, world,
       it.description ? h('div', { class: 'desc', ...NAME, text: it.description }) : null,
       it.tags?.length ? h('div', { class: 'hub-tags' }, it.tags.map((tg) => h('button', { ...NAME, onclick: () => { Object.assign(this.filters, { tag: tg, genre: '', q: '' }); this.go('discover', null, true); } }, `#${tg}`))) : null,
@@ -341,6 +353,7 @@ class Hub {
       this.creator(it.user),
       h('div', { class: 'hub-actions', style: { marginTop: '18px' } },
         own || admin ? h('button', { class: 'hub-btn', onclick: () => this.editItem(it) }, '✎ Edit') : null,
+        own && it.status === 'visible' ? h('button', { class: 'hub-btn', onclick: () => this.setPrivate(it, true) }, '🔒 Make private') : null,
         own || admin ? h('button', { class: 'hub-btn danger', onclick: () => this.deleteItem(it) }, 'Delete') : null,
         !own ? h('button', { class: 'hub-btn danger', onclick: () => this.report(it) }, '⚑ Report') : null),
       admin && it.report_list?.length ? [h('h4', { text: 'Reports' }), reportList(it.report_list)] : null);
@@ -586,6 +599,20 @@ class Hub {
       h('div', { class: 'row' }, h('button', { class: 'add', onclick: () => m.close() }, 'Cancel'), h('button', { class: 'add go danger', onclick: send }, 'Report'))], []);
     m.box.classList.add('hub-pub');
   }
+  // private (only me: a backup) or shared with everyone, any time
+  async setPrivate(it, on) {
+    const run = async () => {
+      try {
+        const r = await api.edit({ id: it.id, private: on });
+        const parts = on ? [] : this.gained(r.xp) || [];
+        this.app.toast([on ? 'Private: only you can see it now.' : 'Shared: everyone can see it now.', ...parts].join(' · '));
+        this.go('item', it.id, true);
+        if (!on) this.refreshMe();
+      } catch (e) { this.app.toast(errText(e)); }
+    };
+    if (on) this.app.confirm('Make it private', `Only you will see "${it.title}". Its page and its link stop working for everyone else; its likes and downloads stay.`, 'Make private', run);
+    else run();
+  }
   deleteItem(it) {
     this.app.confirm('Delete from the hub', `Delete "${it.title}" from the hub? Its likes and downloads go with it (your XP stays).`, 'Delete', async () => {
       try { await api.remove(it.id); this.app.toast('Deleted from the hub.'); this.stack = []; this.go('me', null, true); } catch (e) { this.app.toast(errText(e)); }
@@ -778,8 +805,19 @@ class Hub {
     const me = session.me;
     const today = me?.today || { publishes: 0, publish_max: XP.publishPerDay, youtube: 0, youtube_max: XP.youtubePerDay };
     const preview = h('div', { class: 'hub-xp-preview' });
-    let ytOk = null;
+    let ytOk = null, priv = false;
+    // who sees it: everyone, or only me (a backup on the hub: nobody else can see it or take the idea)
+    const vis = h('div', { class: 'hub-vis', role: 'radiogroup', 'aria-label': 'Who can see it' });
+    const visSay = h('p', { class: 'hint' });
+    const drawVis = () => {
+      vis.replaceChildren(...[[false, '🌍 Everyone', 'On the hub for all to hear, like and download'], [true, '🔒 Only me', 'Private: a backup nobody else can see']].map(([v, b, sm]) =>
+        h('button', { type: 'button', role: 'radio', 'aria-checked': String(priv === v), class: priv === v ? 'on' : '', onclick: () => { priv = v; drawVis(); drawXp(); } }, h('b', { text: b }), h('small', { text: sm }))));
+      visSay.textContent = priv ? 'Only you can see it, with your account, on any device. Share it with everyone later if you like: one button on its page.'
+        : 'Everyone can see what you publish, with your name and level. You can edit, make private or delete it later.';
+      go.textContent = priv ? 'Keep privately' : 'Publish';
+    };
     const drawXp = () => {
+      if (priv) { preview.replaceChildren(h('b', { text: '+0 XP' }), h('span', { text: 'Private: XP comes when you share it with everyone.' })); return; }
       const pub = today.publishes < today.publish_max ? XP.publish : 0;
       const yt = kind === 'song' && ytOk && today.youtube < today.youtube_max ? XP.youtube : 0;
       preview.replaceChildren(...[h('b', { text: `+${pub + yt} XP` }),
@@ -800,25 +838,26 @@ class Hub {
       ? h('p', { class: 'hint', text: 'It uses plugins from other sites (WAM): people are asked before those run.' }) : null;
     const err = h('p', { class: 'bad', hidden: true });
     const go = h('button', { class: 'add go hub-publish-go' }, 'Publish');
+    drawVis();
     go.onclick = async () => {
       const v = f.values();
       if (!v.title) { err.textContent = ERRORS.bad_title; err.hidden = false; f.title.focus(); return; }
       if (v.youtube && !youtubeId(v.youtube)) { err.textContent = ERRORS.bad_youtube; err.hidden = false; return; }
-      go.disabled = true; go.textContent = 'Publishing…';
+      go.disabled = true; go.textContent = priv ? 'Saving…' : 'Publishing…';
       try {
-        const r = await api.publish({ kind, ...v, data });
+        const r = await api.publish({ kind, ...v, data, ...(priv ? { private: true } : {}) });
         m.close();
         const parts = this.gained(r.xp) || [];
-        session.setMe({ ...session.me, today: { ...today, publishes: today.publishes + 1, youtube: today.youtube + (r.item.youtube && kind === 'song' ? 1 : 0) } });
-        this.app.toast(['Published on the hub!', ...parts].join(' · '));
-        this.app.logAct?.(`hub: published ${kind}`);
+        const said = priv ? 'Kept privately on the hub: only you can see it.' : 'Published on the hub!';
+        if (!priv) session.setMe({ ...session.me, today: { ...today, publishes: today.publishes + 1, youtube: today.youtube + (r.item.youtube && kind === 'song' ? 1 : 0) } });
+        this.app.toast([said, ...parts].join(' · '));
+        this.app.logAct?.(`hub: ${priv ? 'kept privately' : 'published'} ${kind}`);
         this.go('item', r.item.id);
-        this.refreshMe(['Published on the hub!', ...parts]);        // (and the badge it may have earned)
-      } catch (e) { err.textContent = errText(e); err.hidden = false; go.disabled = false; go.textContent = 'Publish'; }
+        if (!priv) this.refreshMe([said, ...parts]);                // (and the badge it may have earned)
+      } catch (e) { err.textContent = errText(e); err.hidden = false; go.disabled = false; drawVis(); }
     };
     const m = this.app.modal({ song: 'Publish this song', template: 'Publish as a template', preset: `Publish this ${(SUBKIND[sub] || 'preset').toLowerCase()}`, plugin: 'Publish this plugin' }[kind], [
-      h('p', { class: 'hint', text: what }), audio, wam, ...f.nodes, preview, err,
-      h('p', { class: 'hint', text: 'Everyone can see what you publish, with your name and level. You can edit or delete it later.' }),
+      h('p', { class: 'hint', text: what }), audio, wam, vis, ...f.nodes, preview, err, visSay,
       h('div', { class: 'row' }, h('button', { class: 'add', onclick: () => m.close() }, 'Cancel'), go),
     ].filter(Boolean), []);
     m.box.classList.add('hub-pub');
@@ -839,7 +878,8 @@ function thumb(it, big = false) {
     it.youtube ? h('img', { src: thumbUrl(it.youtube), alt: '', loading: 'lazy', decoding: 'async', onerror: (e) => e.target.remove() }) : coverEl(it),
     big ? null : h('span', { class: 'kind', text: KIND[it.kind] }),
     it.youtube && !big ? h('span', { class: 'yt', title: 'YouTube video' }) : null,
-    it.status && it.status !== 'visible' ? h('span', { class: 'tag-hidden', text: 'Hidden' }) : null);
+    it.status === 'private' ? h('span', { class: 'tag-private', title: 'Only you can see it', text: '🔒 Private' })
+      : it.status && it.status !== 'visible' ? h('span', { class: 'tag-hidden', text: 'Hidden' }) : null);
 }
 function avatar(u, big) {
   return h('span', { class: 'hub-avatar' + (big ? ' big' : ''), '--g': grad(u.name), 'aria-hidden': 'true' }, h('span', { ...NAME, text: (u.name || '?').trim().charAt(0).toUpperCase() }),

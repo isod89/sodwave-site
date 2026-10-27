@@ -49,6 +49,18 @@ export const HUB_CSS = `
 .hub-thumb .kind { position: absolute; left: 8px; top: 8px; padding: 4px 7px; border-radius: 4px; background: #000b; color: #fff; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase; }
 .hub-thumb .yt { position: absolute; right: 8px; bottom: 8px; width: 30px; height: 21px; border-radius: 6px; background: #f00; display: grid; place-items: center; }
 .hub-thumb .yt::after { content: ""; border-left: 9px solid #fff; border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent; margin-left: 2px; }
+.hub-thumb .tag-private { position: absolute; right: 8px; top: 8px; padding: 4px 7px; border-radius: 4px; background: #0b0d10d9; border: 1px solid #ffffff2e; color: #fff; font: 700 9px/1 var(--f-ui); letter-spacing: 0.08em; }
+.hub-private { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; align-items: center; margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid #ffffff24; background: #ffffff0a; }
+.hub-private b { font: 700 12px/1.2 var(--f-ui); letter-spacing: 0.06em; color: var(--text); }
+.hub-private span { grid-column: 1; font: 500 11.5px/1.45 var(--f-ui); color: var(--dim); }
+.hub-private .hub-btn { grid-column: 2; grid-row: 1 / span 2; }
+@media (max-width: 560px) { .hub-private { grid-template-columns: 1fr; } .hub-private .hub-btn { grid-column: 1; grid-row: auto; justify-self: start; } }
+.hub-vis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hub-vis button { display: grid; gap: 3px; text-align: left; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line, #2a2e35); background: #ffffff06; color: var(--text); cursor: pointer; }
+.hub-vis button b { font: 700 12.5px/1.2 var(--f-ui); }
+.hub-vis button small { font: 500 10.5px/1.35 var(--f-ui); color: var(--dim); }
+.hub-vis button.on { border-color: var(--accent); background: #ff5b1418; box-shadow: inset 0 0 0 1px var(--accent); }
+.hub-vis button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hub-thumb .tag-hidden { position: absolute; right: 8px; top: 8px; padding: 4px 7px; border-radius: 4px; background: var(--rec); color: #fff; font: 700 8.5px/1 var(--f-ui); letter-spacing: 0.12em; }
 .hub-card .txt { display: grid; gap: 6px; padding: 10px 11px 11px; align-content: start; min-width: 0; }
 .hub-card .ttl { font: 700 13px/1.25 var(--f-ui); letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
@@ -168,7 +180,14 @@ a.hub-btn { text-decoration: none; }
 .hub-xp-preview b { font: 400 14px/1.2 var(--f-lcd); color: var(--accent); }
 .hub-xp-preview span { font: 500 11px/1.4 var(--f-ui); color: var(--dim); }
 .hub-listen.on { background: var(--go); border-color: var(--go); color: #fff; }
-@media (max-width: 900px) { .hub-item { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .hub-item { grid-template-columns: minmax(0, 1fr); }
+  /* one column: the picture, then what it is and what to do with it, then the creator's other work */
+  .hub-item > div:first-child { display: contents; }
+  .hub-item .hero { order: 0; }
+  .hub-item > div:last-child { order: 1; min-width: 0; }
+  .hub-item > div:first-child > :not(.hero) { order: 2; }
+}
 @media (max-width: 700px), (max-height: 520px) and (pointer: coarse) {
   .hub-bg { padding: 0; }
   .hub { border-radius: 0; max-width: none; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
