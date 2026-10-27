@@ -147,6 +147,12 @@ a.hub-btn { text-decoration: none; }
 .hub-login { max-width: 520px; margin: 10px auto; display: grid; gap: 12px; text-align: center; justify-items: center; }
 .hub-login .hub-form { width: 100%; text-align: left; }
 .hub-login .big { font-size: 46px; }
+.hub-codebox { display: grid; gap: 8px; margin-top: 10px; text-align: left; }
+.hub-wait { margin: 0 !important; font: 500 12px/1.45 var(--f-ui); color: var(--dim); }
+.hub-coderow { display: flex; gap: 8px; }
+.hub-code { flex: 1; min-width: 0; height: 40px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line-2); background: var(--screen-3); color: var(--text);
+  font: 600 20px/1 var(--f-mono); letter-spacing: 0.2em; text-align: center; padding: 0 8px; user-select: text; -webkit-user-select: text; }
+.hub-code:focus { outline: none; border-color: var(--accent); }
 .hub-sent { border: 1px solid #19b76566; background: #19b76514; color: #8be6b4; border-radius: 8px; padding: 10px 12px; font: 500 12px/1.5 var(--f-ui); }
 .hub-mod { display: grid; gap: 10px; }
 .hub-mod-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--screen-2); align-items: start; }

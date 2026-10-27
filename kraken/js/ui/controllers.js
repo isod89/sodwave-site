@@ -77,7 +77,16 @@ export class Controllers {
         h('select', { 'aria-label': `${t.name} MIDI channel`, onchange: (e) => app.store.change((p) => { p.tracks.find((x) => x.id === t.id).midiCh = +e.target.value; }) },
           h('option', { value: 0 }, 'WHEN SELECTED'), [...Array(16)].map((_, i) => h('option', { value: i + 1, selected: t.midiCh === i + 1 ? true : null }, `CHANNEL ${i + 1}`))))),
       small('A track on a channel always plays what comes in on it (several keyboards, an external sequencer, an FM-1). Everything else plays the armed track, or the selected one. Bend, mod wheel, pressure, sustain and CCs 7 / 10 / 71–75 / 91 / 94 go to the instrument too.'));
-    this.wrap.replaceChildren(devices, learn, actions, routing);
+    // an SMK-37 running SLOOP Pro: found by itself (control.js, sloop-pro.js), what each of its controls does here
+    const sp = c.sloopPro, found = sp.list();
+    const sloop = found.length ? mod('SLOOP PRO · SMK-37', found[0][1].s.on ? 'DAW MODE' : 'SYNTH MODE', ...found.flatMap(([name, d]) => [
+      h('label', { class: 'ctl-row' }, h('span', { class: 'ctl-dev', text: 'AUTOMATIC MAP' }),
+        h('input', { type: 'checkbox', 'aria-label': 'Automatic map for SLOOP Pro', checked: sp.enabled(name) ? true : null, onchange: (e) => sp.setEnabled(name, e.target.checked) })),
+      d.s.on ? null : small('In SYNTH mode the keyboard plays SLOOP. Press < and > together for DAW mode: its controls then drive Kraken.'),
+      h('div', { class: 'ctl-maps sp' }, sp.describe(d).map(([a, b]) => h('div', { class: 'ctl-map sp' }, h('span', { class: 'src', translate: 'no', text: a }), h('span', { class: 'dst', text: b })))),
+      small(`${d.s.user ? 'Its own map (USER), as edited on the keyboard' : 'Its DEFAULT map'} · keys on channel ${d.s.ch} · knobs ${d.s.rel ? 'RELATIVE' : 'ABSOLUTE'}${d.state === 'assumed' ? ' · assumed: this browser gives no SysEx access, so Kraken cannot read the keyboard' : ''}. Mappings made with MIDI Learn come first. KNOB BANK and FADER BANK switch to bank B.`),
+    ])) : null;
+    this.wrap.replaceChildren(devices, ...(sloop ? [sloop] : []), learn, actions, routing);
     c.markMapped();
   }
   monitor() {

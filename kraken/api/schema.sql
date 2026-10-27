@@ -35,6 +35,23 @@ CREATE TABLE IF NOT EXISTS hub_login_tokens (
   UNIQUE KEY uq_token (token_hash),
   KEY k_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- the window that asked for a link: signed in when the link is opened anywhere, or by the email's 6-digit code
+-- (the API also makes this table itself on first use, for a hub installed before it)
+CREATE TABLE IF NOT EXISTS hub_login_waits (
+  token_hash  CHAR(64)         NOT NULL,
+  wait_hash   CHAR(64)         NOT NULL,
+  code_hash   CHAR(64)         NOT NULL,
+  email       VARCHAR(190)     NOT NULL,
+  tries       TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  approved    TINYINT(1)       NOT NULL DEFAULT 0,
+  claimed     TINYINT(1)       NOT NULL DEFAULT 0,
+  created_at  DATETIME         NOT NULL,
+  expires_at  DATETIME         NOT NULL,
+  PRIMARY KEY (token_hash),
+  UNIQUE KEY uq_wait (wait_hash),
+  KEY k_email (email),
+  KEY k_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- a signed-in browser: only the SHA-256 of its token is kept
 CREATE TABLE IF NOT EXISTS hub_sessions (

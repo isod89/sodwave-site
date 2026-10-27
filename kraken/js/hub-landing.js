@@ -6,12 +6,13 @@ import { h } from './ui/kit.js';
 import { api, ERRORS, LEVELS, LEVEL_ICONS, levelOf, flag, KIND_ICONS, thumbUrl } from './hub.js';
 import { getLang } from './i18n.js';
 import { cover } from './hub-art.js';
+import { codeBox } from './ui/hub.js';
 
 const KIND = { song: 'Song', preset: 'Preset', plugin: 'Plugin', template: 'Template' };
 const art = (seed, kind) => { const el = h('span', { class: 'lp-art', 'aria-hidden': 'true' }); el.innerHTML = cover(seed, kind); return el; };
 
 // one field and a button: the sign-in link by email
-function joinForm(id) {
+function joinForm(id, signedIn) {
   const email = h('input', { type: 'email', id, required: true, placeholder: 'your@email.com', autocomplete: 'email', 'aria-label': 'Your email', spellcheck: 'false' });
   const msg = h('p', { class: 'lp-msg', role: 'status' });
   const btn = h('button', { class: 'lp-btn go', type: 'submit' }, 'JOIN FREE');
@@ -23,9 +24,11 @@ function joinForm(id) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { msg.className = 'lp-msg bad'; msg.textContent = 'Type your email first.'; email.focus(); return; }
     btn.disabled = true; msg.className = 'lp-msg'; msg.textContent = 'Sending…';
     try {
-      await api.login(v, getLang());
-      msg.className = 'lp-msg ok'; msg.textContent = 'Check your inbox: your sign-in link is on its way (valid 15 minutes). Nothing there? Look in the spam folder.';
+      const r = await api.login(v, getLang());
+      msg.className = 'lp-msg ok'; msg.textContent = 'Check your inbox: open the link of the email, on this device or another one, and this page signs in by itself. Nothing there? Look in the spam folder.';
       email.value = '';
+      form.querySelector('.hub-codebox')?.remove();
+      if (r.wait && signedIn) msg.after(codeBox(r.wait, signedIn));
     } catch (err) { msg.className = 'lp-msg bad'; msg.textContent = err?.message || ERRORS.server; }
     btn.disabled = false;
   });
@@ -43,7 +46,7 @@ function itemCard(it, open) {
     h('span', { class: 'lp-st' }, `♥ ${it.likes}`, h('span', { text: `⬇ ${it.downloads}` })));
 }
 
-export function landing({ open, openKraken }) {
+export function landing({ open, openKraken, signedIn = null }) {
   const showcase = h('div', { class: 'lp-show', 'aria-hidden': 'true' },
     h('div', { class: 'lp-float a' }, art('hero-song', 'song'), h('b', { text: '♪ YOUR SONG' }), h('span', { text: '♥ LIKES  ·  🌍 WORLD' })),
     h('div', { class: 'lp-float b' }, art('hero-plugin', 'plugin'), h('b', { text: '◈ YOUR PLUGIN' }), h('span', { text: 'OPEN IN THE LAB' })),
@@ -64,7 +67,7 @@ export function landing({ open, openKraken }) {
         h('p', { class: 'lp-eye', text: 'THE KRAKEN HUB' }),
         h('h1', {}, h('span', { text: 'Make it in Kraken.' }), h('span', { class: 'grad', text: 'Share it with the world.' })),
         h('p', { class: 'lp-lead', text: 'The hub is where songs, presets and plugins made with Kraken find their people. Publish in one click, collect likes from every country, and climb from Plankton to Legendary Kraken.' }),
-        joinForm('lp-email-1'),
+        joinForm('lp-email-1', signedIn),
         h('div', { class: 'lp-alt' }, h('button', { class: 'lp-link', onclick: () => open('discover') }, 'Explore without an account →'),
           h('span', { text: '·' }), h('button', { class: 'lp-link', onclick: openKraken }, 'Open Kraken, the free DAW'))),
       showcase),
@@ -80,7 +83,7 @@ export function landing({ open, openKraken }) {
           h('button', { class: 'lp-btn', onclick: openKraken }, 'OPEN KRAKEN')),
         h('div', { class: 'lp-step' }, h('b', { text: '2' }), h('h3', { text: 'Publish' }), h('p', { text: 'One click on ☁ PUBLISH, in Kraken or in the LAB. Your song plays for everyone, right in their browser.' })),
         h('div', { class: 'lp-step' }, h('b', { text: '3' }), h('h3', { text: 'Grow' }), h('p', { text: 'Likes, followers, downloads, XP and badges: your profile shows it all, and the world map shows where you are heard.' })))),
-    h('section', { class: 'lp-cta' }, h('h2', { text: 'Ready to share your sound?' }), h('p', { text: 'Free. No password. Your email is never shown to anyone.' }), joinForm('lp-email-2')),
+    h('section', { class: 'lp-cta' }, h('h2', { text: 'Ready to share your sound?' }), h('p', { text: 'Free. No password. Your email is never shown to anyone.' }), joinForm('lp-email-2', signedIn)),
     h('footer', { class: 'lp-foot' }, h('span', { translate: 'no', text: 'Kraken · Sodwave' }),
       h('a', { href: './', text: 'Kraken' }), h('a', { href: './?lab', text: 'LAB' }), h('a', { href: 'https://www.sodwave.com/', translate: 'no', text: 'sodwave.com' }),
       h('span', { text: 'Free and open source (GPL-3.0)' })));

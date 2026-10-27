@@ -45,7 +45,8 @@ import { welcome, startTour } from './ui/welcome.js';
 import { initI18n, toggleLang } from './i18n.js';
 import { openLab, installLab, labPicker, labStart, labOpenPatch } from './ui/lab.js';
 import { setLabEngines } from './lab-dsp.js';
-import { initHub } from './ui/hub.js';                       // the community hub (ui/hub.js, hub.js, hub/api)
+import { initHub } from './ui/hub.js';
+import { toOfficialHost } from './hub.js';                       // the community hub (ui/hub.js, hub.js, hub/api)
 
 const $ = (id) => document.getElementById(id);
 const BOOTING = 'kraken.booting';        // set while a project opens: still there at the next start, it did not
@@ -77,6 +78,7 @@ window.kraken = app;           // handy in the console
 
 // ------------------------------------------------------------------ boot ---
 async function boot() {
+  if (toOfficialHost()) return;                                   // (the official site without its www: to the www one, where the session is)
   try {
     const { modules, lib } = await loadEngines();
     app.modules = modules; app.lib = lib;

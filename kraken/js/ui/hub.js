@@ -10,7 +10,7 @@
 // email gets a sign-in link: /?hub_login=…). An item's public link (/api/s.php?id=…) opens Kraken at /?hub=ID.
 import { h } from './kit.js';
 import {
-  api, session, available, hubInfo, officialSite, setHubUrl, shareUrl, thumbUrl, youtubeUrl, youtubeId, youtubeChannel, COUNTRIES, flag, countryName,
+  api, session, resumeSession, available, hubInfo, officialSite, setHubUrl, shareUrl, thumbUrl, youtubeUrl, youtubeId, youtubeChannel, COUNTRIES, flag, countryName,
   LEVELS, LEVEL_ICONS, levelOf, BADGES, XP, MAX_DATA, audioIds, KIND_ICONS, ERRORS,
 } from '../hub.js';
 import { STARTERS, FAMILIES } from '../templates.js';
@@ -47,6 +47,7 @@ export function initHub(app) {
   app.hub = ui;
   ui.publishLab = (lab, name) => ui.publish({ lab, name });   // (the LAB editor's ☁ PUBLISH)
   document.getElementById('hubbtn')?.addEventListener('click', () => ui.open());
+  ui.ready = resumeSession().then((back) => { if (back && ui.bg) ui.drawTabs(); return back; });   // (still signed in, months later)
   const q = new URLSearchParams(location.search);
   const login = q.get('hub_login'), item = q.get('hub');
   if (login || item) {
@@ -58,6 +59,38 @@ export function initHub(app) {
     return true;
   }
   return false;
+}
+
+// after the email is sent: the 6-digit code to type, and this window waiting for the link to be opened anywhere (the
+// phone's mail app, another browser): it signs in by itself. Polls every 3 s (at once when the page comes back) for 16 min.
+export function codeBox(wait, onIn) {
+  const code = h('input', { class: 'hub-code', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '123 456', 'aria-label': 'The code of the email', spellcheck: 'false' });
+  const ok = h('button', { class: 'hub-btn go', type: 'button' }, 'Sign in');
+  const note = h('p', { class: 'hub-wait', role: 'status', text: 'Waiting for the link… or type the code of the email:' });
+  const box = h('div', { class: 'hub-codebox' }, note, h('div', { class: 'hub-coderow' }, code, ok));
+  let done = false, timer = 0;
+  const t0 = Date.now();
+  const finish = (r) => { if (done) return; done = true; clearTimeout(timer); document.removeEventListener('visibilitychange', wake); onIn(r); };
+  const send = async () => {
+    const v = code.value.replace(/\D+/g, '');
+    if (v.length !== 6) { note.textContent = 'The code has 6 digits.'; code.focus(); return; }
+    ok.disabled = true;
+    try { finish(await api.loginCode(wait, v)); } catch (e) { note.textContent = errText(e); ok.disabled = false; if (e.code === 'bad_code') { code.select(); } }
+  };
+  ok.onclick = send;
+  code.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') send(); });
+  code.addEventListener('input', () => { if (code.value.replace(/\D+/g, '').length === 6) send(); });
+  const poll = async () => {
+    timer = 0;
+    if (done || session.token) return;                       // (signed in another way meanwhile)
+    if (Date.now() - t0 > 16 * 60 * 1000) { note.textContent = 'This email has expired: ask for a new one.'; return; }
+    try { const r = await api.loginWait(wait); if (r.token) { finish(r); return; } } catch (e) { if (e.code === 'bad_token') return; }
+    if (!done) timer = setTimeout(poll, 3000);
+  };
+  const wake = () => { if (document.visibilityState === 'visible' && !done) { clearTimeout(timer); poll(); } };
+  document.addEventListener('visibilitychange', wake);
+  timer = setTimeout(poll, 3000);
+  return box;
 }
 
 class Hub {
@@ -377,8 +410,9 @@ class Hub {
       send.disabled = true;
       try {
         const r = await api.login(v, getLang());
-        msg.replaceChildren(h('div', { class: 'hub-sent' }, h('span', { text: 'Check your inbox: a sign-in link is on its way. It works for 15 minutes, once. Nothing there? Look in the spam folder.' }),
-          r.dev_link ? [h('br'), h('a', { href: r.dev_link, class: 'hub-devlink', text: 'Test mode: sign in now' })] : null));
+        msg.replaceChildren(h('div', { class: 'hub-sent' }, h('span', { text: 'Check your inbox: a sign-in email is on its way. Open its link, on this device or another one: this window signs in by itself. Nothing there? Look in the spam folder.' }),
+          r.dev_link ? [h('br'), h('a', { href: r.dev_link, class: 'hub-devlink', text: 'Test mode: sign in now' })] : null),
+          r.wait ? codeBox(r.wait, (x) => this.signedIn(x)) : null);
       } catch (e) { msg.replaceChildren(h('p', { class: 'hub-warn', text: errText(e) })); }
       send.disabled = false;
     };
@@ -400,16 +434,22 @@ class Hub {
     this.drawTabs();
     this.body.replaceChildren(h('div', { class: 'hub-busy', text: 'Signing in…' }));
     try {
-      const r = await api.exchange(token);
-      session.set(r.token, r.me);
-      this.drawTabs();
-      this.app.toast(`Signed in to the hub. Welcome, ${r.me.name}!`);
-      await this.go('me', null, true);
-      if (r.created) this.editProfile(true);
+      await this.signedIn(await api.exchange(token));
     } catch (e) {
       this.app.toast(errText(e));
       this.go('me', null, true);
     }
+  }
+  // signed in (by the link, its code, or the link opened somewhere else): the session kept, the profile shown
+  async signedIn(r) {
+    session.set(r.token, r.me);
+    this.build();
+    this.bg.hidden = false;
+    this.drawTabs();
+    this.app.toast(`Signed in to the hub. Welcome, ${r.me.name}!`);
+    this.onSignedIn?.(r);
+    await this.go('me', null, true);
+    if (r.created) this.editProfile(true);
   }
   async signOut() {
     try { await api.logout(); } catch { /* signed out here anyway */ }

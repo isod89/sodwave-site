@@ -117,7 +117,7 @@ function blur(string $s): string { return hash_hmac('sha256', $s, (string) cfg('
 // at most $limit times per $seconds for this action and this address (or person); the defaults can be changed in
 // config.php: 'rate' => ['login_ip' => [5, 900]]
 const RATES = [
-  'read_ip' => [600, 60], 'login_ip' => [8, 900], 'login_email' => [4, 900], 'exchange_ip' => [30, 900], 'publish_user' => [20, 3600],
+  'read_ip' => [600, 60], 'login_ip' => [8, 900], 'login_email' => [4, 900], 'exchange_ip' => [30, 900], 'wait_ip' => [600, 900], 'publish_user' => [20, 3600],
   'like_user' => [150, 3600], 'follow_user' => [60, 3600], 'report_user' => [30, 86400], 'edit_user' => [60, 3600], 'download_ip' => [300, 3600],
   'thumb_ip' => [120, 60], 'profile_user' => [30, 3600], 'admin_user' => [600, 3600],
 ];
@@ -138,7 +138,25 @@ function bearer(): ?string {
   if (preg_match('/^Bearer\s+([a-f0-9]{64})$/i', trim((string) $h), $m)) return strtolower($m[1]);
   // (some hosts drop Authorization on its way to PHP: the page sends the token in this header too)
   $x = $_SERVER['HTTP_X_KRAKEN_TOKEN'] ?? '';
-  return preg_match('/^[a-f0-9]{64}$/i', $x) ? strtolower($x) : null;
+  if (preg_match('/^[a-f0-9]{64}$/i', $x)) return strtolower($x);
+  // (and hosts that drop both headers: the session also rides in a cookie of this folder, strict: never sent by another site)
+  $c = $_COOKIE[SESSION_COOKIE] ?? '';
+  if (is_string($c) && preg_match('/^[a-f0-9]{64}$/', $c)) { $GLOBALS['hub_via_cookie'] = true; return $c; }
+  return null;
+}
+// signed in by the cookie alone: the page had lost its copy of the session (Safari clears a site's storage after 7 days
+// away; a home-screen app has its own): me gives it back
+function via_cookie(): bool { return !empty($GLOBALS['hub_via_cookie']); }
+const SESSION_COOKIE = 'kraken_hub';
+// the session's cookie (null: gone), for the API's folder only, HTTPS only when the site is, out of reach of scripts
+function session_cookie(?string $token): void {
+  if (headers_sent()) return;
+  $path = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php')), '/') . '/';
+  $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || strncmp((string) cfg('site_url'), 'https:', 6) === 0;
+  $exp = $token ? time() + 180 * 86400 : time() - 3600;
+  setcookie(SESSION_COOKIE, $token ?? '', ['expires' => $exp, 'path' => $path, 'secure' => $https, 'httponly' => true, 'samesite' => 'Strict']);
+  // and a flag the pages can see (no secret in it): "a session is here, ask me" (Kraken's folder, above api/)
+  setcookie(SESSION_COOKIE . '_in', $token ? '1' : '', ['expires' => $exp, 'path' => rtrim(dirname(rtrim($path, '/')), '/') . '/', 'secure' => $https, 'httponly' => false, 'samesite' => 'Strict']);
 }
 function current_user(): ?array {
   static $done = false, $u = null;
@@ -149,6 +167,7 @@ function current_user(): ?array {
   $u = one('SELECT u.*, s.id AS session_id, s.last_used FROM hub_sessions s JOIN hub_users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > UTC_TIMESTAMP()', [hash('sha256', $t)]);
   if ($u && strtotime($u['last_used'] . ' UTC') < time() - 600) {      // (used: kept 180 days from now)
     q('UPDATE hub_sessions SET last_used = UTC_TIMESTAMP(), expires_at = UTC_TIMESTAMP() + INTERVAL 180 DAY WHERE id = ?', [$u['session_id']]);
+    session_cookie($t);                                              // (the cookie too: 180 days from now)
     q('UPDATE hub_users SET last_seen = UTC_TIMESTAMP() WHERE id = ?', [$u['id']]);
   }
   return $u;

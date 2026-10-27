@@ -654,6 +654,9 @@ body.mapping #learn-banner { pointer-events: auto; cursor: pointer; }
 .ctl-map .src { color: var(--accent); }
 .ctl-map .dst { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctl-map select { max-width: 96px; }
+.ctl-maps.sp { max-height: none; }
+.ctl-map.sp { grid-template-columns: 112px minmax(0, 1fr); }
+.ctl-map.sp .dst { white-space: normal; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .lchip { background: var(--screen-3); border: 1px solid var(--line-2); color: var(--text); border-radius: 12px; padding: 4px 9px; font: 600 9.5px/1.1 var(--f-ui); letter-spacing: 0.04em; }
 .lchip:hover { border-color: var(--accent); }

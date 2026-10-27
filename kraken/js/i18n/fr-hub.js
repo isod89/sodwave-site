@@ -337,6 +337,19 @@ export const dict = {
   'Every change plays at once. Double-click a knob: the value of the kit it started from.': 'Chaque changement joue tout de suite. Double-clic sur un bouton : la valeur du kit de départ.',
   'Or load a sample, drop one on the pad, or drag one from SOUNDS › SAMPLES: it plays instead of the kit.': 'Ou chargez un sample, déposez-en un sur le pad, ou glissez-en un depuis SONS › SAMPLES : il joue à la place du kit.',
   'That file is not a SLOOP drum synth kit.': 'Ce fichier n’est pas un kit de drum synth SLOOP.',
+  // ---- signing in: the link opened anywhere signs in the window that asked; or the email's code typed there
+  'Check your inbox: open the link of the email, on this device or another one, and this page signs in by itself. Nothing there? Look in the spam folder.':
+    'Regardez votre boîte mail : ouvrez le lien de l’email, sur cet appareil ou un autre, et cette page se connecte toute seule. Rien ? Regardez dans les spams.',
+  'Check your inbox: a sign-in email is on its way. Open its link, on this device or another one: this window signs in by itself. Nothing there? Look in the spam folder.':
+    'Regardez votre boîte mail : un email de connexion arrive. Ouvrez son lien, sur cet appareil ou un autre : cette fenêtre se connecte toute seule. Rien ? Regardez dans les spams.',
+  'This sign-in link has expired or was already used. If you asked for it in another window, look there: it may be signed in already. Otherwise ask for a new one.':
+    'Ce lien de connexion a expiré ou a déjà servi. Si vous l’avez demandé dans une autre fenêtre, regardez-la : elle est peut-être déjà connectée. Sinon, demandez-en un nouveau.',
+  'That is not the code of the email. Check it and type it again.': 'Ce n’est pas le code de l’email. Vérifiez-le et tapez-le à nouveau.',
+  'Too many wrong codes: ask for a new email.': 'Trop de codes erronés : demandez un nouvel email.',
+  'The code of the email': 'Le code de l’email',
+  'Waiting for the link… or type the code of the email:': 'En attente du lien… ou tapez le code de l’email :',
+  'The code has 6 digits.': 'Le code a 6 chiffres.',
+  'This email has expired: ask for a new one.': 'Cet email a expiré : demandez-en un nouveau.',
   // ---- the hub's front page (hub-landing.js) and its bar
   'EXPLORE': 'EXPLORER',
   'SIGN IN': 'SE CONNECTER',
@@ -457,9 +470,11 @@ export const keep = [
   // the drum synth: SLOOP's DRUM SYNTH page's own names (the firmware and its editor say them so), the LAB ENGINE's short targets
   'KICK', 'SNARE', 'CLAP', 'HAT', 'OPEN HAT', 'LOW TOM', 'HI TOM', 'CRASH', 'RIDE', 'SHAKER', 'CONGA', 'RIM', 'COWBELL', 'CLAVE', 'KICK 2', 'SNARE 2',
   'TRI', 'CYM', 'CHIP', 'LP', 'BP', 'HP', 'B.TIME', '2ND', '2ND LVL', 'HPF', 'RESO', 'MY KIT', 'ATK', 'DEC', 'REL', 'LVL', 'LFO>PIT', 'LFO>FLT', 'LFO>SHP', 'LFO>AMP',
-  '?lab', 'bad',
+  '?lab', 'bad', 'your@email.com', 'NOISE', '123 456',
+  // the SLOOP Pro keyboard's own button and control names (printed on it)
+  'SEQ PLAY', 'SEQ REC', 'SEQ', 'PARA', 'ARP', 'NOTE REPEAT', 'GLOBE', 'BT', 'K1–K8 (BANK B)', 'FADER 1–4', 'FADER 1–4 (BANK B)', 'SLOOP PRO · SMK-37',
   'GET', 'POST', 'Content-Type', 'X-Kraken-Token', 'youtu.be', 'www.youtu.be', 'https://www.youtube.com/@yourname', 'https://youtu.be/…', 'https://example.com/api',
 ];
 export const keepRules = [
-  /^[+−-]?\d+ XP$/, /^(?:[A-Z]{2} )+[A-Z]{2}$/, /^\?hub=\$\{/,
+  /^[+−-]?\d+ XP$/, /^(?:[A-Z]{2} )+[A-Z]{2}$/, /^\?hub=\$\{/, /^MMC \$\{/, /^MMC \(\$\{/,
 ];

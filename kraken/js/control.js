@@ -14,6 +14,7 @@ const MCU_NAME = /mackie|mcu|x-touch|xtouch|faderport|icon |qcon|platform ?m|v1-
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
 import { Grid, GRID_NAME } from './launchpad.js';
+import { SloopPro } from './sloop-pro.js';
 
 export const ACTIONS = [
   ['playstop', 'Play / stop'], ['play', 'Play'], ['stop', 'Stop'], ['record', 'Record'], ['loop', 'Loop on / off'],
@@ -57,6 +58,7 @@ export class Control {
     this.listeners = new Set();
     this.mcu = { bank: 0, outs: new Set(), lastSent: new Map() };
     this.grid = new Grid(app);                 // a Launchpad: the session's slots
+    this.sloopPro = new SloopPro(this);        // an SMK-37 running SLOOP Pro: its DAW mode, plug and play
     this.taps = [];
     this.clock = { next: 0, running: false, sentStart: false };
     document.addEventListener('pointerdown', (e) => this.learnClick(e), true);
@@ -66,6 +68,7 @@ export class Control {
   save() { try { localStorage.setItem(STORE, JSON.stringify(this.cfg)); } catch { /* storage blocked */ } this.emit(); }
   on(fn) { this.listeners.add(fn); }
   emit(why = 'cfg') { for (const fn of this.listeners) fn(why); }
+  actionLabel(a) { return ACTIONS.find(([x]) => x === a)?.[1] || a; }
 
   // ------------------------------------------------------------- devices ---
   async start() {
@@ -95,6 +98,7 @@ export class Control {
       if (mode === 'mackie') { const o = this.outFor(input.name); if (o) this.mcu.outs.add(o); }
       if (mode === 'grid') this.grid.attach(input.name, this.outFor(input.name));
     }
+    this.sloopPro.attach(this.inputs().filter((i) => this.modeOf(i.name) === 'keys'));
     const names = this.inputs().filter((i) => this.modeOf(i.name) !== 'off').map((i) => i.name);
     const label = document.getElementById('midi');
     label.textContent = names.length ? (names.length > 1 ? `${names.length} DEVICES` : names[0].slice(0, 14).toUpperCase()) : 'NO INPUT';
@@ -107,6 +111,7 @@ export class Control {
   // ------------------------------------------------------------- messages ---
   message(input, mode, data) {
     const [st, d1 = 0, d2 = 0] = data, type = st & 0xf0, ch = st & 15;
+    if (st === 0xf0 && this.sloopPro.reply(input, data)) return;                  // (SLOOP Pro's answer: not shown as the last message)
     this.lastMsg = { dev: input.name, data: [...data] }; this.emit('msg');
     if (st === 0xfa || st === 0xfb) return this.app.play(true);
     if (st === 0xfc) return this.app.play(false);
@@ -123,6 +128,7 @@ export class Control {
     if (mode === 'mackie' && this.mackie(st, d1, d2)) return;
     if (mode === 'grid' && this.grid.message(st, d1, d2)) return;
     if (key && this.mapped(key, value, press, type)) return;
+    if (mode === 'keys' && key && this.sloopPro.message(input, key, value, press, type)) return;
     // what nothing claims plays the instruments; an MPE track gets every channel raw (Clipper's MPE)
     const mpe = this.app.store.p.tracks.find((t) => t.mpe && t.kind === 'synth' && (t.midiCh === 0 ? t.id === this.app.playTarget()?.id : true));
     if (mpe && type >= 0x80 && type <= 0xe0 && type !== 0xc0) {
@@ -132,7 +138,7 @@ export class Control {
     }
     if (type === 0x90 && d2 > 0) {
       this.lagHint();
-      const ids = this.routeTracks(ch);
+      const ids = (mode === 'keys' && this.sloopPro.padTracks(input, ch, d1)) || this.routeTracks(ch);
       this.held.set(`${ch}:${d1}`, ids);
       for (const id of ids) this.app.noteOn(id, d1, d2, true);
     } else if (type === 0x80 || type === 0x90) {

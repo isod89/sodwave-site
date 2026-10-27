@@ -15,6 +15,15 @@ const store = {
   set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* storage blocked: for this visit only */ } },
 };
 export const officialSite = () => store.get(SITE_KEY) || OFFICIAL_SITE;
+// the official site without its www (sodwave.com/kraken): to the www one, where the session was kept (a browser keeps a
+// site's storage per exact address: signed in on one, signed out on the other)
+export function toOfficialHost() {
+  try {
+    const o = new URL(OFFICIAL_SITE);
+    if (location.hostname !== o.hostname && location.hostname === o.hostname.replace(/^www\./, '')) { location.replace(location.href.replace(location.host, o.host)); return true; }
+  } catch { /* */ }
+  return false;
+}
 export const setHubUrl = (u) => { store.set(URL_KEY, u ? String(u).trim().replace(/\/+$/, '') : null); avail = null; };
 // the API's address, absolute (index.php, s.php and thumb.php are in it)
 export function hubBase() {
@@ -53,6 +62,13 @@ export function available(force = false) {
 }
 
 // ------------------------------------------------------------------ the session ---
+// a session the page lost (Safari clears a site's storage after 7 days away; a home-screen app has its own) but the
+// API's cookie kept: asked back once, quietly, when the API said a session is here (its kraken_hub_in flag)
+export async function resumeSession() {
+  if (session.token || typeof document === 'undefined' || !/(^|;\s*)kraken_hub_in=1/.test(document.cookie)) return false;
+  try { const r = await call('me'); if (r.token && r.me) { session.set(r.token, r.me); return true; } } catch { /* signed out, or no hub */ }
+  return false;
+}
 export const session = {
   get() { try { const s = JSON.parse(store.get(SESSION_KEY) || 'null'); return s && /^[a-f0-9]{64}$/.test(s.token) ? s : null; } catch { return null; } },
   get token() { return this.get()?.token || null; },
@@ -82,7 +98,9 @@ export const ERRORS = {
   rate_limited: 'Too many tries for now: wait a few minutes and try again.',
   bad_email: 'That email address does not look right.',
   mail_failed: 'The email could not be sent. Try again in a moment.',
-  bad_token: 'This sign-in link has expired or was already used. Ask for a new one.',
+  bad_token: 'This sign-in link has expired or was already used. If you asked for it in another window, look there: it may be signed in already. Otherwise ask for a new one.',
+  bad_code: 'That is not the code of the email. Check it and type it again.',
+  code_tries: 'Too many wrong codes: ask for a new email.',
   bad_name: 'Your name needs at least 2 characters.',
   bad_country: 'Pick a country from the list.',
   bad_channel: 'That is not a YouTube channel link (youtube.com/@name or youtube.com/channel/…).',
@@ -133,6 +151,8 @@ export const api = {
   deleteMe: () => post('delete_me', { confirm: 'DELETE' }),
   login: (email, lang) => post('login', { email, lang }),
   exchange: (token) => post('exchange', { token }),
+  loginCode: (wait, code) => post('login_code', { wait, code }),
+  loginWait: (wait) => post('login_wait', { wait }),
   logout: () => post('logout', {}),
   publish: (p) => post('publish', p),
   edit: (p) => post('edit', p),

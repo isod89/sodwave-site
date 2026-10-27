@@ -867,6 +867,22 @@ export const dict = {
   'MIDI CLOCK OUT': 'HORLOGE MIDI EN SORTIE',
   'MIDI clock output': 'Sortie de l’horloge MIDI',
   'SOFT TAKEOVER': 'REPRISE DOUCE',
+  // SLOOP Pro (SMK-37) in DAW mode, found by itself (sloop-pro.js)
+  'SLOOP Pro (SMK-37) is ready, in DAW mode: K1–K8 turn the selected instrument, the faders set the volumes of tracks 1–4, the pads play the drums, SEQ PLAY plays and SEQ REC records. Details: the CONTROLLERS tab.':
+    'SLOOP Pro (SMK-37) est prêt, en mode DAW : K1–K8 tournent l’instrument choisi, les faders règlent le volume des pistes 1–4, les pads jouent la batterie, SEQ PLAY lance la lecture et SEQ REC enregistre. Détails : l’onglet CONTRÔLEURS.',
+  'SLOOP Pro (SMK-37) found, in SYNTH mode: press < and > together for DAW mode, and its knobs, faders, pads and buttons control Kraken.':
+    'SLOOP Pro (SMK-37) trouvé, en mode SYNTH : appuyez sur < et > ensemble pour le mode DAW, et ses boutons, faders, pads et touches contrôlent Kraken.',
+  'DAW MODE': 'MODE DAW',
+  'SYNTH MODE': 'MODE SYNTH',
+  'AUTOMATIC MAP': 'CORRESPONDANCE AUTO',
+  'Automatic map for SLOOP Pro': 'Correspondance automatique pour SLOOP Pro',
+  'In SYNTH mode the keyboard plays SLOOP. Press < and > together for DAW mode: its controls then drive Kraken.':
+    'En mode SYNTH, le clavier joue SLOOP. Appuyez sur < et > ensemble pour le mode DAW : ses commandes pilotent alors Kraken.',
+  'Knobs 1–8 of the selected track': 'Boutons 1–8 de la piste choisie',
+  'Project macros 1–8': 'Macros 1–8 du projet',
+  'Volume of tracks 1–4': 'Volume des pistes 1–4',
+  'Volume of tracks 5–8': 'Volume des pistes 5–8',
+  'The drums (the selected drum track, else the first one)': 'La batterie (la piste de batterie choisie, sinon la première)',
   'Mackie Control: faders, V-pots (pan), mute / solo / arm / select, transport, jog, bank and channel buttons, with motor faders, LEDs and scribble strips. Any device also takes MIDI Start / Stop, Song Position, MMC and Program Change (sounds).':
     'Mackie Control : faders, V-pots (pan), mute / solo / armement / sélection, transport, jog, boutons de banque et de canal, avec faders motorisés, LED et écrans. Tout périphérique prend aussi MIDI Start / Stop, Song Position, MMC et Program Change (sons).',
   'How the control acts': 'Comment la commande agit',
@@ -1747,6 +1763,9 @@ const KIND = { synth: 'synthé', drum: 'de batterie', audio: 'audio', sampler: '
 
 // [regex, (match, t) => French]: t() translates a part (an error message, a label); names stay as typed
 export const rules = [
+  [/^(Its own map \(USER\), as edited on the keyboard|Its DEFAULT map) · keys on channel (\d+) · knobs (RELATIVE|ABSOLUTE)( · assumed: this browser gives no SysEx access, so Kraken cannot read the keyboard)?\. Mappings made with MIDI Learn come first\. KNOB BANK and FADER BANK switch to bank B\.$/,
+    (m) => `${m[1].startsWith('Its own') ? 'Sa propre correspondance (USER), réglée sur le clavier' : 'Sa correspondance par défaut (DEFAULT)'} · touches sur le canal ${m[2]} · boutons en mode ${m[3] === 'RELATIVE' ? 'RELATIF' : 'ABSOLU'}${m[4] ? ' · supposée : ce navigateur ne donne pas accès au SysEx, Kraken ne peut pas lire le clavier' : ''}. Les correspondances faites avec MIDI Learn passent en premier. KNOB BANK et FADER BANK passent à la banque B.`],
+  [/^MMC \(MMC (\d+)\)$/, (m) => `MMC (${m[1]})`],
   // LAB
   [/^(.+): your own instrument\. INSTRUMENT > OPEN THE LAB to see and change how it is made\.$/, (m) => `${m[1]} : votre propre instrument. INSTRUMENT > OUVRIR LE LAB pour voir et changer comment il est fait.`],
   [/^INSTRUMENT · (.*)$/, (m) => `INSTRUMENT · ${m[1]}`],

@@ -18,7 +18,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'OPTIONS') { http_response_code(204); exit; }
 
 const GET_ROUTES = ['ping', 'items', 'item', 'data', 'user', 'me', 'my_data', 'world', 'admin_reports'];
-const POST_ROUTES = ['login', 'exchange', 'logout', 'me', 'delete_me', 'publish', 'edit', 'delete', 'like', 'unlike', 'follow', 'unfollow', 'report', 'admin'];
+const POST_ROUTES = ['login', 'exchange', 'login_code', 'login_wait', 'logout', 'me', 'delete_me', 'publish', 'edit', 'delete', 'like', 'unlike', 'follow', 'unfollow', 'report', 'admin'];
 $routes = $method === 'POST' ? POST_ROUTES : ($method === 'GET' ? GET_ROUTES : []);
 if (!in_array($route, $routes, true)) fail(in_array($route, array_merge(GET_ROUTES, POST_ROUTES), true) ? 'bad_method' : 'not_found', $routes ? 404 : 405);
 if ($method === 'GET') rate('read_ip', client_ip());
@@ -167,19 +167,59 @@ function r_login(): void {
   rate('login_ip', client_ip());
   rate('login_email', $email);
   $token = bin2hex(random_bytes(32));
+  // the browser that asked keeps a secret (wait): it is signed in as soon as the link is opened anywhere (the phone's
+  // mail app, another browser), or when the 6-digit code of the email is typed into it
+  $wait = bin2hex(random_bytes(32));
+  $code = sprintf('%06d', random_int(0, 999999));
   q('INSERT INTO hub_login_tokens (email, token_hash, created_at, expires_at) VALUES (?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 15 MINUTE)', [$email, hash('sha256', $token)]);
-  if (mt_rand(1, 50) === 1) q('DELETE FROM hub_login_tokens WHERE expires_at < UTC_TIMESTAMP() - INTERVAL 1 DAY');
-  $link = rtrim((string) cfg('site_url'), '/') . '/?hub_login=' . $token;
+  login_waits();
+  q('INSERT INTO hub_login_waits (token_hash, wait_hash, code_hash, email, created_at, expires_at) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 15 MINUTE)',
+    [hash('sha256', $token), hash('sha256', $wait), hash('sha256', $email . '|' . $code), $email]);
+  if (mt_rand(1, 50) === 1) {
+    q('DELETE FROM hub_login_tokens WHERE expires_at < UTC_TIMESTAMP() - INTERVAL 1 DAY');
+    q('DELETE FROM hub_login_waits WHERE expires_at < UTC_TIMESTAMP() - INTERVAL 1 DAY');
+  }
+  // the hub's own page: light, no audio to start, it signs in at once (Kraken itself shares the session)
+  $link = rtrim((string) cfg('site_url'), '/') . '/hub.html?hub_login=' . $token;
   $fr = ($b->lang ?? '') === 'fr';
-  $subject = $fr ? 'Votre lien de connexion au hub Kraken' : 'Your sign-in link for the Kraken hub';
+  $spaced = substr($code, 0, 3) . ' ' . substr($code, 3);
+  $subject = $fr ? "Connexion au hub Kraken : $spaced" : "Kraken hub sign-in: $spaced";
   $text = $fr
-    ? "Bonjour,\n\nPour vous connecter au hub Kraken, ouvrez ce lien (valable 15 minutes, une seule fois) :\n\n$link\n\nSi vous n'avez rien demandé, ignorez ce message : personne ne peut se connecter sans ce lien.\n\nKraken, le DAW gratuit de Sodwave"
-    : "Hello,\n\nTo sign in to the Kraken hub, open this link (valid for 15 minutes, once):\n\n$link\n\nIf you did not ask for it, ignore this message: nobody can sign in without this link.\n\nKraken, the free DAW by Sodwave";
+    ? "Bonjour,\n\nPour vous connecter au hub Kraken, ouvrez ce lien :\n\n$link\n\nOu tapez ce code dans la fenêtre où vous l'avez demandé :\n\n    $spaced\n\nLe lien et le code sont valables 15 minutes, une seule fois. La fenêtre où vous avez demandé la connexion se connecte aussi toute seule dès que le lien est ouvert, même sur un autre appareil.\n\nSi vous n'avez rien demandé, ignorez ce message : personne ne peut se connecter sans ce lien ou ce code.\n\nKraken, le DAW gratuit de Sodwave"
+    : "Hello,\n\nTo sign in to the Kraken hub, open this link:\n\n$link\n\nOr type this code in the window where you asked for it:\n\n    $spaced\n\nThe link and the code work for 15 minutes, once. The window where you asked also signs in by itself as soon as the link is opened, even on another device.\n\nIf you did not ask for it, ignore this message: nobody can sign in without this link or this code.\n\nKraken, the free DAW by Sodwave";
   $sent = cfg('dev_return_link') ? true : send_mail($email, $subject, $text);
   if (!$sent) fail('mail_failed', 502);
-  $out = ['ok' => true];
-  if (cfg('dev_return_link')) $out['dev_link'] = $link;
+  $out = ['ok' => true, 'wait' => $wait];
+  if (cfg('dev_return_link')) { $out['dev_link'] = $link; $out['dev_code'] = $code; }
   send_json($out);
+}
+// (made on first use: a hub installed before it has no such table, and the site's database needs no new step)
+function login_waits(): void {
+  static $done = false;
+  if ($done) return;
+  $done = true;
+  q('CREATE TABLE IF NOT EXISTS hub_login_waits (
+    token_hash CHAR(64) NOT NULL, wait_hash CHAR(64) NOT NULL, code_hash CHAR(64) NOT NULL, email VARCHAR(190) NOT NULL,
+    tries TINYINT UNSIGNED NOT NULL DEFAULT 0, approved TINYINT(1) NOT NULL DEFAULT 0, claimed TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL,
+    PRIMARY KEY (token_hash), UNIQUE KEY uq_wait (wait_hash), KEY k_email (email), KEY k_expires (expires_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+}
+// the account of an email (made at its first sign-in), and a new session for it: the answer of every way in
+function sign_in(string $email): void {
+  $u = one('SELECT * FROM hub_users WHERE email = ?', [$email]);
+  $created = false;
+  if (!$u) {
+    $base = ucfirst(mb_substr(preg_replace('/[^\p{L}\p{N}]+/u', '', explode('@', $email)[0]), 0, 20)) ?: 'Kraken fan';
+    q('INSERT INTO hub_users (email, name, created_at) VALUES (?, ?, UTC_TIMESTAMP())', [$email, $base]);
+    $u = one('SELECT * FROM hub_users WHERE email = ?', [$email]);
+    $created = true;
+  }
+  $session = bin2hex(random_bytes(32));
+  q('INSERT INTO hub_sessions (user_id, token_hash, created_at, last_used, expires_at) VALUES (?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 180 DAY)',
+    [$u['id'], hash('sha256', $session)]);
+  session_cookie($session);
+  send_json(['token' => $session, 'created' => $created, 'me' => me_of($u, false)]);
 }
 function send_mail(string $to, string $subject, string $text): bool {
   $from = (string) cfg('mail_from');
@@ -245,22 +285,45 @@ function r_exchange(): void {
   $row = one('SELECT * FROM hub_login_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > UTC_TIMESTAMP()', [hash('sha256', $t)]);
   if (!$row) fail('bad_token', 400);
   if (q('UPDATE hub_login_tokens SET used_at = UTC_TIMESTAMP() WHERE id = ? AND used_at IS NULL', [$row['id']])->rowCount() !== 1) fail('bad_token');
-  $u = one('SELECT * FROM hub_users WHERE email = ?', [$row['email']]);
-  $created = false;
-  if (!$u) {
-    $base = ucfirst(mb_substr(preg_replace('/[^\p{L}\p{N}]+/u', '', explode('@', $row['email'])[0]), 0, 20)) ?: 'Kraken fan';
-    q('INSERT INTO hub_users (email, name, created_at) VALUES (?, ?, UTC_TIMESTAMP())', [$row['email'], $base]);
-    $u = one('SELECT * FROM hub_users WHERE email = ?', [$row['email']]);
-    $created = true;
+  login_waits();
+  q('UPDATE hub_login_waits SET approved = 1 WHERE token_hash = ? AND claimed = 0', [hash('sha256', $t)]);   // (the asking window: in too)
+  sign_in($row['email']);
+}
+// the 6-digit code of the email, typed into the window that asked (5 tries, then a new email)
+function r_login_code(): void {
+  rate('exchange_ip', client_ip());
+  $b = body();
+  $wait = $b->wait ?? '';
+  $code = preg_replace('/\D+/', '', (string) ($b->code ?? ''));
+  if (!is_string($wait) || !preg_match('/^[a-f0-9]{64}$/', $wait) || strlen($code) !== 6) fail('bad_code');
+  login_waits();
+  $w = one('SELECT * FROM hub_login_waits WHERE wait_hash = ? AND claimed = 0 AND expires_at > UTC_TIMESTAMP()', [hash('sha256', $wait)]);
+  if (!$w) fail('bad_token');
+  if ((int) $w['tries'] >= 5) fail('code_tries', 429);
+  if (!hash_equals($w['code_hash'], hash('sha256', $w['email'] . '|' . $code))) {
+    q('UPDATE hub_login_waits SET tries = tries + 1 WHERE token_hash = ?', [$w['token_hash']]);
+    fail('bad_code');
   }
-  $session = bin2hex(random_bytes(32));
-  q('INSERT INTO hub_sessions (user_id, token_hash, created_at, last_used, expires_at) VALUES (?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 180 DAY)',
-    [$u['id'], hash('sha256', $session)]);
-  send_json(['token' => $session, 'created' => $created, 'me' => me_of($u, false)]);
+  if (q('UPDATE hub_login_waits SET claimed = 1 WHERE token_hash = ? AND claimed = 0', [$w['token_hash']])->rowCount() !== 1) fail('bad_token');
+  q('UPDATE hub_login_tokens SET used_at = COALESCE(used_at, UTC_TIMESTAMP()) WHERE token_hash = ?', [$w['token_hash']]);   // (the link: no longer needed)
+  sign_in($w['email']);
+}
+// the window that asked, every few seconds: still waiting, or the link was opened (anywhere): signed in here too
+function r_login_wait(): void {
+  rate('wait_ip', client_ip());
+  $wait = body()->wait ?? '';
+  if (!is_string($wait) || !preg_match('/^[a-f0-9]{64}$/', $wait)) fail('bad_token');
+  login_waits();
+  $w = one('SELECT * FROM hub_login_waits WHERE wait_hash = ? AND claimed = 0 AND expires_at > UTC_TIMESTAMP() - INTERVAL 5 MINUTE', [hash('sha256', $wait)]);
+  if (!$w) fail('bad_token');
+  if (!$w['approved']) send_json(['waiting' => true]);
+  if (q('UPDATE hub_login_waits SET claimed = 1 WHERE token_hash = ? AND claimed = 0', [$w['token_hash']])->rowCount() !== 1) fail('bad_token');
+  sign_in($w['email']);
 }
 function r_logout(): void {
   $t = bearer();
   if ($t) q('DELETE FROM hub_sessions WHERE token_hash = ?', [hash('sha256', $t)]);
+  session_cookie(null);
   send_json(['ok' => true]);
 }
 
@@ -277,7 +340,12 @@ function me_of(array $u, bool $news = true): array {
   }
   return $me;
 }
-function r_me(): void { send_json(['me' => me_of(need_user())]); }
+function r_me(): void {
+  $u = need_user();
+  $out = ['me' => me_of($u)];
+  if (via_cookie()) { $out['token'] = bearer(); session_cookie($out['token']); }   // (the page's lost copy, and 180 more days)
+  send_json($out);
+}
 function r_me_save(): void {
   $u = need_user();
   rate('profile_user', (string) $u['id']);

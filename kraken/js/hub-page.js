@@ -6,7 +6,7 @@
 import { h } from './ui/kit.js';
 import { initI18n, toggleLang, getLang, onLang } from './i18n.js';
 import { initHub } from './ui/hub.js';
-import { session } from './hub.js';
+import { session, toOfficialHost } from './hub.js';
 import { landing } from './hub-landing.js';
 import { loadEngines } from './audio.js';
 import { RATE, beatsToSeconds } from './engine-core.js';
@@ -101,6 +101,7 @@ const app = {
 };
 
 // ------------------------------------------------------------------ the page
+if (toOfficialHost()) await new Promise(() => {});                 // (sodwave.com/…: on its way to www.sodwave.com/…)
 await initI18n().catch(() => {});
 const langBtn = $('lang');
 const showLang = () => { langBtn.textContent = getLang() === 'fr' ? 'EN' : 'FR'; langBtn.title = getLang() === 'fr' ? 'Switch to English' : 'Passer en français'; };
@@ -109,7 +110,7 @@ onLang(showLang);
 showLang();
 $('lab').onclick = () => go('?lab');
 
-initHub(app);
+const linked = initHub(app);                                    // (opened by the email's link: signing in, the hub shown)
 const hub = app.hub;
 // what needs the DAW: Kraken opens, on this item
 hub.openSong = (it) => go(`?hub=${encodeURIComponent(it.id)}`);
@@ -122,7 +123,7 @@ const item = q.get('item'), user = q.get('user'), tab = q.get('tab'), kind = q.g
 if (kind && ['song', 'preset', 'plugin', 'template'].includes(kind)) hub.filters.kind = kind;
 const target = /^\d{1,9}$/.test(item || '') ? { item: +item } : /^\d{1,9}$/.test(user || '') ? { user: +user } : ['discover', 'following', 'world', 'me'].includes(tab) ? tab : null;
 // someone not signed in, on the plain address: the front page first (hub-landing.js); else the hub itself
-const front = landing({ open: (t) => showHub(t), openKraken: () => go() });
+const front = landing({ open: (t) => showHub(t), openKraken: () => go(), signedIn: (r) => hub.signedIn(r) });
 front.hidden = true;
 document.body.append(front);
 async function showHub(t = null) {
@@ -141,5 +142,9 @@ $('signin').onclick = () => (session.token ? showHub('me') : (showFront(), setTi
 document.querySelector('.site-bar .brand').addEventListener('click', (e) => { if (!session.token) { e.preventDefault(); showFront(); } });
 const signLabel = () => { $('signin').textContent = session.token ? 'MY PROFILE' : 'SIGN IN'; };
 signLabel(); setInterval(signLabel, 2000);                          // (signed in or out from the hub itself)
-if (target || session.token) await showHub(target); else showFront();
+hub.onSignedIn = () => { front.hidden = true; document.body.classList.remove('landing'); signLabel(); };
+if (!linked) await hub.ready;                                     // (a session the page lost, given back by the API's cookie)
+signLabel();
+if (linked) { front.hidden = true; document.body.classList.remove('landing'); }
+else if (target || session.token) await showHub(target); else showFront();
 document.body.classList.add('ready');
