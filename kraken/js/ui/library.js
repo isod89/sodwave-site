@@ -49,7 +49,7 @@ export class Library {
     } else {
       const cur = t?.kind === 'synth' ? lib.soundOf(t) : null;
       const groups = this.mode === 'type'
-        ? lib.kinds.map((k) => [k, KIND_NAME[k], lib.sounds.filter((s) => s.kind === k)])
+        ? lib.kinds.map((k) => [k, KIND_NAME[k] || lib.kindNames?.[k] || k, lib.sounds.filter((s) => s.kind === k)])
         : lib.engineNames.map((e) => [e, e, lib.byEngine[e]]);
       const mine = this.mine.filter((x) => !q || x.name.toUpperCase().includes(q));
       if (mine.length && this.mode === 'type') {
@@ -80,7 +80,7 @@ export class Library {
   }
   item(name, tag, snd) {
     const add = h('span', { class: 'tag plus', role: 'button', title: 'New track with this sound', text: '+ TRACK' });
-    const el = h('button', { class: 'item', 'data-snd': JSON.stringify(snd) }, h('span', { text: name }), tag ? h('span', { class: 'tag', text: tag }) : null, add);
+    const el = h('button', { class: 'item', 'data-snd': JSON.stringify(snd) }, h('span', { text: name }), tag ? h('span', { class: 'tag', translate: 'no', text: tag }) : null, add);
     el.addEventListener('click', (e) => this.pick(snd, e.target === add || e.altKey));
     return el;
   }

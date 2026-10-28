@@ -95,7 +95,7 @@ export class MultiCore {
         ready.push(new Promise((res) => { this.ready[k] = res; }));
         w.onmessage = ({ data }) => this.fromWorker(k, data);
         const port = chans[k - 1].port1;
-        try { w.postMessage({ t: 'init', role: k, shared: this.mem, port, modules: { sloop: mods.sloop, clipper: mods.clipper } }, [port]); }
+        try { w.postMessage({ t: 'init', role: k, shared: this.mem, port, modules: Object.fromEntries(Object.entries(mods)) }, [port]); }
         catch { w.postMessage({ t: 'init', role: k, shared: this.mem, port, wasm: mods.bytes }, [port]); }   // (a browser that cannot pass a compiled engine)
         for (const a of this.assets.values()) w.postMessage({ t: 'asset', id: a.id, L: this.share(a.L), R: this.share(a.R) });
         w.postMessage({ t: 'base', p, warm: true });

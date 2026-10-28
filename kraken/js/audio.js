@@ -7,6 +7,7 @@ import { RATE } from './engine-core.js';
 import { projectEnd } from './project.js';
 import { beatsToSeconds } from './engine-core.js';
 import { WAM_SLOTS, wamPlan } from './wam.js';
+import { packIndex } from './packs.js';
 
 const WORKLET = new URL('./worklet.js', import.meta.url);
 const RENDER_WORKER = new URL('./render-worker.js', import.meta.url);
@@ -23,11 +24,17 @@ export async function loadEngines() {
     const n = w.k_catalog();
     lib[name] = JSON.parse(new TextDecoder().decode(new Uint8Array(w.memory.buffer, w.k_buffer(), n).slice()));
   }
+  // the community engines Kraken ships (packs.js): a bank each, "x:ID"; their catalogues now, their engines when played
+  Object.assign(lib, await packIndex());
   const res = await fetch(new URL('../engines/categories.json', import.meta.url));
-  buildLibrary(lib, res.ok ? await res.json() : { kinds: [], sounds: [] });
+  lib.cats = res.ok ? await res.json() : { kinds: [], sounds: [] };
+  Object.defineProperty(lib, 'cats', { enumerable: false });
+  buildLibrary(lib, lib.cats);
   Object.defineProperty(modules, 'bytes', { value: bytes });     // (for a browser that cannot hand a compiled module to the audio thread)
   return { modules, lib };
 }
+// every engine bank to send to another thread (the built-in two and the packs loaded; never the bytes' own property)
+export const allModules = (modules) => Object.fromEntries(Object.entries(modules));
 
 // One library for every sound, whichever firmware it comes from: grouped by kind (Clipper's own
 // PRESETS order) and by engine. A sound in both firmwares plays from Clipper.
@@ -49,11 +56,20 @@ export function buildLibrary(lib, cats) {
   };
   for (const [k, eng, name] of cats.sounds) add(KIND[k], eng, name);
   for (const bank of ['clipper', 'sloop']) for (const e of lib[bank].engines) for (const name of e.presets) add('FX', e.name, name);
+  // an engine pack: its sounds under its own name (by type) and its engines named after it (by engine)
+  const packs = Object.keys(lib).filter((b) => lib[b]?.pack && !lib[b].missing);
+  lib.engKey = (bank, name) => (lib[bank]?.pack ? `${lib[bank].pack.name.toUpperCase()} · ${name}` : name);
+  lib.kindNames = {};
+  for (const bank of packs) {
+    const kind = `PACK:${bank}`;
+    lib.kindNames[kind] = `◆ ${lib[bank].pack.name.toUpperCase()}`;
+    lib[bank].engines.forEach((e, ei) => e.presets.forEach((name, pi) => sounds.push({ kind, eng: lib.engKey(bank, e.name), name, bank, engine: ei, preset: pi, pack: true })));
+  }
   lib.sounds = sounds;
-  lib.kinds = KIND;
+  lib.kinds = [...KIND, ...packs.map((b) => `PACK:${b}`)];
   lib.byEngine = {};
   for (const s of sounds) (lib.byEngine[s.eng] ||= []).push(s);
-  lib.engineNames = lib.clipper.engines.map((e) => e.name).filter((n) => lib.byEngine[n]);
+  lib.engineNames = [...lib.clipper.engines.map((e) => e.name), ...packs.flatMap((b) => lib[b].engines.map((e) => lib.engKey(b, e.name)))].filter((n) => lib.byEngine[n]);
   lib.soundOf = (t) => sounds.find((s) => s.bank === t.bank && s.engine === t.engine && s.preset === t.preset) || null;
 }
 
@@ -187,7 +203,7 @@ export class Audio {
       w.onmessage = ({ data }) => done(() => (data.error ? reject(new Error(data.error)) : resolve([data.L, data.R])));
       w.onerror = (e) => { e.preventDefault?.(); done(() => reject(new Error(e.message || 'render worker failed'))); };
       const mods = this.modules;
-      try { w.postMessage({ ...job, project: job.project, modules: { sloop: mods.sloop, clipper: mods.clipper } }); }
+      try { w.postMessage({ ...job, project: job.project, modules: allModules(mods) }); }
       catch { w.postMessage({ ...job, wasm: mods.bytes }); }
     });
   }

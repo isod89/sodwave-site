@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The instrument device: the selected track's sound, every parameter of its SLOOP / Clipper
 // engine on knobs. A drum track shows its kit and 16 pads.
+import { missingNotice } from './packs.js';
 import { h, knob, fmt } from './kit.js';
 import { DEVICES, DEVICE_ORDER, defaults, fmtParam, toNorm, fromNorm } from '../fx.js';
 import { uid } from '../project.js';
@@ -184,7 +185,9 @@ export class Device {
     if (t.kind === 'vca') return buildVca(this, t);
     if (t.kind === 'wam') return buildWamInstrument(this, t);
     if (t.kind === 'lab') return buildLab(this, t);
-    const app = this.app, cat = app.lib[t.bank], eng = cat.engines[t.engine], e0 = cat.e0;
+    const app = this.app, cat = app.lib[t.bank];
+    if (cat.missing || cat.error) { this.wrap.replaceChildren(missingNotice(app, t)); return; }   // (a community engine this version does not have, or could not load)
+    const eng = cat.engines[t.engine], e0 = cat.e0;
     const mk = (id, d, label) => {
       const k = knob({ label: label || d.l, min: d.min, max: d.max, def: d.def, value: this.value(t, id), color: t.color,
         format: (v) => fmt(d, v), mod: t.params[id] != null, onChange: (v) => { k.classList.add('mod'); this.setParam(t, id, v); }, onEnd: () => app.store.endGesture() });
@@ -193,29 +196,29 @@ export class Device {
       this.knobs.set(id, k);
       return k;
     };
-    const lib = app.lib, list = lib.byEngine[eng.name] || [], cur = lib.soundOf(t);
+    const lib = app.lib, ek = lib.engKey(t.bank, eng.name), list = lib.byEngine[ek] || [], cur = lib.soundOf(t);
     const at = Math.max(0, list.indexOf(cur));
     const go = (s) => s && app.setSound(t.id, { bank: s.bank, engine: s.engine, preset: s.preset });
     const step = (d) => go(list[(at + d + list.length) % list.length]);
     const sound = h('div', { class: 'module sound-lcd' },
-      h('h4', {}, 'SOUND', h('em', { text: cur ? cur.kind : '' })),
+      h('h4', {}, 'SOUND', h('em', { translate: cat.pack ? 'no' : null, text: cat.pack ? `◆ ${cat.pack.name.toUpperCase()}` : cur ? cur.kind : '' })),
       h('div', { class: 'screen' },
         h('span', { class: 'eng', text: `${eng.name} · ${at + 1}/${list.length}` }),
         h('span', { class: 'pre', text: cat.engines[t.engine].presets[t.preset] })),
       h('div', { class: 'row' },
         h('button', { class: 'add', onclick: () => step(-1), title: 'Previous sound ([)' }, '◀ PREV'),
         h('button', { class: 'add', onclick: () => step(1), title: 'Next sound (])' }, 'NEXT ▶')),
-      h('select', { 'aria-label': 'Engine', onchange: (e) => go(lib.byEngine[e.target.value][0]) },
-        lib.engineNames.map((n) => h('option', { value: n, selected: n === eng.name ? true : null }, `${n} (${lib.byEngine[n].length})`))),
-      h('select', { 'aria-label': 'Sound', onchange: (e) => go(list[+e.target.value]) },
+      h('select', { 'aria-label': 'Engine', translate: 'no', onchange: (e) => go(lib.byEngine[e.target.value][0]) },
+        lib.engineNames.map((n) => h('option', { value: n, selected: n === ek ? true : null }, `${n} (${lib.byEngine[n].length})`))),
+      h('select', { 'aria-label': 'Sound', translate: 'no', onchange: (e) => go(list[+e.target.value]) },
         list.map((s, i) => h('option', { value: i, selected: i === at ? true : null }, s.name))),
       h('div', { class: 'row' },
         h('button', { class: 'add', title: 'Back to the sound as it was loaded', onclick: () => app.setSound(t.id, {}, true) }, 'RESET SOUND')));
     const engMod = h('div', { class: 'module' }, h('h4', {}, eng.name, h('em', { text: 'ENGINE' })),
       h('div', { class: 'knobs', '--cols': 4 }, eng.edit.map((d, i) => mk(e0 + i, d))));
-    const nice = (id) => (t.bank === 'clipper' && NICE_CLIPPER[id]) || NICE[id];
-    const groups = GROUPS[t.bank].map((g) => h('div', { class: 'module' }, h('h4', { text: g.title }),
-      h('div', { class: 'knobs', '--cols': g.cols }, g.ids.filter((id) => cat.tp[id]).map((id) => mk(id, cat.tp[id], nice(id))))));
+    const nice = (id) => (cat.pack ? null : (t.bank === 'clipper' && NICE_CLIPPER[id]) || NICE[id]);
+    const groups = (cat.groups || GROUPS[t.bank] || GROUPS[cat.tp[96] ? 'clipper' : 'sloop']).map((g) => h('div', { class: 'module' }, h('h4', { text: g.title }),
+      h('div', { class: 'knobs', '--cols': g.cols || 4 }, g.ids.filter((id) => cat.tp[id]).map((id) => mk(id, cat.tp[id], nice(id))))));
     this.wrap.replaceChildren(sound, engMod, ...groups, ...synthExtras(this, t));
   }
   buildAudio(t) {

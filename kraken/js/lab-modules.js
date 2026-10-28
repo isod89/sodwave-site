@@ -14,7 +14,8 @@
 // (MIDI note numbers: 60 is middle C). An input that modulates a knob adds (signal × cable amount × its range) to the
 // knob: a FILTER's CUTOFF input moves the cutoff by up to 5 octaves, an OSC's PITCH MOD by up to 12 semitones.
 import { SCALES } from './notefx.js';
-import { DEVICES } from './fx.js';                // (used only inside functions: fx.js and lab-dsp.js import each other)
+import { DEVICES } from './fx.js';
+import { isPackBank } from './packs.js';                // (used only inside functions: fx.js and lab-dsp.js import each other)
 
 export const LAB_VERSION = 1;
 // the effects an EFFECT module can be (all of Kraken's but the LAB itself), and their names
@@ -209,6 +210,7 @@ export function validatePatch(raw, kindHint = null) {
       const ep = {};
       for (const [id, v] of Object.entries(m.eng?.p && typeof m.eng.p === 'object' ? m.eng.p : {}).slice(0, 64)) if (/^\d{1,3}$/.test(id) && +id < 256) ep[id] = Math.round(clamp(v, -128, 127, 0));
       q.eng = { p: ep };
+      if (isPackBank(m.pack)) q.pack = m.pack;      // (an engine pack's engine instead of SLOOP's or Clipper's)
     }
     if (def.dev) {
       const type = FX_TYPES[q.p.dev], dp = {};
@@ -238,4 +240,4 @@ export function validatePatch(raw, kindHint = null) {
   return out;
 }
 // the structure of a patch (modules, cables, voices), without its knob values: what forces a rebuild when it changes
-export const patchShape = (p) => JSON.stringify([p.kind, p.voice?.poly, p.voice?.mode, p.mods.map((m) => [m.id, m.type, m.text || '', m.type === 'fx' ? m.p.dev : m.type === 'eng' ? m.p.bank : 0]), p.cables.map((c) => [c.from, c.to]), (p.fx || []).map((f) => [f.id, f.type])]);
+export const patchShape = (p) => JSON.stringify([p.kind, p.voice?.poly, p.voice?.mode, p.mods.map((m) => [m.id, m.type, m.text || '', m.type === 'fx' ? m.p.dev : m.type === 'eng' ? m.pack || m.p.bank : 0]), p.cables.map((c) => [c.from, c.to]), (p.fx || []).map((f) => [f.id, f.type])]);

@@ -23,6 +23,29 @@ const pl = (n, one, many) => (Math.abs(parseFloat(String(n).replace(',', '.'))) 
 const P = (s) => (s === 'PROJECT' ? 'PROJET' : s);                                                // the menu named in a hint (☰ stays)
 
 export const dict = {
+  // community engines
+  'This file is not a WebAssembly engine.': 'Ce fichier n’est pas un moteur WebAssembly.',
+  'This .wasm is not a Kraken engine pack (no "kraken.pack" description inside).': 'Ce .wasm n’est pas un moteur Kraken (pas de description « kraken.pack » dedans).',
+  'The pack\'s description cannot be read.': 'La description du moteur est illisible.',
+  'This engine asks for access outside itself: refused (a pack only computes sound).': 'Ce moteur demande un accès hors de lui-même : refusé (un moteur ne fait que calculer du son).',
+  'The engine\'s catalogue is not one Kraken reads.': 'Le catalogue de ce moteur n’est pas lisible par Kraken.',
+  'The pack has no id.': 'Le moteur n’a pas d’identifiant.',
+  'its file does not match this version of Kraken': 'son fichier ne correspond pas à cette version de Kraken',
+  'it asks for access outside itself': 'il demande un accès hors de lui-même',
+  'MISSING ENGINE': 'MOTEUR ABSENT',
+  'NOT AVAILABLE': 'NON DISPONIBLE',
+  'By': 'Par', 'Licence': 'Licence',
+  'Community engines': 'Moteurs de la communauté',
+  'Community engines…': 'Moteurs de la communauté…',
+  'Community engine…': 'Moteur de la communauté…',
+  'COMMUNITY ENGINE': 'MOTEUR DE LA COMMUNAUTÉ',
+  'COMMUNITY ENGINES · THANK YOU TO THEIR AUTHORS': 'MOTEURS DE LA COMMUNAUTÉ · MERCI À LEURS AUTEURS',
+  'A SODWAVE INSTRUMENT · THE SLOOP AND CLIPPER ENGINES, AND THE COMMUNITY\'S': 'UN INSTRUMENT SODWAVE · LES MOTEURS SLOOP ET CLIPPER, ET CEUX DE LA COMMUNAUTÉ',
+  'The engines of other FM-1 and SMK-37 firmwares, built by Sodwave from their source and played here as on the device. Each is an instrument of its own (its sounds in the library) and a firmware of the LAB\'s ENGINE module. Thanks to their authors.': 'Les moteurs d’autres firmwares FM-1 et SMK-37, compilés par Sodwave depuis leur source et joués ici comme sur l’appareil. Chacun est un instrument à part entière (ses sons dans la bibliothèque) et un firmware du module ENGINE du LAB. Merci à leurs auteurs.',
+  'None in this version yet.': 'Aucun dans cette version pour l’instant.',
+  'New track': 'Nouvelle piste',
+  'FM-1 · SMK-37 FIRMWARES': 'FIRMWARES FM-1 · SMK-37',
+  'OTHER FIRMWARES': 'AUTRES FIRMWARES',
   'A new version of Kraken is ready.': 'Une nouvelle version de Kraken est prête.',
   'Update now': 'Mettre à jour',
   'Later': 'Plus tard',
@@ -1711,6 +1734,7 @@ export const slots = ['CHOOSE ONE', 'NO INPUT', 'NO DEVICE', 'NO SAMPLE', 'EMPTY
 // strings that stay as they are in French: names, abbreviations, units, the firmware's own words, the synth and
 // effect parameter names (as on the FM-1 and in most French studios)
 export const keep = [
+  'SHA-256', 'Version', '${Math.round(n / 1024)} KB', 'HTTP ${r.status}',
   'render worker:', 'multicore: more than ${SLOTS} tracks in one worker', 'multicore: event ${mseq} for quantum ${Q} came after ${this.q}',
   'Kraken', 'SLOOP', 'Clipper', 'CLIPPER', 'KRAKEN', 'DAWPROJECT', 'DAWproject', 'Sodwave', 'FM-1', 'FM6', 'DX7', 'MPE', 'BPM', 'LUFS', 'CPU', 'MIDI', 'VCA', 'EQ', 'LFO', 'RMS', 'LRA',
   'Ctrl S', 'Ctrl ⇧ S', 'Ctrl K', 'Ctrl+E', 'Ctrl+J', 'CTRL+E', 'CTRL+J', 'Ctrl C · Ctrl V · Ctrl D', 'Ctrl E · Ctrl J', 'Ctrl L · LEARN',
@@ -2055,6 +2079,15 @@ export const rules = [
   [/^(.*): (.*) is not inside the file \(an external file\): left out\.$/s, (m) => `${m[1]} : ${m[2]} n’est pas dans le fichier (un fichier externe) : laissé de côté.`],
   [/^A (.*) lane \(MIDI expression\) was left out\.$/s, (m) => `Une ligne ${m[1]} (expression MIDI) a été laissée de côté.`],
   [/^…and (\d+) more\.$/, (m) => `…et ${m[1]} de plus.`],
+  [/^This engine lacks Kraken's interface \((.+)\)\.$/, (m) => `Il manque à ce moteur l’interface de Kraken (${m[1]}).`],
+  [/^(.+) \(not available\)$/, (m) => `${m[1]} (non disponible)`],
+  [/^(.+) · (\d+) ENGINES$/, (m) => `${m[1]} · ${m[2]} MOTEURS`],
+  [/^(.+) could not be loaded \((.*)\)\.$/s, (m, t) => `${m[1]} n’a pas pu être chargé (${t(m[2])}).`],
+  [/^This track plays (.+), which could not be loaded \((.*)\): it stays silent\. Reload the page to try again\.$/s, (m, t) => `Cette piste joue ${m[1]}, qui n’a pas pu être chargé (${t(m[2])}) : elle reste muette. Rechargez la page pour réessayer.`],
+  [/^This track plays (.+), an engine this version of Kraken does not have: it stays silent\.$/s, (m) => `Cette piste joue ${m[1]}, un moteur que cette version de Kraken n’a pas : elle reste muette.`],
+  [/^(\d+) (engines?) · (\d+) sounds(.*)$/, (m) => `${m[1]} ${m[2] === 'engine' ? 'moteur' : 'moteurs'} · ${m[3]} sons${m[4].replace('MB', 'Mo').replace('KB', 'Ko').replace(/ · (\d+) tracks? here/, (x, n) => ` · ${n} ${n === '1' ? 'piste' : 'pistes'} ici`)}`],
+  [/^(.+) by (.+?)(?: \((.+)\))?: its source$/, (m) => `${m[1]} par ${m[2]}${m[3] ? ` (${m[3]})` : ''} : sa source`],
+  [/^Its source: (.+)$/, (m) => `Sa source : ${m[1]}`],
   [/^Volume (.+) dB · drag · double-click: 0 dB$/, (m) => `Volume ${m[1]} dB · glisser · double-clic : 0 dB`],
   // ---- the short generic ones last (a name, a verb): after every sentence above
   // ---- MIDI control: target labels, the learn banner

@@ -67,7 +67,7 @@ const audio = {
       w.onmessage = ({ data }) => done(() => (data.error ? reject(new Error(data.error)) : resolve([data.L, data.R])));
       w.onerror = (e) => { e.preventDefault?.(); done(() => reject(new Error(e.message || 'render worker failed'))); };
       const job = { project, assets, start: 0, frames };
-      try { w.postMessage({ ...job, modules: { sloop: this.mods.sloop, clipper: this.mods.clipper } }); }
+      try { w.postMessage({ ...job, modules: Object.fromEntries(Object.entries(this.mods)) }); }
       catch { w.postMessage({ ...job, wasm: this.mods.bytes }); }
     });
     this.wake();

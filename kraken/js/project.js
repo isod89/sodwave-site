@@ -3,6 +3,7 @@
 // (quarter notes). Every edit goes through store.change(), which keeps the undo history and tells
 // the audio engine and the views.
 
+import { isPackBank } from './packs.js';
 import { isFolder, shiftFolder } from './comp.js';
 import { DEVICES } from './fx.js';
 import { NOTE_FX } from './notefx.js';
@@ -387,7 +388,11 @@ export function validate(p) {
     t.mute = !!t.mute; t.solo = !!t.solo; t.arm = !!t.arm;
     t.sends = arr(t.sends).map((x) => clampN(x, 0, 1, 0)); while (t.sends.length < p.returns.length) t.sends.push(0);
     t.sendPre = arr(t.sendPre).map(Boolean);
-    if (t.kind === 'synth' || t.kind === 'wam') { t.bank = t.bank === 'sloop' ? 'sloop' : 'clipper'; }
+    if (t.kind === 'synth' && isPackBank(t.bank)) {                // an engine pack (packs.js): which one, where it comes from
+      const k = obj(t.pack) || {};
+      t.pack = { name: typeof k.name === 'string' ? k.name.slice(0, 40) : t.bank.slice(2), source: typeof k.source === 'string' && /^https:\/\/[^\s"<>]+$/.test(k.source) ? k.source.slice(0, 300) : '',
+        sha256: typeof k.sha256 === 'string' && /^[0-9a-f]{64}$/.test(k.sha256) ? k.sha256 : '' };
+    } else { delete t.pack; if (t.kind === 'synth' || t.kind === 'wam') t.bank = t.bank === 'sloop' ? 'sloop' : 'clipper'; }
     if (t.kind === 'drum') t.bank = 'sloop';
     t.engine = Math.max(0, Math.round(num(t.engine, 0))); t.preset = Math.max(0, Math.round(num(t.preset, 0))); t.kit = Math.max(0, Math.round(num(t.kit, 15)));
     t.rev = Math.round(num(t.rev, 0));

@@ -1134,11 +1134,32 @@ body { background: #0b0c0e; }
   .lab-tab[aria-selected="true"] { color: var(--lb-tx); box-shadow: inset 0 2px 0 var(--lb-acc); }
   .modal.lab-psheet { width: 100%; }
 }
+/* community engines (PROJECT > Community engines…) */
+.pack-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }
+.pack-row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--line, #2a2d33); border-radius: 8px; background: rgba(255,255,255,.02); }
+.pack-row > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pack-row small { color: #8b9199; }
+.pack-row .hint { margin: 2px 0; }
+.pack-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #a1a7af; }
+.pack-facts b { color: #6f757d; font-weight: 600; }
+.pack-facts a { color: var(--accent); overflow-wrap: anywhere; }
+.pack-row > button { flex: none; }
+.pack-missing a.add { display: inline-block; margin-top: 6px; }
+/* the start screen: the community's engines, credited and linked */
+#boot { overflow-y: auto; }
+#boot-credits { display: grid; gap: 8px; justify-items: center; margin-top: 6px; }
+#boot-credits h2 { margin: 0; font: 700 9px/1 var(--f-ui); letter-spacing: 0.18em; color: #7a818a; }
+#boot-credits .list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: min(760px, 92vw); }
+#boot-credits a { display: inline-flex; gap: 6px; align-items: baseline; padding: 6px 10px; border: 1px solid #2e333a; border-radius: 999px; background: #15171b;
+  color: #e6e8eb; text-decoration: none; font: 600 12px/1 var(--f-ui); }
+#boot-credits a small { color: #8b9199; font-weight: 500; }
+#boot-credits a:hover { border-color: var(--accent); }
+#boot-credits a::after { content: "↗"; color: var(--accent); font-size: 11px; }
 </style>
 
 <div id="boot">
   <img class="boot-logo" src="assets/kraken-logo.svg" alt="Kraken" width="790" height="260">
-  <div class="by">A SODWAVE INSTRUMENT · THE SLOOP AND CLIPPER ENGINES</div>
+  <div class="by">A SODWAVE INSTRUMENT · THE SLOOP AND CLIPPER ENGINES, AND THE COMMUNITY'S</div>
   <div class="stats">
     <span id="st-eng">—<small>ENGINES</small></span>
     <span id="st-snd">—<small>SOUNDS</small></span>
@@ -1147,6 +1168,7 @@ body { background: #0b0c0e; }
   <p id="boot-msg">Loading the SLOOP and Clipper engines…</p>
   <button class="key" id="boot-go" hidden>Start Kraken</button>
   <div id="boot-choices" hidden></div>
+  <div id="boot-credits" hidden></div>
 </div>
 
 <div id="app" class="no-lib">
@@ -1206,6 +1228,7 @@ body { background: #0b0c0e; }
           <button data-act="collab">Play together (live)… <kbd>INVITE · JOIN</kbd></button>
           <button data-act="template">Save as a template…</button>
           <button data-act="presets">My presets… <kbd>EXPORT · IMPORT</kbd></button>
+          <button data-act="packs">Community engines… <kbd>FM-1 · SMK-37 FIRMWARES</kbd></button>
           <hr>
           <button data-act="hub">☁ The hub <kbd>SONGS · PLUGINS · WORLD</kbd></button>
           <button data-act="publish">Publish to the hub…</button>
@@ -1247,6 +1270,7 @@ body { background: #0b0c0e; }
           <button id="add-lab">LAB instrument <kbd>BUILD YOUR OWN</kbd></button>
           <button id="add-ext">External MIDI <kbd>FM-1 · HARDWARE</kbd></button>
           <button id="add-wam">Plugin instrument (WAM)… <kbd>WEB AUDIO MODULES</kbd></button>
+          <button id="add-pack">Community engine… <kbd>OTHER FIRMWARES</kbd></button>
           <button id="add-group">Group <kbd>BUS</kbd></button>
           <button id="add-vca">VCA fader <kbd>CONTROLS FADERS</kbd></button>
           <button id="add-preset">From a preset… <kbd>YOUR TRACKS</kbd></button>

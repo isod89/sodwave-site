@@ -39,10 +39,12 @@ export function autoTargets(app, t) {
   if (t.kind === 'lab') (t.lab?.macros || []).forEach((m, i) => list.push({ key: `p${i}`, label: `LAB ${m.name}`, min: 0, max: 127, def: Math.round(m.v * 127), fmt: (v) => `${Math.round(v / 1.27)}%` }));   // (its macros)
   if (t.kind === 'synth') {
     const cat = app.lib[t.bank], e = cat.engines[t.engine], e0 = cat.e0;
+    if (!e) return list;
     e.edit.forEach((d, i) => list.push({ key: `p${e0 + i}`, label: `${e.name} ${d.l}`, min: d.min, max: d.max, def: d.def, fmt: (v) => String(Math.round(v)) }));
     const NAMES = { 5: 'ENV > FILTER', 9: 'LFO RATE', 13: 'LFO > PITCH', 14: 'LFO > FILTER', 33: 'DRIVE', 34: 'CHORUS', 35: 'INST DELAY', 36: 'INST REVERB', 50: 'DJ FILTER' };
     for (const id of Object.keys(NAMES).map(Number)) {
       const d = cat.tp[id];
+      if (!d) continue;                                          // (an engine pack without it)
       list.push({ key: `p${id}`, label: NAMES[id], min: d.min, max: d.max, def: d.def, fmt: (v) => String(Math.round(v)) });
     }
   }

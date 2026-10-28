@@ -67,7 +67,7 @@ export function exportDawproject(p, { assets = new Map(), lib = null } = {}) {
     if (t.kind === 'audio' || t.kind === 'group') return null;
     const cat = lib?.[t.bank], eng = cat?.engines?.[t.engine];
     const name = t.kind === 'drum' ? `Kraken drums · ${lib?.sloop?.kits?.[t.kit] || 'kit'}` : t.kind === 'sampler' ? 'Kraken sampler' : t.kind === 'external' ? 'External MIDI' : t.kind === 'wam' ? `Web Audio Module · ${t.wam?.name || 'none'}`
-      : `${t.bank === 'sloop' ? 'SLOOP' : 'Clipper'} ${eng?.name || ''} · ${eng?.presets?.[t.preset] || ''}`.trim();
+      : `${cat?.pack?.name || (t.bank === 'sloop' ? 'SLOOP' : 'Clipper')} ${eng?.name || ''} · ${eng?.presets?.[t.preset] || ''}`.trim();
     return x('Device', { deviceName: name, deviceRole: 'instrument', deviceVendor: 'Sodwave', deviceID: `kraken.${t.kind}`, loaded: false, id: id() });
   };
   const channel = (t, chId, role, dest) => {

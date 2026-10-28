@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "c4d1bccdc82e";
+const VERSION = "7b3dbe9451ad";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -14,6 +14,7 @@ const FILES = [
 "assets/kraken-maskable.svg",
 "engines/categories.json",
 "engines/clipper.wasm",
+"engines/packs/index.json",
 "engines/sloop.wasm",
 "hub.html",
 "js/assets.js",
@@ -52,6 +53,7 @@ const FILES = [
 "js/multicore.js",
 "js/notefx.js",
 "js/opus.js",
+"js/packs.js",
 "js/patch.js",
 "js/presets.js",
 "js/project.js",
@@ -81,6 +83,7 @@ const FILES = [
 "js/ui/mixer.js",
 "js/ui/mods.js",
 "js/ui/notes.js",
+"js/ui/packs.js",
 "js/ui/palette.js",
 "js/ui/presets.js",
 "js/ui/report.js",
@@ -102,9 +105,9 @@ const FILES = [
 "js/xml.js",
 "manifest.webmanifest"
 ];
-const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts';
+const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts', PACKS = 'kraken-packs';
 const HASHES = {
-"./": "a9048ab49e4ee3ee",
+"./": "63304384e6ac2d38",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
 "assets/icon-192.png": "eac7183445a6cc25",
 "assets/icon-512.png": "6537a0849702f146",
@@ -116,58 +119,60 @@ const HASHES = {
 "assets/kraken-maskable.svg": "4a8c13b887de9673",
 "engines/categories.json": "0910c5df4892b672",
 "engines/clipper.wasm": "484fb761c60eccde",
+"engines/packs/index.json": "a7c829029d62b00f",
 "engines/sloop.wasm": "6cca862ab545b47e",
 "hub.html": "08ba8ca3b3acd7d4",
 "js/assets.js": "f9e37a5394c1996b",
-"js/audio.js": "0deda8cdeb9555bb",
+"js/audio.js": "ecbc049bb3588eb6",
 "js/audio2midi.js": "ae1895a605a204d7",
 "js/collab.js": "7217a50198513312",
 "js/comp.js": "6159f03c88e913b4",
 "js/control.js": "41dad04e52674613",
-"js/dawproject.js": "7b7e499a16847641",
+"js/dawproject.js": "a0d34f88063ae8a0",
 "js/edit.js": "68fd30c2cb6a142b",
-"js/engine-core.js": "c416cf4560109159",
+"js/engine-core.js": "324a3d3425adc72d",
 "js/flac.js": "9265927064076ede",
 "js/fx.js": "3ebaf56086d6a61e",
 "js/gensounds.js": "153bcb24ffacd831",
 "js/hub-art.js": "306bdd6cc9c5985a",
 "js/hub-landing.js": "314b1cac1e2ee08e",
-"js/hub-page.js": "710473d1778c47ca",
+"js/hub-page.js": "58f207dc0cb8c686",
 "js/hub.js": "ae16cb9d424d794a",
 "js/i18n.js": "5d26939e61333792",
 "js/i18n/fr-hub.js": "572a106d9ea51007",
-"js/i18n/fr.js": "69c3456351937ee7",
+"js/i18n/fr.js": "4b344c898e4fd1b3",
 "js/input.js": "6380044ba9c51bc4",
 "js/io.js": "8dab5b01b2a1f361",
-"js/lab-dsp.js": "ed4bf537586ff6d9",
-"js/lab-modules.js": "f2506401cc7a2b4a",
+"js/lab-dsp.js": "0595d240c21578c7",
+"js/lab-modules.js": "3a34c940ad28abe2",
 "js/lab-presets.js": "bf8748f1a560c9ea",
 "js/launchpad.js": "62d81134fffdfba7",
 "js/levels.js": "bef2d9abe9e589f0",
-"js/main.js": "fdca7cc019a86ff9",
+"js/main.js": "ea5e9feeaa22208d",
 "js/mc-worker.js": "880ea63a24ec78da",
 "js/meter.js": "6cf9580d1d704557",
 "js/mods.js": "8445d16b87bf54ba",
 "js/mp3-worker.js": "ed4ae9e5fcd36a0b",
 "js/mp3.js": "81a1d8e74cd1741a",
 "js/multicore-core.js": "859c4cf17f3f16fc",
-"js/multicore.js": "819d2ec0963e7296",
+"js/multicore.js": "71d64b0c05169671",
 "js/notefx.js": "dcb7f4536dc65cf9",
 "js/opus.js": "f80039368247154c",
+"js/packs.js": "0d48f38dc813add1",
 "js/patch.js": "aa95ddf8ae05a0c6",
 "js/presets.js": "0d5aa18dc1c00f2b",
-"js/project.js": "533d416d5caea753",
+"js/project.js": "537aff8020ef8a6a",
 "js/render-worker.js": "dc9447f816d1b065",
 "js/resample.js": "b69a5b0ce1845725",
 "js/sampler.js": "a91263950e2d49c4",
 "js/sloop-pro.js": "262bbc42a932bd51",
 "js/sloopsong.js": "fbb95974e5f385b7",
 "js/templates.js": "0c16d3a949ef166d",
-"js/ui/arrange.js": "3deb68e45a19f2fc",
+"js/ui/arrange.js": "b8bf536df63e9c99",
 "js/ui/autorec.js": "1fed4390fecc57c7",
 "js/ui/collab.js": "d6b2a58b2b8b1e75",
 "js/ui/controllers.js": "bb826709a78a3ab3",
-"js/ui/device.js": "0a094a22fe29c541",
+"js/ui/device.js": "8d519c1e0cb3a474",
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
 "js/ui/editor.js": "d6ffe47c6268058b",
@@ -176,13 +181,14 @@ const HASHES = {
 "js/ui/instruments.js": "ff60f41d86a6c41b",
 "js/ui/keys.js": "778e6068734f0ffd",
 "js/ui/kit.js": "d47103e4cd83f192",
-"js/ui/lab.js": "cb2b7d14dafc3e0f",
-"js/ui/library.js": "132b9063134a8db5",
+"js/ui/lab.js": "58d8853fcd0767dd",
+"js/ui/library.js": "27f9cc3061de4b5d",
 "js/ui/macros.js": "f01c46916cde13c0",
 "js/ui/meters.js": "6dc09c6b7f47b622",
 "js/ui/mixer.js": "a1b3536084cc913f",
 "js/ui/mods.js": "506552f13ad7383b",
 "js/ui/notes.js": "6cecc51afbf2cafd",
+"js/ui/packs.js": "b440d350e6511c7c",
 "js/ui/palette.js": "a62f9a34e41a6ef5",
 "js/ui/presets.js": "890a430f5b7c4413",
 "js/ui/report.js": "6632758d92621165",
@@ -228,7 +234,7 @@ self.addEventListener('install', (e) => {
   })());
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('kraken-') && k !== APP && k !== FONTS).map((k) => caches.delete(k))))
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('kraken-') && k !== APP && k !== FONTS && k !== PACKS).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
@@ -244,6 +250,11 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
+  // a community engine (engines/packs/NAME-HASH.wasm): kept once played (its name changes with its bytes), not precached
+  if (/\/engines\/packs\/[a-z0-9-]+\.wasm$/.test(url.pathname)) {
+    e.respondWith(caches.open(PACKS).then(async (c) => (await c.match(e.request)) || fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; })));
+    return;
+  }
   e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit
     || fetch(e.request).catch(() => (e.request.mode === 'navigate' ? caches.match('./') : Response.error()))));
 });

@@ -145,13 +145,25 @@ export class Lufs {
 // (sampler.js: keys, zones, slices, pads)
 
 // ------------------------------------------------------------------- tracks ---
+// an engine's instance: SLOOP's and Clipper's export the whole interface; a community engine (packs.js) may leave out
+// what it has no use for (MIDI controllers, MPE, a DX7 voice, a kit, the tempo): those do nothing
+const OPTIONAL = ['k_midi', 'k_midi_in', 'k_mpe', 'k_fm6', 'k_kit', 'k_bpm', 'k_panic', 'k_global', 'k_get'];
+const nothing = () => 0;
+export function engineExports(module) {
+  const x = new WebAssembly.Instance(module, {}).exports;
+  x._initialize?.();                                             // (an engine built as a WASI reactor: its C runtime first)
+  if (OPTIONAL.every((k) => x[k])) return x;
+  const w = { ...x };
+  for (const k of OPTIONAL) w[k] ||= nothing;
+  return w;
+}
 class Track {
   constructor(engine, def) {
     this.id = def.id;
     this.kind = def.kind;
     this.bank = def.kind === 'drum' ? 'sloop' : def.kind === 'synth' ? def.bank : null;
-    if (this.bank) {
-      this.w = new WebAssembly.Instance(engine.modules[this.bank], {}).exports;
+    if (this.bank && engine.modules[this.bank]) {                // (an engine pack this browser does not have: silent)
+      this.w = engineExports(engine.modules[this.bank]);
       this.w.k_init(this.kind === 'drum' ? 1 : 0);
       this.out = new Float32Array(this.w.memory.buffer, this.w.k_render(), BLOCK * 2);
       this.nparams = this.w.k_nparams();

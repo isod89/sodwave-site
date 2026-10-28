@@ -536,7 +536,10 @@ class Expr {
 // The compiled engines come from whoever plays the patch: the audio engine (worklet, workers), or the page (the editor).
 let WASM = null;
 const CATALOG = {};
-export function setLabEngines(modules) { if (modules?.sloop && modules?.clipper) WASM = modules; }
+export function setLabEngines(modules) { if (modules?.sloop && modules?.clipper) WASM = modules; }   // (the packs too: the same map)
+// an ENGINE module's firmware: an installed engine pack (m.pack, "x:ID"), else SLOOP or Clipper (p.bank 0 / 1)
+const bankOf = (bank) => (typeof bank === 'string' && bank.startsWith('x:') ? (WASM?.[bank] ? bank : null) : bank ? 'clipper' : 'sloop');
+export const engBank = (m) => (m?.pack && WASM?.[m.pack] ? m.pack : m?.p?.bank ? 'clipper' : 'sloop');
 export const labEnginesReady = () => !!WASM;
 // (the audio thread has no TextDecoder: UTF-8 read by hand there)
 function utf8(b) {
@@ -561,13 +564,17 @@ function engTarget(cat, e, t) {
   const i = cat.tp.findIndex((q) => q.l === ENG_TP[t - 8]);
   return i >= 0 ? { id: i, min: cat.tp[i].min, max: cat.tp[i].max } : null;
 }
+// an instance (a community engine may leave out the optional exports: engine-core.js engineExports)
+const OPT = ['k_midi', 'k_mpe', 'k_bpm', 'k_panic', 'k_get', 'k_global'], nil = () => 0;
+function inst(module) { const x = new WebAssembly.Instance(module, {}).exports; x._initialize?.(); if (OPT.every((k) => x[k])) return x; const w = { ...x }; for (const k of OPT) w[k] ||= nil; return w; }
 // what a sound's settings are, for the editor (a spare copy of the firmware per bank, on the page's thread)
 const spare = {};
 export function engineInfo(bank, e, pr) {
   if (!WASM) return null;
-  const b = bank ? 'clipper' : 'sloop';
+  const b = bankOf(bank);
+  if (!b) return null;
   let s = spare[b];
-  if (!s) { const w = new WebAssembly.Instance(WASM[b], {}).exports; w.k_init(0); s = spare[b] = { w, cat: catalogOf(b, w), key: '', vals: null }; }
+  if (!s) { const w = inst(WASM[b]); w.k_init(0); s = spare[b] = { w, cat: catalogOf(b, w), key: '', vals: null }; }
   const ne = s.cat.engines.length, ei = Math.min(ne - 1, Math.max(0, e | 0)), np = s.cat.engines[ei].presets.length, pi = Math.min(np - 1, Math.max(0, pr | 0));
   if (s.key !== `${ei}:${pi}`) {
     s.w.k_preset(ei, pi); s.w.k_render(); s.w.k_render();
@@ -584,9 +591,9 @@ class Engine {
   load(p, m) {
     this.level = p.level ?? 0.8;
     if (!WASM) return;
-    const bank = p.bank ? 'clipper' : 'sloop';
+    const bank = m?.pack && WASM[m.pack] ? m.pack : p.bank ? 'clipper' : 'sloop';
     if (this.bank !== bank) {
-      try { this.w = new WebAssembly.Instance(WASM[bank], {}).exports; } catch { this.w = null; return; }
+      try { this.w = inst(WASM[bank]); } catch { this.w = null; return; }
       this.w.k_init(0);
       this.cat = catalogOf(bank, this.w);
       this.ptr = this.w.k_render();

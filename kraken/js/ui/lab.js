@@ -655,11 +655,24 @@ class LabEditor {
     return h('div', { class: 'lab-sheetbar', 'aria-label': title }, h('button', { class: 'lab-btn', onclick: () => this.select(null) }, 'Done'));
   }
   // ---- ENGINE: the firmware's engines, sounds and settings, by name
-  engCat(m) { return this.app.lib?.[m.p.bank ? 'clipper' : 'sloop']; }
+  engCat(m) { return this.app.lib?.[m.pack && this.app.lib[m.pack] ? m.pack : m.p.bank ? 'clipper' : 'sloop']; }
+  // the firmwares an ENGINE module can play: SLOOP, Clipper, and every engine pack installed here
+  engBanks() { const lib = this.app.lib || {}; return [['0', 'SLOOP'], ['1', 'CLIPPER'], ...Object.keys(lib).filter((b) => lib[b]?.pack && !lib[b].missing).map((b) => [b, `◆ ${lib[b].pack.name.toUpperCase()}`])]; }
   engEdit(m, fn) { this.edit((pp) => { const x = pp.mods.find((y) => y.id === m.id); if (x) { x.eng ||= { p: {} }; fn(x); } }); this.probeSoon(); }
   engSel(m, q, key) {
     const cat = this.engCat(m), eng = cat?.engines[m.p.engine];
-    const names = q.k === 'bank' ? q.names : q.k === 'engine' ? (cat?.engines || []).map((e) => e.name) : q.k === 'preset' ? (eng?.presets || [])
+    if (q.k === 'bank') {                                          // SLOOP, Clipper or an engine pack
+      const cur = m.pack && this.app.lib?.[m.pack] ? m.pack : String(Math.round(m.p.bank));
+      const s = h('select', { class: 'lab-sel', 'aria-label': q.l, title: q.l, translate: 'no',
+        onchange: (e) => { const v = e.target.value; this.engEdit(m, (x) => {
+          if (v.startsWith('x:')) x.pack = v; else { delete x.pack; x.p.bank = +v; }
+          x.p.engine = 0; x.p.preset = 0; x.eng.p = {};
+        }); } },
+        this.engBanks().map(([v, n]) => h('option', { value: v, selected: v === cur ? true : null }, n)));
+      this.knobs.set(key, { set: () => {} });
+      return h('label', { class: 'lab-sel-w' }, h('span', { text: q.l }), s);
+    }
+    const names = q.k === 'engine' ? (cat?.engines || []).map((e) => e.name) : q.k === 'preset' ? (eng?.presets || [])
       : [...(eng?.edit || []).map((e) => e.l), ...ENG_TP_NAMES];
     const s = h('select', { class: 'lab-sel', 'aria-label': q.l, title: q.l, translate: q.k === 'engine' || q.k === 'preset' ? 'no' : null,
       onchange: (e) => { const v = +e.target.value; this.engEdit(m, (x) => {
@@ -675,7 +688,7 @@ class LabEditor {
   // in the inspector: every engine as a button, the sound before / after, and every setting of the engine as a knob
   engPanel(m) {
     if (!labEnginesReady()) return [h('p', { class: 'lab-help', text: 'The engines are still loading…' })];
-    const info = engineInfo(m.p.bank, m.p.engine, m.p.preset);
+    const info = engineInfo(m.pack && this.app.lib?.[m.pack] ? m.pack : m.p.bank, m.p.engine, m.p.preset);
     if (!info) return [];
     const { cat, values } = info, eng = cat.engines[info.engine], e0 = cat.e0, over = m.eng?.p || {}, color = CAT_COLOR.src;
     const chips = h('div', { class: 'lab-engs' }, cat.engines.map((e, i) => h('button', { class: 'add' + (i === info.engine ? ' on' : ''), translate: 'no', title: `${e.name}: ${e.presets.length} sounds`,
@@ -690,10 +703,12 @@ class LabEditor {
       k.title = `${label || d.l}: drag · double-click: back to the sound's value`;
       return k;
     };
-    const tp = (ids) => ids.filter((id) => cat.tp[id]).map((id) => mk(id, cat.tp[id], ENG_NICE[id]));
-    const groups = [[eng.name, eng.edit.map((d, i) => mk(e0 + i, d))], ['ENVELOPE', tp([1, 2, 3, 4, 5, 6, 7])], ['LFO', tp([9, 10, 11, 12, 13, 14, 15, 16])],
-      ['VOICE', tp([0, 38, 44, 39])], ['EFFECTS', tp([33, 34, 35, 36])], ...(m.p.bank ? [['MACROS', tp([96, 97, 98, 99])]] : [])].filter(([, ks]) => ks.length);
-    return [h('h6', { text: `${m.p.bank ? 'CLIPPER' : 'SLOOP'} · ${cat.engines.length} ENGINES` }), chips,
+    const tp = (ids) => ids.filter((id) => cat.tp[id]).map((id) => mk(id, cat.tp[id], cat.pack ? null : ENG_NICE[id]));
+    const groups = (cat.groups ? [[eng.name, eng.edit.map((d, i) => mk(e0 + i, d))], ...cat.groups.map((g) => [g.title, tp(g.ids)])]   // (a community engine's own groups)
+      : [[eng.name, eng.edit.map((d, i) => mk(e0 + i, d))], ['ENVELOPE', tp([1, 2, 3, 4, 5, 6, 7])], ['LFO', tp([9, 10, 11, 12, 13, 14, 15, 16])],
+        ['VOICE', tp([0, 38, 44, 39])], ['EFFECTS', tp([33, 34, 35, 36])], ...(m.p.bank || m.pack ? [['MACROS', tp([96, 97, 98, 99])]] : [])]).filter(([, ks]) => ks.length);
+    const fw = m.pack && cat.pack ? cat.pack.name.toUpperCase() : m.p.bank ? 'CLIPPER' : 'SLOOP';
+    return [h('h6', { translate: 'no', text: `${fw} · ${cat.engines.length} ENGINES` }), chips,
       h('h6', { text: 'SOUND' }), sound,
       ...groups.flatMap(([title, ks]) => [h('h6', { translate: title === eng.name ? 'no' : null, text: title }), h('div', { class: 'lab-knobs' }, ks)]),
       h('div', { class: 'row' }, h('button', { class: 'add', disabled: Object.keys(over).length ? null : true, title: 'Every setting back to the sound as it was loaded',

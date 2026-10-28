@@ -45,6 +45,8 @@ import { welcome, startTour } from './ui/welcome.js';
 import { initI18n, toggleLang } from './i18n.js';
 import { openLab, installLab, labPicker, labStart, labOpenPatch } from './ui/lab.js';
 import { setLabEngines } from './lab-dsp.js';
+import { isPackBank, missingCatalog } from './packs.js';
+import { packsDialog, needPacks } from './ui/packs.js';
 import { initHub } from './ui/hub.js';
 import { toOfficialHost } from './hub.js';                       // the community hub (ui/hub.js, hub.js, hub/api)
 
@@ -77,16 +79,28 @@ window.addEventListener('unhandledrejection', (e) => noteError(e.reason?.message
 window.kraken = app;           // handy in the console
 
 // ------------------------------------------------------------------ boot ---
+// the community's engines on the start screen: each firmware, its author, a link to its source (the credit is theirs)
+function bootCredits(lib) {
+  const list = Object.keys(lib).filter((b) => isPackBank(b) && lib[b]?.pack && !lib[b].missing).map((b) => lib[b].pack);
+  const box = $('boot-credits');
+  if (!list.length || !box) return;
+  box.replaceChildren(h('h2', { text: 'COMMUNITY ENGINES · THANK YOU TO THEIR AUTHORS' }),
+    h('div', { class: 'list' }, list.map((m) => h('a', { href: m.source, target: '_blank', rel: 'noopener', translate: 'no', title: `${m.name} by ${m.author}${m.license ? ` (${m.license})` : ''}: its source` },
+      `◆ ${m.name}`, h('small', { text: m.author })))));
+  box.hidden = false;
+}
 async function boot() {
   if (toOfficialHost()) return;                                   // (the official site without its www: to the www one, where the session is)
   try {
     const { modules, lib } = await loadEngines();
-    app.modules = modules; app.lib = lib;
+    // a community engine this version does not have (a song from a newer one): a stand-in, its tracks silent and saying so
+    app.modules = modules; app.lib = new Proxy(lib, { get: (o, k) => (typeof k === 'string' && isPackBank(k) && !(k in o) ? (o[k] = missingCatalog(k)) : o[k]) });
     setLabEngines(modules);                                       // (the LAB's ENGINE module, in the editor: its test note, its settings)
     $('st-eng').firstChild.textContent = String(lib.engineNames.length);
     $('st-snd').firstChild.textContent = String(lib.sounds.length);
     $('st-kit').firstChild.textContent = String(lib.sloop.kits.filter((k) => !/^USR|^SYN/.test(k)).length);
     $('boot-msg').textContent = 'The real firmware engines, compiled to WebAssembly, ready to play. Sound starts when you press the button.';
+    bootCredits(lib);
     $('boot-go').hidden = false;
     $('boot-go').onclick = start;
     $('boot-go').focus();
@@ -191,6 +205,8 @@ async function openUi(project) {
   app.wamChanged = () => app.device.refresh(true);
   app.audio.onWarn = (msg) => toast(msg);
   app.store.on((p) => app.wam.sync(p));
+  app.store.on(() => needPacks(app));                             // (a community engine is fetched when the project first plays it)
+  needPacks(app);
   app.audio.on(onAudio);
   app.store.on(onChange);
   bindTop();
@@ -1046,6 +1062,7 @@ Object.assign(app, {
       const t = p.tracks.find((x) => x.id === trackId);
       if (!('dx7' in snd)) delete t.dx7;                         // another sound: the DX7 voice goes
       Object.assign(t, snd);
+      if (isPackBank(t.bank)) t.pack = app.packInfo(t.bank); else delete t.pack;   // (an engine pack: by name and link, for whoever opens the song)
       t.params = {};
       if (reset) t.rev = (t.rev || 0) + 1;
       if (t.engine >= app.lib[t.bank].engines.length) t.engine = 0;
@@ -1126,12 +1143,15 @@ Object.assign(app, {
     return importAudio(files, { trackId: t?.kind === 'audio' ? t.id : null, beat: app.pos });
   },
   setKit(trackId, kit) { app.store.change((p) => { p.tracks.find((x) => x.id === trackId).kit = kit; }); },
+  // what a track of an engine pack keeps of it: its name, its source, its fingerprint (packs.js)
+  packInfo(bank) { const k = app.lib[bank]?.pack; return k ? { name: k.name, source: k.source || '', sha256: app.lib[bank].sha256 || '' } : null; },
   addTrack(kind, opts = {}) {
     const p = app.store.p;
     const used = (c) => p.tracks.filter((x) => x.color === c).length;          // the least used colour
     const color = opts.color || [...COLORS].sort((a, b) => used(a) - used(b))[0];
     const t = newTrack(kind, p.tracks.length, { ...opts, scenes: p.scenes.length, color });
     t.name = uniqueName(p, opts.name ? opts.name.slice(0, 16) : t.name);
+    if (kind === 'synth' && isPackBank(opts.bank)) t.pack = app.packInfo(opts.bank);
     if (kind === 'synth' && opts.bank == null) {
       const cat = app.lib.clipper, e = cat.engines.findIndex((x) => x.name === 'HYBRID');
       Object.assign(t, { bank: 'clipper', engine: Math.max(0, e), preset: 0 });
@@ -1310,6 +1330,7 @@ function bindTop() {
   $('add-lab').onclick = () => labPicker(app, 'inst', (patch, name) => { const t = app.addTrack('lab', { lab: patch, name: String(name || 'LAB').toUpperCase().slice(0, 16), sends: [0.1, 0] }); app.audition(t.id, [60, 64, 67]); }, 'A LAB instrument: start from');
   $('add-ext').onclick = () => app.addTrack('external', { sends: [0, 0] });
   $('add-wam').onclick = () => wamDialog(app, { instrument: true });
+  $('add-pack').onclick = () => packsDialog(app);
   $('add-group').onclick = () => app.addGroup();
   $('add-return').onclick = () => app.addReturn();
   $('add-macros').onclick = () => app.showMacroLane(0);
@@ -1502,6 +1523,7 @@ async function fileAction(act) {
   if (act === 'template') return saveTemplate(app);
   if (act === 'collab') return collabDialog(app);
   if (act === 'presets') return managePresets(app);
+  if (act === 'packs') return packsDialog(app);
   if (act === 'hub') return app.hub.open();
   if (act === 'publish') return app.hub.publish({ kind: 'song' });
   if (act === 'lab') return labStart(app);
@@ -1694,7 +1716,7 @@ app.renameTrack = (id) => {
   setTimeout(() => { inp.focus(); inp.select(); }, 30);
 };
 app.sheet = sheet;
-function confirmBox(title, text, ok, fn, danger = false) { const m = modal(title, [h('p', { text })], [['Cancel'], [ok, fn, true]]); if (danger) document.querySelector('.modal .go')?.classList.add('danger'); return m; }
+function confirmBox(title, text, ok, fn, danger = false) { const m = modal(title, [h('p', { text })], [['Cancel'], [ok, fn, true]]); if (danger) m.box.querySelector('.go')?.classList.add('danger'); return m; }   // (its own button: another dialog may be open under it)
 app.confirm = confirmBox;
 function help() {
   const touch = matchMedia('(pointer: coarse)').matches;
