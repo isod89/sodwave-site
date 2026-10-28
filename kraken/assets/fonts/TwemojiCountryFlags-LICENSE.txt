@@ -1,0 +1,4 @@
+TwemojiCountryFlags.woff2: the country flags of Twemoji (https://github.com/twitter/twemoji), Copyright Twitter, Inc
+and other contributors, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), as subset by
+country-flag-emoji-polyfill (https://github.com/talkjs/country-flag-emoji-polyfill, MIT, Copyright (c) 2022 TalkJS).
+Kraken uses it so the hub's flags show on Windows, whose emoji font has no country flags.

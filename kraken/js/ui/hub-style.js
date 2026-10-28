@@ -66,7 +66,10 @@ export const HUB_CSS = `
 .hub-card .ttl { font: 700 13px/1.25 var(--f-ui); letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
 .hub-by { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 11px/1.2 var(--f-ui); color: var(--text); }
 .hub-by .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hub-flag { font-size: 14px; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+/* the flags: Windows has no country flags in its emoji font (it shows two letters), so Twemoji's, for those characters only */
+@font-face { font-family: 'Twemoji Country Flags'; src: url('assets/fonts/TwemojiCountryFlags.woff2') format('woff2'); font-display: swap;
+  unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F; }
+.hub-flag { font-size: 14px; line-height: 1; font-family: 'Twemoji Country Flags', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 .hub-lv { flex: none; padding: 3px 5px; border-radius: 3px; background: var(--screen-3); border: 1px solid var(--line-2); color: var(--accent); font: 700 8px/1 var(--f-ui); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
 .hub-stats { display: flex; gap: 10px; flex-wrap: wrap; font: 500 10.5px/1 var(--f-mono); color: var(--dim); }
 .hub-stats .liked { color: var(--accent); }

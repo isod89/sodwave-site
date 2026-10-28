@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "7b3dbe9451ad";
+const VERSION = "e345f9665374";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
+"assets/fonts/TwemojiCountryFlags-LICENSE.txt",
+"assets/fonts/TwemojiCountryFlags.woff2",
 "assets/icon-192.png",
 "assets/icon-512.png",
 "assets/icon-maskable-512.png",
@@ -107,8 +109,10 @@ const FILES = [
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts', PACKS = 'kraken-packs';
 const HASHES = {
-"./": "63304384e6ac2d38",
+"./": "9b98ad1919ae3c35",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
+"assets/fonts/TwemojiCountryFlags-LICENSE.txt": "e42b16deeb80d8cc",
+"assets/fonts/TwemojiCountryFlags.woff2": "9f04f14429bb6a9f",
 "assets/icon-192.png": "eac7183445a6cc25",
 "assets/icon-512.png": "6537a0849702f146",
 "assets/icon-maskable-512.png": "c1eaa709f7a2e0b6",
@@ -121,7 +125,7 @@ const HASHES = {
 "engines/clipper.wasm": "484fb761c60eccde",
 "engines/packs/index.json": "a7c829029d62b00f",
 "engines/sloop.wasm": "6cca862ab545b47e",
-"hub.html": "08ba8ca3b3acd7d4",
+"hub.html": "2325b2593d830ab0",
 "js/assets.js": "f9e37a5394c1996b",
 "js/audio.js": "ecbc049bb3588eb6",
 "js/audio2midi.js": "ae1895a605a204d7",
@@ -176,7 +180,7 @@ const HASHES = {
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
 "js/ui/editor.js": "d6ffe47c6268058b",
-"js/ui/hub-style.js": "015949aafe8af6ed",
+"js/ui/hub-style.js": "a87d1153c68b1630",
 "js/ui/hub.js": "4316ee9f65408c37",
 "js/ui/instruments.js": "ff60f41d86a6c41b",
 "js/ui/keys.js": "778e6068734f0ffd",
