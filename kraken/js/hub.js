@@ -146,6 +146,7 @@ export const api = {
   data: (id, download = false) => call('data', { query: { id, dl: download ? 1 : 0 } }),
   user: (id) => call('user', { query: { id } }),
   world: () => call('world'),
+  people: () => call('people'),
   me: () => call('me'),
   saveMe: (p) => post('me', p),
   myData: () => call('my_data'),

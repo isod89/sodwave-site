@@ -121,7 +121,7 @@ hub.publishLab = hub.publish;
 const q = new URLSearchParams(location.search);
 const item = q.get('item'), user = q.get('user'), tab = q.get('tab'), kind = q.get('kind');
 if (kind && ['song', 'preset', 'plugin', 'template'].includes(kind)) hub.filters.kind = kind;
-const target = /^\d{1,9}$/.test(item || '') ? { item: +item } : /^\d{1,9}$/.test(user || '') ? { user: +user } : ['discover', 'following', 'world', 'me'].includes(tab) ? tab : null;
+const target = /^\d{1,9}$/.test(item || '') ? { item: +item } : /^\d{1,9}$/.test(user || '') ? { user: +user } : ['discover', 'following', 'people', 'world', 'me'].includes(tab) ? tab : null;
 // someone not signed in, on the plain address: the front page first (hub-landing.js); else the hub itself
 const front = landing({ open: (t) => showHub(t), openKraken: () => go(), signedIn: (r) => hub.signedIn(r) });
 front.hidden = true;

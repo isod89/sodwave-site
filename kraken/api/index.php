@@ -17,7 +17,7 @@ $route = is_string($_GET['r'] ?? null) ? $_GET['r'] : '';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'OPTIONS') { http_response_code(204); exit; }
 
-const GET_ROUTES = ['ping', 'items', 'item', 'data', 'user', 'me', 'my_data', 'world', 'admin_reports'];
+const GET_ROUTES = ['ping', 'items', 'item', 'data', 'user', 'me', 'my_data', 'world', 'people', 'admin_reports'];
 const POST_ROUTES = ['login', 'exchange', 'login_code', 'login_wait', 'logout', 'me', 'delete_me', 'publish', 'edit', 'delete', 'like', 'unlike', 'follow', 'unfollow', 'report', 'admin'];
 $routes = $method === 'POST' ? POST_ROUTES : ($method === 'GET' ? GET_ROUTES : []);
 if (!in_array($route, $routes, true)) fail(in_array($route, array_merge(GET_ROUTES, POST_ROUTES), true) ? 'bad_method' : 'not_found', $routes ? 404 : 405);
@@ -126,7 +126,7 @@ function r_data(): void {
 }
 
 function profile(array $u, ?array $me): array {
-  $p = ['id' => (int) $u['id'], 'name' => $u['name'], 'country' => $u['country'], 'bio' => $u['bio'], 'youtube' => $u['youtube'],
+  $p = ['id' => (int) $u['id'], 'name' => shown_name($u['name'], (int) $u['named'], (int) $u['id'], $me), 'country' => $u['country'], 'bio' => $u['bio'], 'youtube' => $u['youtube'],
     'level' => level_of((int) $u['xp']), 'created_at' => iso($u['created_at']),
     'badges' => array_column(all('SELECT badge FROM hub_badges WHERE user_id = ? ORDER BY created_at', [$u['id']]), 'badge'),
     'followers' => (int) val('SELECT COUNT(*) FROM hub_follows WHERE followee_id = ?', [$u['id']]),
@@ -149,16 +149,35 @@ function r_user(): void {
   send_json(['user' => profile($u, $me), 'items' => cards($items, $me)]);
 }
 
-// the world: creators, songs, items and likes by country (the creator's country)
+// the world: every member by country (published or not), and per country its creators, songs, items and likes
 function r_world(): void {
-  $rows = all("SELECT u.country, COUNT(DISTINCT u.id) AS creators, COUNT(i.id) AS items, SUM(i.kind = 'song') AS songs, COALESCE(SUM(i.likes), 0) AS likes
-    FROM hub_users u JOIN hub_items i ON i.user_id = u.id AND i.status = 'visible'
-    WHERE u.banned = 0 AND u.country IS NOT NULL GROUP BY u.country ORDER BY songs DESC, items DESC, likes DESC, creators DESC, u.country LIMIT 300");
-  $tot = one("SELECT COUNT(DISTINCT u.id) AS creators, COUNT(i.id) AS items, COUNT(DISTINCT u.country) AS countries
-    FROM hub_items i JOIN hub_users u ON u.id = i.user_id WHERE i.status = 'visible' AND u.banned = 0");
-  send_json(['countries' => array_map(fn ($r) => ['country' => $r['country'], 'creators' => (int) $r['creators'], 'items' => (int) $r['items'],
+  $rows = all("SELECT u.country, COUNT(*) AS members, SUM(s.n > 0) AS creators, COALESCE(SUM(s.n), 0) AS items, COALESCE(SUM(s.songs), 0) AS songs, COALESCE(SUM(s.likes), 0) AS likes
+    FROM hub_users u LEFT JOIN (SELECT user_id, COUNT(*) AS n, SUM(kind = 'song') AS songs, SUM(likes) AS likes FROM hub_items WHERE status = 'visible' GROUP BY user_id) s ON s.user_id = u.id
+    WHERE u.banned = 0 AND u.country IS NOT NULL GROUP BY u.country ORDER BY songs DESC, items DESC, members DESC, likes DESC, u.country LIMIT 300");
+  $tot = one("SELECT COUNT(*) AS members, COUNT(DISTINCT u.country) AS countries,
+    (SELECT COUNT(DISTINCT i.user_id) FROM hub_items i JOIN hub_users c ON c.id = i.user_id WHERE i.status = 'visible' AND c.banned = 0) AS creators,
+    (SELECT COUNT(*) FROM hub_items i JOIN hub_users c ON c.id = i.user_id WHERE i.status = 'visible' AND c.banned = 0) AS items
+    FROM hub_users u WHERE u.banned = 0");
+  send_json(['countries' => array_map(fn ($r) => ['country' => $r['country'], 'members' => (int) $r['members'], 'creators' => (int) $r['creators'], 'items' => (int) $r['items'],
     'songs' => (int) $r['songs'], 'likes' => (int) $r['likes']], $rows),
-    'total' => ['creators' => (int) $tot['creators'], 'items' => (int) $tot['items'], 'countries' => (int) $tot['countries']]]);
+    'total' => ['members' => (int) $tot['members'], 'creators' => (int) $tot['creators'], 'items' => (int) $tot['items'], 'countries' => (int) $tot['countries']]]);
+}
+// the people of the hub: how many, how many new, the newest members (published or not) and the most XP
+function r_people(): void {
+  $me = current_user();
+  $tot = one("SELECT COUNT(*) AS members, SUM(created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY) AS week, SUM(created_at >= UTC_TIMESTAMP() - INTERVAL 1 DAY) AS today,
+    COUNT(DISTINCT country) AS countries, SUM(last_seen >= UTC_TIMESTAMP() - INTERVAL 1 DAY) AS active FROM hub_users WHERE banned = 0");
+  $creators = (int) val("SELECT COUNT(DISTINCT i.user_id) FROM hub_items i JOIN hub_users u ON u.id = i.user_id WHERE i.status = 'visible' AND u.banned = 0");
+  $row = fn ($u) => person($u, '', $me) + ['joined' => iso($u['created_at']), 'items' => (int) $u['items'], 'followers' => (int) $u['followers']];
+  $sel = "SELECT u.id, u.name, u.named, u.country, u.xp, u.created_at,
+    (SELECT COUNT(*) FROM hub_items i WHERE i.user_id = u.id AND i.status = 'visible') AS items,
+    (SELECT COUNT(*) FROM hub_follows f WHERE f.followee_id = u.id) AS followers FROM hub_users u WHERE u.banned = 0";
+  send_json([
+    'total' => ['members' => (int) $tot['members'], 'week' => (int) $tot['week'], 'today' => (int) $tot['today'], 'countries' => (int) $tot['countries'],
+      'active' => (int) $tot['active'], 'creators' => $creators],
+    'newest' => array_map($row, all("$sel ORDER BY u.created_at DESC, u.id DESC LIMIT 36")),
+    'top' => array_map($row, all("$sel AND u.xp > 0 ORDER BY u.xp DESC, u.id LIMIT 12")),
+  ]);
 }
 
 // ---------------------------------------------------------------------------------------------------- signing in ---
@@ -213,8 +232,7 @@ function sign_in(string $email): void {
   $u = one('SELECT * FROM hub_users WHERE email = ?', [$email]);
   $created = false;
   if (!$u) {
-    $base = ucfirst(mb_substr(preg_replace('/[^\p{L}\p{N}]+/u', '', explode('@', $email)[0]), 0, 20)) ?: 'Kraken fan';
-    q('INSERT INTO hub_users (email, name, created_at) VALUES (?, ?, UTC_TIMESTAMP())', [$email, $base]);
+    q('INSERT INTO hub_users (email, name, created_at) VALUES (?, ?, UTC_TIMESTAMP())', [$email, auto_name($email)]);
     $u = one('SELECT * FROM hub_users WHERE email = ?', [$email]);
     $created = true;
   }
@@ -333,7 +351,7 @@ function r_logout(): void {
 // ---------------------------------------------------------------------------------------------------- me ---
 // my profile, what I can still earn today, and what happened since my last visit (said once: then marked seen)
 function me_of(array $u, bool $news = true): array {
-  $me = profile($u, null) + ['email' => $u['email'], 'admin' => is_admin($u), 'banned' => (bool) $u['banned'],
+  $me = array_diff_key(profile($u, $u), ['followed' => 1]) + ['email' => $u['email'], 'admin' => is_admin($u), 'banned' => (bool) $u['banned'],
     'today' => ['publishes' => count_today((int) $u['id'], 'publish'), 'publish_max' => XP_PUBLISH_PER_DAY,
       'youtube' => count_today((int) $u['id'], 'youtube'), 'youtube_max' => XP_YOUTUBE_PER_DAY]];
   if ($news) {
@@ -358,8 +376,8 @@ function r_me_save(): void {
   $yt = text($b->youtube ?? '', 200);
   $channel = $yt === '' ? null : youtube_channel($yt);
   if ($yt !== '' && !$channel) fail('bad_channel');
-  q('UPDATE hub_users SET name = ?, bio = ?, country = ?, youtube = ? WHERE id = ?',
-    [$name, text($b->bio ?? '', 280, true), country($b->country ?? null), $channel, $u['id']]);
+  q('UPDATE hub_users SET name = ?, named = GREATEST(named, ?), bio = ?, country = ?, youtube = ? WHERE id = ?',
+    [$name, isset($b->name) ? 1 : 0, text($b->bio ?? '', 280, true), country($b->country ?? null), $channel, $u['id']]);
   send_json(['me' => me_of(one('SELECT * FROM hub_users WHERE id = ?', [$u['id']]), false)]);
 }
 

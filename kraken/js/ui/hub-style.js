@@ -148,6 +148,19 @@ a.hub-btn { text-decoration: none; }
 .hub-world .num { display: grid; gap: 2px; justify-items: end; font: 400 13px/1 var(--f-lcd); }
 .hub-world .num small { font: 700 7.5px/1 var(--f-ui); letter-spacing: 0.14em; color: var(--dim); text-transform: uppercase; }
 .hub-totals { display: flex; gap: 22px; flex-wrap: wrap; margin: 0 0 16px; }
+.hub-live { display: inline-flex; align-items: center; gap: 4px; margin-top: 14px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--line-2); background: #ffffff08; color: var(--text); font: 500 12.5px/1 var(--f-ui); cursor: pointer; }
+.hub-live:hover { border-color: var(--accent); }
+.hub-live[hidden] { display: none; }
+.hub-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--go); box-shadow: 0 0 0 3px #19b76533; margin-right: 4px; }
+.hub-live b { font-weight: 800; }
+.hub-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.hub-person { position: relative; display: grid; justify-items: center; gap: 6px; padding: 16px 10px 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--screen-2); color: var(--text); cursor: pointer; text-align: center; min-width: 0; transition: border-color .12s, transform .12s; }
+.hub-person:hover, .hub-person:focus-visible { border-color: var(--accent); transform: translateY(-2px); }
+.hub-person > b { font: 700 13.5px/1.2 var(--f-ui); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-person > small { font: 500 11px/1.3 var(--f-ui); color: var(--dim); }
+.hub-person > small b { color: var(--text); font-weight: 700; }
+.hub-person .hub-by { justify-content: center; }
+.hub-new { position: absolute; top: 8px; right: 8px; padding: 3px 6px; border-radius: 4px; background: var(--go); color: #04170c; font: 800 8.5px/1 var(--f-ui); letter-spacing: 0.1em; text-transform: uppercase; }
 .hub-form { display: grid; gap: 10px; max-width: 460px; }
 .hub-form label, .hub-field, .modal .hub-field { display: grid; align-items: stretch; gap: 5px; font: 700 9px/1 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
 .hub-form input, .hub-form select, .hub-form textarea, .hub-field input, .hub-field select, .hub-field textarea { background: var(--screen-3); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px;

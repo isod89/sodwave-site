@@ -91,9 +91,9 @@ export function landing({ open, openKraken, signedIn = null }) {
   // the real numbers and what is trending, when the hub answers
   (async () => {
     try {
-      const w = await api.world(), t = w.total || {};
-      if ((t.items || 0) >= 20) {
-        stats.replaceChildren(...[[t.creators, 'creators'], [t.items, 'songs, presets and plugins'], [t.countries, 'countries']].map(([n, l]) => h('div', {}, h('b', { text: Number(n || 0).toLocaleString('en') }), h('span', { text: l }))));
+      const w = await api.world(), t = w.total || {}, members = t.members ?? t.creators ?? 0;
+      if (members >= 5 || (t.items || 0) >= 20) {
+        stats.replaceChildren(...[[members, 'members'], [t.countries, 'countries'], [t.items, 'songs, presets and plugins']].map(([n, l]) => h('div', {}, h('b', { text: Number(n || 0).toLocaleString('en') }), h('span', { text: l }))));
       } else stats.replaceChildren(h('p', { text: 'The hub just opened: publish now and be one of its very first creators.' }));
       stats.hidden = false;
     } catch { /* (no hub here: the page still explains it) */ }

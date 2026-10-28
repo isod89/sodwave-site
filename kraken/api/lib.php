@@ -94,6 +94,13 @@ function db(): PDO {
   }
   $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
   $pdo->exec("SET time_zone = '+00:00'");                         // (every time is UTC; MySQL 8 and MariaDB alike)
+  // hub_users.named (a name its owner chose): added to a hub made before it, the names already chosen marked
+  try { $pdo->query('SELECT named FROM hub_users LIMIT 0'); }
+  catch (PDOException $e) {
+    $pdo->exec('ALTER TABLE hub_users ADD COLUMN named TINYINT(1) NOT NULL DEFAULT 0 AFTER name');
+    $mark = $pdo->prepare('UPDATE hub_users SET named = 1 WHERE id = ?');
+    foreach ($pdo->query('SELECT id, email, name FROM hub_users') as $u) if ($u['name'] !== auto_name($u['email'])) $mark->execute([$u['id']]);
+  }
   return $pdo;
 }
 // a query with its values (always prepared: nothing typed by anyone is ever part of the SQL itself)
@@ -339,11 +346,22 @@ function tags($v): array {
 }
 
 // ------------------------------------------------------------------ what is shown ---
-function person(array $r, string $p = 'u_'): array {
-  return ['id' => (int) $r[$p . 'id'], 'name' => $r[$p . 'name'], 'country' => $r[$p . 'country'], 'level' => level_of((int) $r[$p . 'xp'])];
+function person(array $r, string $p = 'u_', ?array $me = null): array {
+  $id = (int) $r[$p . 'id'];
+  return ['id' => $id, 'name' => shown_name($r[$p . 'name'], (int) ($r[$p . 'named'] ?? 1), $id, $me), 'country' => $r[$p . 'country'], 'level' => level_of((int) $r[$p . 'xp'])];
+}
+// the name an account gets at its first sign-in: its address's first part. Until its owner chooses one, others see
+// "Kraken #id" instead (the hub never shows any part of an email); its owner and the moderators see it as it is
+function auto_name(string $email): string {
+  return ucfirst(mb_substr(preg_replace('/[^\p{L}\p{N}]+/u', '', explode('@', $email)[0]), 0, 20)) ?: 'Kraken fan';
+}
+function shown_name(string $name, int $named, int $id, ?array $me): string {
+  if ($named) return $name;
+  if ($me && ((int) $me['id'] === $id || is_admin($me))) return $name;
+  return 'Kraken #' . $id;
 }
 const CARD_SQL = 'SELECT i.id, i.kind, i.subkind, i.title, i.genre, i.tags, i.bpm, i.youtube, i.has_audio, i.audio_count, i.likes, i.downloads,
-  i.status, i.hidden_reason, i.reports, i.created_at, i.updated_at, i.user_id, u.id AS u_id, u.name AS u_name, u.country AS u_country, u.xp AS u_xp,
+  i.status, i.hidden_reason, i.reports, i.created_at, i.updated_at, i.user_id, u.id AS u_id, u.name AS u_name, u.named AS u_named, u.country AS u_country, u.xp AS u_xp,
   (SELECT COUNT(DISTINCT l.country) FROM hub_likes l WHERE l.item_id = i.id AND l.country IS NOT NULL) AS countries';
 function card(array $r, ?array $me = null): array {
   $c = [
@@ -351,7 +369,7 @@ function card(array $r, ?array $me = null): array {
     'tags' => array_values(array_filter(explode(',', $r['tags']))), 'bpm' => $r['bpm'] === null ? null : (float) $r['bpm'],
     'youtube' => $r['youtube'], 'has_audio' => (bool) $r['has_audio'], 'audio_count' => (int) $r['audio_count'],
     'likes' => (int) $r['likes'], 'downloads' => (int) $r['downloads'], 'countries' => (int) $r['countries'],
-    'created_at' => iso($r['created_at']), 'user' => person($r),
+    'created_at' => iso($r['created_at']), 'user' => person($r, 'u_', $me),
   ];
   if ($me && ((int) $r['user_id'] === (int) $me['id'] || is_admin($me))) {
     $c['status'] = $r['status']; $c['hidden_reason'] = $r['hidden_reason'];

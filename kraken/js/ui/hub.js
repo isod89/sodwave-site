@@ -150,7 +150,7 @@ class Hub {
   }
   drawTabs() {
     const me = session.me;
-    const list = [['discover', 'Discover'], ['following', 'Following'], ['world', 'World'], ['me', 'My profile'], ...(me?.admin ? [['mod', 'Moderation']] : [])];
+    const list = [['discover', 'Discover'], ['following', 'Following'], ['people', 'Members'], ['world', 'World'], ['me', 'My profile'], ...(me?.admin ? [['mod', 'Moderation']] : [])];
     this.tabs.replaceChildren(...list.map(([k, label]) => h('button', { class: 'key' + (this.tab === k ? ' on' : '') + (k === 'mod' ? ' mod' : ''), role: 'tab', 'aria-selected': String(this.tab === k), 'data-tab': k,
       onclick: () => { this.stack = []; this.go(k, null, true); } }, label)));
     this.drawMe();
@@ -199,12 +199,12 @@ class Hub {
     if (this.view && !fresh && (this.view.name !== name || this.view.arg !== arg)) this.stack.push(this.view);
     if (fresh) this.stack = [];
     this.view = { name, arg };
-    if (['discover', 'following', 'world', 'me', 'mod'].includes(name)) this.tab = name;
+    if (['discover', 'following', 'people', 'world', 'me', 'mod'].includes(name)) this.tab = name;
     for (const b of this.tabs.children) { const on = b.dataset.tab === this.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); }
     const seq = ++this.seq;
     this.body.replaceChildren(h('div', { class: 'hub-busy', text: 'Loading…' }));
     this.body.scrollTop = 0;
-    const draw = { discover: () => this.discover(seq), following: () => this.following(seq), world: () => this.world(seq), me: () => this.profile(seq, null),
+    const draw = { discover: () => this.discover(seq), following: () => this.following(seq), people: () => this.people(seq), world: () => this.world(seq), me: () => this.profile(seq, null),
       user: () => this.profile(seq, arg), item: () => this.item(seq, arg), mod: () => this.moderation(seq) }[name];
     return Promise.resolve(draw?.()).catch((e) => { if (seq === this.seq) this.body.replaceChildren(this.failed(e)); });
   }
@@ -255,6 +255,16 @@ class Hub {
         ? h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…')
         : h('button', { class: 'hub-btn go', onclick: () => this.go('me') }, 'Join free'),
       this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null)) : null;
+    if (intro) {                                                    // (and how many we are: filled in when the hub answers)
+      const live = h('button', { class: 'hub-live', hidden: true, onclick: () => this.go('people') });
+      intro.firstChild.append(live);
+      api.people().then((r) => {
+        const tt = r.total;
+        live.replaceChildren(...[h('i'), h('b', { text: tt.members.toLocaleString(getLang()) }), ' ', h('span', { text: plural(tt.members, 'member', 'members') }),
+          tt.week ? [' · ', h('b', { text: String(tt.week) }), ' ', h('span', { text: 'new this week' })] : null, ' · ', h('b', { text: String(tt.countries) }), ' ', h('span', { text: plural(tt.countries, 'country', 'countries') }), ' →'].flat().filter(Boolean));
+        live.hidden = !tt.members;
+      }).catch(() => {});
+    }
     await this.feed(seq, [intro, chips], query, () => h('div', { class: 'hub-empty' }, h('p', { text: f.q || f.genre || f.tag || f.country || f.kind ? 'Nothing matches these filters yet.' : 'Nothing published yet: be the first!' }),
       f.kind === 'plugin' && this.app.labStart ? h('button', { class: 'hub-btn', onclick: () => this.lab() }, '◈ Build a plugin') : null,
       h('button', { class: 'hub-btn go', onclick: () => this.publish() }, '☁ Publish…')));
@@ -302,12 +312,33 @@ class Hub {
     const lang = getLang();
     const rows = r.countries.map((c, i) => h('button', { onclick: () => { Object.assign(this.filters, { country: c.country, q: '', tag: '' }); this.search.value = ''; this.go('discover', null, true); } },
       h('span', { class: 'rank', text: String(i + 1) }), h('span', { class: 'hub-flag', text: flag(c.country) }), h('span', { class: 'cn', ...NAME, text: countryName(c.country, lang) }),
-      num(c.songs, 'songs'), num(c.creators, 'creators'), num(c.likes, 'likes', 'likes')));
+      num(c.members ?? c.creators, 'members'), num(c.songs, 'songs'), num(c.likes, 'likes', 'likes')));
     this.put(seq,
       h('h2', { text: 'Kraken around the world' }),
-      h('div', { class: 'hub-totals hub-numbers' }, num(r.total.creators, 'creators'), num(r.total.countries, 'countries'), num(r.total.items, 'items')),
-      h('p', { text: 'Where the creators of the hub make their music, ranked by songs published. Pick a country to hear what is made there. Your country (optional) is on your profile.' }),
+      h('div', { class: 'hub-totals hub-numbers' }, num(r.total.members ?? r.total.creators, 'members'), num(r.total.countries, 'countries'), num(r.total.creators, 'creators'), num(r.total.items, 'items')),
+      h('p', { text: 'Where the members of the hub are, every one of them, ranked by songs published. Pick a country to hear what is made there. Your country (optional) is on your profile.' }),
       rows.length ? h('div', { class: 'hub-world' }, rows) : h('div', { class: 'hub-empty' }, h('p', { text: 'No country yet: add yours on your profile, and publish something!' })));
+  }
+  // ---- MEMBERS: how many, the newest (published or not), the most XP
+  async people(seq) {
+    const r = await api.people(), tt = r.total;
+    const person = (u) => {
+      const lv = levelOf(u.level?.xp ?? 0), fresh = Date.now() - Date.parse(u.joined) < 7 * 864e5;
+      return h('button', { class: 'hub-person', 'data-id': u.id, onclick: () => this.go('user', u.id) },
+        avatar(u, true),
+        h('b', { ...NAME, text: u.name }),
+        h('span', { class: 'hub-by' }, u.country ? h('span', { class: 'hub-flag', title: countryName(u.country, getLang()), text: flag(u.country) }) : null, levelTag(lv)),
+        h('small', {}, u.items ? [h('b', { text: String(u.items) }), ' ', h('span', { text: plural(u.items, 'item', 'items') })] : h('span', { text: 'Joined' }), ' · ', h('span', { text: when(u.joined) })),
+        fresh ? h('span', { class: 'hub-new', text: 'New' }) : null);
+    };
+    this.put(seq,
+      h('h2', { text: 'The members of the hub' }),
+      h('div', { class: 'hub-totals hub-numbers' }, num(tt.members, 'members'), num(tt.week, 'new this week'), num(tt.today, 'today'), num(tt.countries, 'countries'), num(tt.creators, 'creators')),
+      h('p', { text: 'Everyone who joined, newest first, whether they published yet or not. Follow them: what they publish shows up in FOLLOWING.' }),
+      !session.token ? h('div', { class: 'hub-actions' }, h('button', { class: 'hub-btn go', onclick: () => this.go('me') }, 'Join free')) : null,
+      h('h4', { text: 'Newest members' }),
+      r.newest.length ? h('div', { class: 'hub-people' }, r.newest.map(person)) : h('div', { class: 'hub-empty' }, h('p', { text: 'Nobody yet: be the first!' })),
+      r.top.length ? [h('h4', { text: 'Most XP' }), h('div', { class: 'hub-people' }, r.top.map(person))] : null);
   }
 
   // ---- an item

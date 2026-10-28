@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS hub_users (
   id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
   email       VARCHAR(190) NOT NULL,
   name        VARCHAR(40)  NOT NULL,
+  named       TINYINT(1)   NOT NULL DEFAULT 0,             -- 1: chosen by its owner (else others see "Kraken #id")
   bio         VARCHAR(400) NOT NULL DEFAULT '',
   country     CHAR(2)      NULL,
   youtube     VARCHAR(200) NULL,
