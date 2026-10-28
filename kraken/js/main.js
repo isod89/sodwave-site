@@ -1888,13 +1888,29 @@ function bindResize() {
 }
 
 // ----------------------------------------------------- installed app (PWA) ---
+function updateReady() {
+  if (document.getElementById('update-banner')) return;
+  const go = async () => { await app.flushSave?.().catch(() => {}); location.reload(); };   // (the project written first)
+  const b = h('div', { id: 'update-banner', role: 'status' },
+    h('span', { text: 'A new version of Kraken is ready.' }),
+    h('button', { class: 'key', onclick: go }, 'Update now'),
+    h('button', { class: 'x', 'aria-label': 'Later', title: 'Later (it is used at the next opening)', onclick: () => b.remove() }, '×'));
+  document.body.append(b);
+}
 // offline once loaded (sw.js precaches everything), installable on a computer or a phone
 let installEvent = null;
 const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 function setupPwa() {
   const framed = window.top !== window.self;
   if ('serviceWorker' in navigator && !framed && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* no offline mode here */ });
+    // a new version on the site: the service worker installs it in the background, then takes over; the page still
+    // runs the old one, so it says so at once, with the way to switch (the project is kept: it is saved as it changes)
+    const hadSw = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSw) updateReady(); });
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.update().catch(() => {});                                // (look now, and every half hour)
+      setInterval(() => reg.update().catch(() => {}), 30 * 60e3);
+    }).catch(() => { /* no offline mode here */ });
   }
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; $('install').hidden = false; });
   window.addEventListener('appinstalled', () => { $('install').hidden = true; installEvent = null; toast('Kraken is installed: open it from your apps, even offline.'); });

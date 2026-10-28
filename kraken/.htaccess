@@ -6,8 +6,10 @@ AddType text/javascript .js .mjs
   # several cores for the audio (multi-core playback): the page isolated from other sites' windows
   Header set Cross-Origin-Opener-Policy "same-origin"
   Header set Cross-Origin-Embedder-Policy "credentialless"
-  <FilesMatch "\.(wasm|js|svg|png|json)$">
-    Header set Cache-Control "public, max-age=3600"
+  # the app's files: asked again each time (a quick "not changed" answer when they are the same), so a page never
+  # mixes an old file with a new one after an update (the service worker keeps them offline)
+  <FilesMatch "\.(wasm|js|mjs|css|svg|png|json|webp)$">
+    Header set Cache-Control "no-cache"
   </FilesMatch>
   # the app updates itself: these three must never be served stale (after the rule above, so it wins for sw.js)
   <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest|hub\.html)$">

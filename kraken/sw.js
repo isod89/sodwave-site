@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "f91524b4588b";
+const VERSION = "c4d1bccdc82e";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -104,7 +104,7 @@ const FILES = [
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts';
 const HASHES = {
-"./": "8e4fe2fc1a43c0fb",
+"./": "a9048ab49e4ee3ee",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
 "assets/icon-192.png": "eac7183445a6cc25",
 "assets/icon-512.png": "6537a0849702f146",
@@ -132,11 +132,11 @@ const HASHES = {
 "js/gensounds.js": "153bcb24ffacd831",
 "js/hub-art.js": "306bdd6cc9c5985a",
 "js/hub-landing.js": "314b1cac1e2ee08e",
-"js/hub-page.js": "0f2011f5871f7315",
+"js/hub-page.js": "710473d1778c47ca",
 "js/hub.js": "ae16cb9d424d794a",
 "js/i18n.js": "5d26939e61333792",
 "js/i18n/fr-hub.js": "572a106d9ea51007",
-"js/i18n/fr.js": "c04a29b7c0d9a7f8",
+"js/i18n/fr.js": "69c3456351937ee7",
 "js/input.js": "6380044ba9c51bc4",
 "js/io.js": "8dab5b01b2a1f361",
 "js/lab-dsp.js": "ed4bf537586ff6d9",
@@ -144,7 +144,7 @@ const HASHES = {
 "js/lab-presets.js": "bf8748f1a560c9ea",
 "js/launchpad.js": "62d81134fffdfba7",
 "js/levels.js": "bef2d9abe9e589f0",
-"js/main.js": "f823741365480c93",
+"js/main.js": "fdca7cc019a86ff9",
 "js/mc-worker.js": "880ea63a24ec78da",
 "js/meter.js": "6cf9580d1d704557",
 "js/mods.js": "8445d16b87bf54ba",

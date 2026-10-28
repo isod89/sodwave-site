@@ -102,6 +102,13 @@ const app = {
 
 // ------------------------------------------------------------------ the page
 if (toOfficialHost()) await new Promise(() => {});                 // (sodwave.com/…: on its way to www.sodwave.com/…)
+// Kraken's service worker keeps this page offline too: when a new version of the site takes over, this page (nothing to
+// lose on it) reloads by itself into it, at once instead of at the next visit
+if (navigator.serviceWorker?.controller) {
+  let once = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!once) { once = true; location.reload(); } });
+  navigator.serviceWorker.getRegistration().then((r) => r?.update()).catch(() => {});
+}
 await initI18n().catch(() => {});
 const langBtn = $('lang');
 const showLang = () => { langBtn.textContent = getLang() === 'fr' ? 'EN' : 'FR'; langBtn.title = getLang() === 'fr' ? 'Switch to English' : 'Passer en français'; };

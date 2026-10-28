@@ -23,6 +23,10 @@ const pl = (n, one, many) => (Math.abs(parseFloat(String(n).replace(',', '.'))) 
 const P = (s) => (s === 'PROJECT' ? 'PROJET' : s);                                                // the menu named in a hint (☰ stays)
 
 export const dict = {
+  'A new version of Kraken is ready.': 'Une nouvelle version de Kraken est prête.',
+  'Update now': 'Mettre à jour',
+  'Later': 'Plus tard',
+  'Later (it is used at the next opening)': 'Plus tard (elle sera utilisée à la prochaine ouverture)',
   // ---------------------------------------------------------------- boot screen ---
   'A SODWAVE INSTRUMENT · THE SLOOP AND CLIPPER ENGINES': 'UN INSTRUMENT SODWAVE · LES MOTEURS SLOOP ET CLIPPER',
   'ENGINES': 'MOTEURS',
