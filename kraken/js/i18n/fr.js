@@ -2051,6 +2051,7 @@ export const rules = [
   [/^(.*): (.*) is not inside the file \(an external file\): left out\.$/s, (m) => `${m[1]} : ${m[2]} n’est pas dans le fichier (un fichier externe) : laissé de côté.`],
   [/^A (.*) lane \(MIDI expression\) was left out\.$/s, (m) => `Une ligne ${m[1]} (expression MIDI) a été laissée de côté.`],
   [/^…and (\d+) more\.$/, (m) => `…et ${m[1]} de plus.`],
+  [/^Volume (.+) dB · drag · double-click: 0 dB$/, (m) => `Volume ${m[1]} dB · glisser · double-clic : 0 dB`],
   // ---- the short generic ones last (a name, a verb): after every sentence above
   // ---- MIDI control: target labels, the learn banner
   [/^MIDI LEARN · (.*): now move a knob, fader or pad on your controller, or press a computer key\.$/s, (m, t) => `MIDI LEARN · ${t(m[1])} : bougez maintenant un bouton, un fader ou un pad de votre contrôleur, ou appuyez sur une touche de l’ordinateur.`],

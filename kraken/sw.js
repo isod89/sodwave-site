@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "a4e81f68f9a1";
+const VERSION = "1f410aa9fdd8";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -103,7 +103,7 @@ const FILES = [
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts';
 const HASHES = {
-"./": "bdc7767b12482301",
+"./": "bb021112ca0e224f",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
 "assets/icon-192.png": "eac7183445a6cc25",
 "assets/icon-512.png": "6537a0849702f146",
@@ -134,7 +134,7 @@ const HASHES = {
 "js/hub.js": "32d2326547be79f7",
 "js/i18n.js": "5d26939e61333792",
 "js/i18n/fr-hub.js": "43cca79436a312ba",
-"js/i18n/fr.js": "020035660cd92480",
+"js/i18n/fr.js": "c04a29b7c0d9a7f8",
 "js/input.js": "6380044ba9c51bc4",
 "js/io.js": "8dab5b01b2a1f361",
 "js/lab-dsp.js": "ed4bf537586ff6d9",
@@ -161,14 +161,14 @@ const HASHES = {
 "js/sloop-pro.js": "262bbc42a932bd51",
 "js/sloopsong.js": "fbb95974e5f385b7",
 "js/templates.js": "0c16d3a949ef166d",
-"js/ui/arrange.js": "c5be4945436ffb7f",
+"js/ui/arrange.js": "3deb68e45a19f2fc",
 "js/ui/autorec.js": "1fed4390fecc57c7",
 "js/ui/collab.js": "d6b2a58b2b8b1e75",
 "js/ui/controllers.js": "bb826709a78a3ab3",
 "js/ui/device.js": "0a094a22fe29c541",
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
-"js/ui/editor.js": "2540722d7eb39f40",
+"js/ui/editor.js": "d6ffe47c6268058b",
 "js/ui/hub-style.js": "178e4530831e2db8",
 "js/ui/hub.js": "02fce2d586ee6cc0",
 "js/ui/instruments.js": "ff60f41d86a6c41b",

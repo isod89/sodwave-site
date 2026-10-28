@@ -10,6 +10,10 @@ import { meterList, barOf, barStart, barLines, beatLines, barLabel } from '../me
 import { DEVICES } from '../fx.js';
 import { NOTE_FX, fmtNoteParam } from '../notefx.js';
 import { isFolder, expandFolder, setComp, segmentAt, shiftFolder, isMidiFolder, compNotes } from '../comp.js';
+// a fader's travel (as the mixer's: -60 dB at the bottom, +6 at the top, 0 dB about three quarters up)
+const dbToPos = (db) => (db <= -60 ? 0 : Math.pow((db + 60) / 66, 2));
+const posToDb = (q) => (q <= 0.0005 ? -60 : Math.sqrt(q) * 66 - 60);
+const fmtDb = (db) => (db <= -60 ? '-∞' : `${db > 0 ? '+' : ''}${db.toFixed(1)}`);
 
 // the ruler, top to bottom: the LOOP band, the PUNCH band, the bar numbers (click: playhead)
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;   // fingers: a taller ruler, bigger grips
@@ -194,6 +198,7 @@ export class Arrange {
           tb('x', '×', false, 'Delete this track…', () => app.deleteTrack(t.id)),
           tb('d', '⧉', false, 'Duplicate this track', () => app.duplicateTrack(t.id))),
         h('div', { class: 'snd', text: snd, title: snd }),
+        typeof t.vol === 'number' ? this.headVolume(t) : null,
         h('span', { class: 'meter' }, h('i')));
       return head;
     }));
@@ -202,8 +207,30 @@ export class Arrange {
   meters(levels) {
     for (const el of this.headsInner.querySelectorAll('.head')) {
       const l = levels[el.dataset.id];
-      if (l) el.querySelector('.meter').style.setProperty('--v', Math.min(1, Math.sqrt(Math.max(l[0], l[1]))).toFixed(3));
+      if (!l) continue;
+      const v = Math.min(1, Math.sqrt(Math.max(l[0], l[1]))).toFixed(3);
+      el.querySelector('.meter').style.setProperty('--v', v);
+      el.querySelector('.hvol')?.style.setProperty('--v', v);
     }
+  }
+  // a track's volume in its head: a thin fader over its level. Drag it (Shift: finely), double-click: 0 dB, arrows
+  headVolume(t) {
+    const app = this.app;
+    const set = (db) => app.store.change((p) => { const x = p.tracks.find((y) => y.id === t.id); if (x) x.vol = Math.round(Math.max(-60, Math.min(6, db)) * 10) / 10; }, 'vol' + t.id);
+    return h('div', { class: 'hvol', role: 'slider', tabindex: 0, 'aria-label': `${t.name} volume`, 'aria-valuemin': -60, 'aria-valuemax': 6, 'aria-valuenow': t.vol,
+      title: `Volume ${fmtDb(t.vol)} dB · drag · double-click: 0 dB`, '--p': `${(dbToPos(t.vol) * 100).toFixed(2)}%`,
+      onpointerdown: (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation(); e.preventDefault();
+        const el = e.currentTarget, w = el.getBoundingClientRect().width, x0 = e.clientX, q0 = dbToPos(t.vol);
+        el.classList.add('drag');
+        const mv = (m) => set(posToDb(Math.max(0, Math.min(1, q0 + (m.clientX - x0) / w * (m.shiftKey ? 0.2 : 1)))));
+        const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); app.store.endGesture?.(); };
+        window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+      },
+      ondblclick: (e) => { e.stopPropagation(); set(0); app.store.endGesture?.(); },
+      onkeydown: (e) => { const d = { ArrowRight: 0.5, ArrowUp: 0.5, ArrowLeft: -0.5, ArrowDown: -0.5 }[e.key]; if (d) { e.preventDefault(); e.stopPropagation(); set(t.vol + d); app.store.endGesture?.(); } } },
+    h('i'));
   }
 
   // --------------------------------------------------------------- ruler ---
@@ -255,16 +282,16 @@ export class Arrange {
   drawRegion(c, R, y, col, label, hot, on) {
     const xa = this.x(R.a), xb = this.x(R.b), wd = xb - xa, top = y + 1, ht = BAND - 2;
     if (on) { c.fillStyle = col; c.globalAlpha = hot === 'move' ? 1 : 0.88; c.fillRect(xa, top, wd, ht); c.globalAlpha = 1; }
-    else {
-      c.fillStyle = col + '22'; c.fillRect(xa, top, wd, ht);
-      c.strokeStyle = col + '99'; c.setLineDash([3, 2]); c.strokeRect(xa + 0.5, top + 0.5, wd - 1, ht - 1); c.setLineDash([]);
+    else {                                                   // off: a quiet outline (it shows itself under the pointer)
+      c.fillStyle = hot ? col + '22' : '#ffffff08'; c.fillRect(xa, top, wd, ht);
+      if (hot) { c.strokeStyle = col + '99'; c.setLineDash([3, 2]); c.strokeRect(xa + 0.5, top + 0.5, wd - 1, ht - 1); c.setLineDash([]); }
     }
     for (const [x, m] of [[xa, 'a'], [xb - 5, 'b']]) {                         // the grips
-      c.fillStyle = hot === m ? '#ffffff' : on ? '#ffe2d6' : col + 'aa'; c.fillRect(x, top, 5, ht);
+      c.fillStyle = hot === m ? '#ffffff' : on ? '#ffe2d6' : hot ? col + 'aa' : '#ffffff22'; c.fillRect(x, top, on || hot ? 5 : 2, ht);
     }
     c.font = '700 8px "IBM Plex Mono", monospace';
     const tw = c.measureText(label).width;
-    if (wd > tw + 16) { c.fillStyle = on ? '#0b0c0d' : col; c.fillText(label, xa + 8, y + BAND / 2 + 0.5); }
+    if (wd > tw + 16 && (on || hot)) { c.fillStyle = on ? '#0b0c0d' : col; c.fillText(label, xa + 8, y + BAND / 2 + 0.5); }
   }
   rulerHit(x, y) {
     const key = y < PUNCH_Y ? 'loop' : y < NUM_Y ? 'punch' : null;
@@ -388,7 +415,7 @@ export class Arrange {
       c.strokeRect(this.x(g.start) + 0.5, g.y + 3.5, (g.len) * v.zoom - 1, (g.h || v.trackH) - 8);
       c.setLineDash([]);
     }
-    if (this.total - v.sy < hh) {
+    if (this.total - v.sy < hh && p.tracks.every((x) => !x.clips?.length)) {   // (the how-to, until there is a clip)
       c.fillStyle = '#8a9096'; c.font = '600 10px Archivo, sans-serif';
       const touch = matchMedia('(pointer: coarse)').matches;
       c.fillText(!p.tracks.length ? 'Add a track with + TRACK, or pick a sound in the library'

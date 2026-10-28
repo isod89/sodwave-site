@@ -153,7 +153,7 @@ export class Editor {
         clip.takes.map((tk, i) => h('option', { value: i }, `${tk.name || 'TAKE ' + (i + 1)} EVERYWHERE`)))),
       h('button', { class: 'add' + (app.view.takesOpen?.has(t.id) ? ' on' : ''), title: 'Show the takes under the track: click or swipe a take to put it in the comp', onclick: () => app.toggleTakes(t.id) }, 'TAKE LANES'),
       h('button', { class: 'add', title: 'Render the comp into one plain clip (undo brings the takes back)', onclick: () => app.flattenComp(t.id, clip.id) }, 'FLATTEN'),
-      h('label', { style: { color: 'var(--dim)' }, text: `${clip.takes.length} takes · swipe across a take lane to comp` }),
+      h('label', { class: 'ehint', text: `${clip.takes.length} takes · swipe across a take lane to comp` }),
     ];
   }
   warpBar(t, clip, a, num) {
@@ -167,7 +167,7 @@ export class Editor {
         clip.wm?.length ? h('button', { class: 'add', title: 'Remove every warp marker: the audio runs at its tempo again', onclick: () => this.app.warpClip(t.id, clip.id, 'stretch', { markers: [], keepLen: true }) }, `CLEAR ${clip.wm.length} MARKERS`) : null,
         clip.warp === 'stretch' ? num('PITCH st', clip.st || 0, (v) => this.app.warpClip(t.id, clip.id, 'stretch', { st: v }), 1, 'Transpose, length kept') : null,
         h('button', { class: 'add', title: 'A new sampler track with this audio, sliced to pads', onclick: () => this.app.clipToSampler(t.id, clip.id) }, '→ SAMPLER'),
-        h('label', { style: { color: 'var(--dim)' }, text: a ? `${a.name} · ${(a.L.length / 44100).toFixed(2)} s · from ${(clip.offset || 0).toFixed(2)} s` : 'Audio missing' })];
+        h('label', { class: 'ehint', text: a ? `${a.name} · ${(a.L.length / 44100).toFixed(2)} s · from ${(clip.offset || 0).toFixed(2)} s` : 'Audio missing' })];
   }
   renderNotesBar({ t, clip }, name, lenSel, btn, num, sig) {
     const kids = [h('label', {}, h('span', { style: { color: t.color }, text: '■' }), name),
@@ -193,7 +193,7 @@ export class Editor {
     } else {
       kids.push(btn('×2', 'Double the loop: copy its steps after it', () => this.doubleLoop()),
         btn('CLEAR', 'Remove every hit', () => this.change((cl) => { cl.notes = []; })),
-        h('label', { style: { color: 'var(--dim)' }, text: COARSE ? 'Tap: hit · drag: paint · TOOL ACCENT: accent / ghost' : 'Click: hit · Shift-click or TOOL ACCENT: accent / ghost · drag: paint' }));
+        h('label', { class: 'ehint', text: COARSE ? 'Tap: hit · drag: paint · TOOL ACCENT: accent / ghost' : 'Click: hit · Shift-click or TOOL ACCENT: accent / ghost · drag: paint' }));
     }
     this.bar.replaceChildren(...kids);
     if (this.sel.size && this.bar.scrollWidth > this.bar.clientWidth + 20) this.bar.querySelector('.insp-sep')?.scrollIntoView({ block: 'nearest', inline: 'start' });   // the note settings in view

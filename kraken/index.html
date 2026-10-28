@@ -22,19 +22,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=Silkscreen&display=swap">
 <style>
-/* Layout: an aluminium chassis (header, rails, labels) framing black displays (timeline,
-   editors, LCDs) where every track keeps its colour, as on the FM-1 running SLOOP / Clipper. */
+/* Layout: a graphite frame (the top bar, the gaps) around darker panels (timeline, editors, library) where every
+   track keeps its colour. Colour only where it means something: the tracks', Kraken's orange for what is on and
+   selected, green for play, red for record. (The --chassis / --ink names are the frame's and its text's.) */
 :root {
-  --chassis: #d6d7d4; --chassis-hi: #e7e8e5; --chassis-lo: #bfc1be; --edge: #a9aca9;
-  --ink: #131415; --ink-2: #55595c; --ink-3: #868a8c;
-  --screen: #0b0c0d; --screen-2: #131517; --screen-3: #1b1e21; --line: #23272b; --line-2: #2f343a;
-  --text: #dfe2de; --dim: #737980;
+  --chassis: #16181c; --chassis-hi: #1d2025; --chassis-lo: #111316; --edge: #2b2f36;
+  --ink: #e6e8eb; --ink-2: #a1a7af; --ink-3: #6f767f;
+  --screen: #0f1013; --screen-2: #15171b; --screen-3: #1c1f24; --line: #22262b; --line-2: #2e333a;
+  --text: #e1e4e8; --dim: #7a818a;
   --accent: #ff5b14; --accent-ink: #1a0b03; --rec: #ff2f2f; --go: #19b765; --warn: #ffc21a;
   --f-ui: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
   --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
   --f-lcd: 'Silkscreen', 'IBM Plex Mono', ui-monospace, monospace;
   --r: 6px;
-  color-scheme: light;
+  color-scheme: dark;
 }
 html, body { height: 100%; }
 body {
@@ -748,6 +749,142 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
+/* ---- the look: graphite and quiet ----
+   One dark family from the top bar to the panels, flat controls with a thin edge, labels small and calm (no wide
+   capitals), icons on the transport, the playhead's display in the middle. Placed after the rules above: it refines them. */
+body { background: #0b0c0e; }
+.panel { background: var(--screen); border-radius: 8px; box-shadow: 0 0 0 1px #1f2227; }
+#app { gap: 6px; padding-block: 6px; }
+/* the top bar */
+#top { gap: 8px; }
+.top-logo { height: 34px; }
+.key { height: 32px; min-width: 32px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--edge); background: var(--chassis-hi); box-shadow: none; color: var(--ink);
+  font: 600 10.5px/1 var(--f-ui); letter-spacing: 0.05em; transition: background-color .12s, border-color .12s, color .12s; }
+.key:hover { background: #252930; border-color: #3a3f47; }
+.key:active { transform: none; background: #2b3037; }
+.key.on { background: #ff5b1424; border-color: #ff5b1499; color: #ff8a52; }
+.key .ic { width: 16px; height: 16px; flex: none; }
+.key .kl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.key:has(> .kl) { position: relative; width: 34px; padding: 0; }
+#countin, #punch, #click, #loop { padding: 0; }
+#top .group { gap: 3px; }
+.key.round { width: 36px; height: 36px; border-radius: 50%; }
+#play { background: #1f2a24; border-color: #2c4a3a; color: #3ddc84; }
+#play:hover { background: #24342b; }
+#play.on { background: var(--go); border-color: var(--go); color: #04170c; }
+#rec { background: #2a1d1f; border-color: #4a2b2e; }
+#rec:hover { background: #33242a; }
+#autobtn { font-size: 9.5px; letter-spacing: 0.08em; }
+#autobtn.on { color: #ff6a3d; }
+.key.icon { font-size: 16px; width: 32px; }
+#home { width: 32px; padding: 0; }
+.sep { background: var(--edge); }
+.title-field { color: var(--ink); border-bottom-color: #343941; font: 650 13px/1 var(--f-ui); letter-spacing: 0.02em; text-transform: none; }
+.title-field:hover { border-bottom-color: #4a5059; }
+.title-field:focus { border-bottom-color: var(--accent); }
+/* the display: position, tempo, metre, grid: the one screen in the bar */
+.lcd { height: 40px; padding: 0 14px; border-radius: 9px; background: #08090b; box-shadow: 0 0 0 1px #23272d inset, 0 1px 0 #ffffff06; gap: 16px; }
+.lcd .big { font: 600 21px/1 var(--f-mono); letter-spacing: -0.01em; color: #ff7a3d; min-width: 6.2em; }
+.lcd .cell b { font: 600 8.5px/1 var(--f-ui); letter-spacing: 0.08em; color: #6b727b; }
+.lcd .cell span, .lcd input { font: 500 13.5px/1 var(--f-mono); }
+.lcd select { background: #08090b; font-size: 13px; }
+/* menus */
+.menu-list { background: #17191d; border: 1px solid #2a2e35; border-radius: 10px; box-shadow: 0 18px 50px #000b; min-width: 290px; max-height: calc(100dvh - 76px); overflow-y: auto; scrollbar-width: thin; }
+.menu-list button { font: 500 12.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--text); padding: 8px 10px; border-radius: 6px; white-space: nowrap; align-items: center; }
+.menu-list button:hover { background: #23272d; color: #fff; }
+.menu-list kbd { font: 500 9.5px/1 var(--f-mono); letter-spacing: 0.02em; color: #6b727b; white-space: nowrap; }
+.menu-list hr { border-top-color: #262a30; }
+/* tracks */
+#arr-corner { background: #121417; }
+.seg { border-color: #2c3037; border-radius: 6px; }
+.seg button { font: 650 9.5px/1 var(--f-ui); letter-spacing: 0.06em; padding: 6px 9px; background: #1a1d21; }
+.seg button.on { background: #e6e8eb; color: #0b0c0e; }
+.add { border-radius: 5px; font: 650 9.5px/1 var(--f-ui); letter-spacing: 0.06em; background: #1b1e23; border-color: #2e333a; }
+.head { border-bottom-color: #1c1f23; }
+.head.sel { background: #181b1f; box-shadow: inset 0 0 0 1px #ffffff08; }
+.head .chip { width: 4px; border-radius: 0 3px 3px 0; }
+.head .name { font: 650 12px/1.1 var(--f-ui); letter-spacing: 0.03em; }
+.head .snd { font: 500 10px/1 var(--f-ui); color: #6f767f; letter-spacing: 0.02em; }
+.tb { border-radius: 4px; background: #1b1e23; border-color: #2b3036; color: #8a919a; font: 650 9px/1 var(--f-ui); }
+.tb:hover { color: #fff; border-color: #3b4048; }
+.tb.m.on { background: #f5b71b; border-color: #f5b71b; color: #1a1400; }
+.tb.s.on { background: #3ac0ff; border-color: #3ac0ff; color: #001522; }
+/* a track's volume in its head, over its level: drag it (double-click: 0 dB) */
+.head:has(.hvol) .btns { grid-row: 1 / 4; }
+.head .hvol { grid-column: 2; position: relative; height: 5px; margin: 1px 0 0; border-radius: 3px; background: #1d2025; cursor: ew-resize; touch-action: none; }
+.head .hvol::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; width: calc(var(--v, 0) * 100%); background: linear-gradient(90deg, #2fbf71, #2fbf71 70%, #ffc21a 88%, #ff3b3b); opacity: 0.55; }
+.head .hvol i { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; border-radius: 2px; left: var(--p, 0%); background: #e6e8eb; box-shadow: 0 0 0 1px #0009; }
+.head .hvol:hover i, .head .hvol.drag i { background: #fff; width: 4px; }
+.head .hvol::after { content: ""; position: absolute; top: -6px; bottom: -6px; left: 0; right: 0; }
+.head .meter { display: none; }
+/* the bottom panel and the library: tabs as words, underlined when on */
+.tabs { border-bottom-color: #1f2227; background: #121417; }
+.tab { border-right: 0; padding: 0 14px; color: #7f868f; font: 600 12px/1 var(--f-ui); letter-spacing: 0.01em; text-transform: none; position: relative; }
+.tab:hover { color: #d7dade; }
+.tab.on { color: #fff; background: none; box-shadow: none; }
+.tab.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
+.tab-info { font: 500 10.5px/1 var(--f-ui); }
+.ebar { background: #121417; border-bottom-color: #1f2227; gap: 8px; }
+.ebar label { font: 600 9.5px/1 var(--f-ui); letter-spacing: 0.06em; }
+.ebar .ehint { margin-left: auto; padding-left: 12px; font: 500 11px/1 var(--f-ui); letter-spacing: 0; text-transform: none; color: #5f666f; }
+.ebar select, .ebar input { background: #1a1d21; border-color: #2c3037; border-radius: 5px; }
+/* modules, knobs, pads: dark caps, a light pointer, the value's arc in colour */
+.module { background: #15171b; border-color: #23272c; border-radius: 10px; }
+.module h4, .rack-head { font: 650 9.5px/1 var(--f-ui); letter-spacing: 0.07em; color: #7f868f; }
+.knob svg circle:nth-of-type(1) { fill: #2b3037; }
+.knob svg circle:nth-of-type(2) { stroke: #ffffff12; }
+.knob svg path:not(.v) { stroke: #262a30; }
+.knob svg .p { stroke: #eef0f2; }
+.knob .lbl { font: 600 8.5px/1 var(--f-ui); letter-spacing: 0.05em; color: #7f868f; }
+.pad { border-radius: 7px; background: #1b1e23; border-color: #2a2e35; font: 650 8.5px/1 var(--f-ui); letter-spacing: 0.05em; }
+.sound-lcd .screen { background: #0a0b0d; box-shadow: 0 0 0 1px #23272c inset; }
+/* the mixer */
+.strip { background: #15171b; border-color: #23272c; border-radius: 10px; }
+.strip .sname { font: 650 10.5px/1 var(--f-ui); letter-spacing: 0.03em; }
+.fader .cap { background: linear-gradient(#f1f2f4, #c7cad0); box-shadow: 0 2px 5px #000a; border-radius: 3px; }
+.fader .cap::after { background: #1a1c20; }
+.fader .track::before { background: #2a2e35; }
+.mpanel { background: #15171b; border-color: #23272c; border-radius: 10px; }
+/* the library */
+#lib-search { background: #1a1d21; border-color: #2c3037; border-radius: 7px; font: 500 12px/1 var(--f-ui); padding: 8px 10px; }
+.eng-h { background: var(--screen); font: 650 9.5px/1 var(--f-ui); letter-spacing: 0.07em; }
+.item { font: 500 12px/1.15 var(--f-ui); border-radius: 6px; }
+.item:hover { background: #1c1f24; }
+#lib-foot { font: 500 10.5px/1.45 var(--f-ui); }
+/* messages, dialogs, the start screen */
+#toast { background: #22262c; color: #f1f3f5; border: 1px solid #343941; border-radius: 9px; font: 500 12px/1.35 var(--f-ui); letter-spacing: 0; box-shadow: 0 12px 34px #000a; }
+.modal { background: #15171b; border: 1px solid #262a30; border-radius: 12px; box-shadow: 0 24px 70px #000c; }
+.modal h3 { font: 700 16px/1.2 var(--f-ui); letter-spacing: 0; }
+.modal p { font: 500 12px/1.5 var(--f-ui); }
+.modal-bg { background: #000a; backdrop-filter: blur(2px); }
+.modal .add { border-radius: 7px; font: 650 10px/1 var(--f-ui); letter-spacing: 0.06em; }
+#boot { background: radial-gradient(700px 420px at 50% 30%, #1a1d22, #0b0c0e 70%); }
+#boot .by, #boot .stats small { color: #7a818a; letter-spacing: 0.14em; }
+#boot .stats { color: #e6e8eb; }
+#boot p { color: #a1a7af; }
+#boot .key { background: var(--accent); color: #1a0b03; border-color: var(--accent); height: 44px; border-radius: 10px; font-size: 12px; }
+#boot .key:hover { background: #ff7233; }
+#boot-choices .key.alt { background: #1d2025; color: #e6e8eb; border-color: #2e333a; }
+#install { background: var(--accent); color: #1a0b03; border-color: var(--accent); }
+/* the phone */
+@media (max-width: 700px), (max-height: 520px) and (pointer: coarse) {
+  #mnav button { background: #15171b; border: 1px solid #23272c; border-radius: 10px; color: #8a919a; font: 650 10.5px/1 var(--f-ui); letter-spacing: 0.06em; }
+  #mnav button.on { background: #ff5b1424; border-color: #ff5b1499; color: #ff8a52; }
+  .key { height: 38px; min-width: 38px; }
+  .key:has(> .kl) { width: 38px; }
+  .key.round { width: 40px; height: 40px; }
+  .lcd .big { font-size: 15px; min-width: 0; }
+  .head .hvol { display: none; }
+  .head:has(.hvol) .btns { grid-row: 2; }
+  #top { gap: 5px; }
+  .lcd { gap: 6px; padding: 0 8px; height: 40px; }
+  .lcd input { font-size: 12px; }
+  .head .name { font-size: 11px; }
+  .tb { font-size: 10px; }
+  .menu-list button { padding: 12px 10px; font-size: 13px; }
+  .tab { padding: 0 11px; font-size: 12px; }
+}
+
 /* ---- LAB: the patch editor ----
    A screen of its own, darker than the chassis around Kraken: graphite surfaces, thin lines, and colour only where it
    means something: the four kinds of signal on the cables and the dots (sound, movement, gates, pitch), a thin bar for a
@@ -1017,13 +1154,14 @@ body:not(.learning) .lchip.learn-mapped { border-color: var(--go); }
       <button class="key" id="home" title="Back to start (Home)" aria-label="Back to start" data-learn="act:home"><svg viewBox="0 0 14 14"><path d="M2 2v10M12 2 4 7l8 5z" fill="currentColor" stroke="currentColor" stroke-width="1.2"/></svg></button>
       <button class="key round" id="play" title="Play / stop (Space)" aria-label="Play" data-learn="act:playstop"><svg viewBox="0 0 14 14"><path d="M3 1.5 12.5 7 3 12.5z" fill="currentColor"/></svg></button>
       <button class="key round" id="rec" title="Record (R)" aria-label="Record" data-learn="act:record"><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5"/></svg></button>
-      <button class="key" id="loop" title="Loop (L)" data-learn="act:loop">LOOP</button>
-      <button class="key" id="click" title="Metronome (M)" data-learn="act:click">CLICK</button>
-      <button class="key" id="countin" title="Count-in: one bar of click before recording" data-learn="act:countIn">COUNT</button>
-      <button class="key hide-s" id="takesbtn" title="Recording in a loop: TAKES on, each pass is a take of its own, to comp in the take lanes; off, the passes add up (overdub). Drum tracks always add up">TAKES</button>
+      <button class="key" id="loop" title="Loop (L)" data-learn="act:loop"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 9V7a3 3 0 0 1 3-3h7.5M10.5 1.5 13 4l-2.5 2.5M13.5 7v2a3 3 0 0 1-3 3H3M5.5 14.5 3 12l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="kl">LOOP</span></button>
+      <button class="key" id="click" title="Metronome (M)" data-learn="act:click"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.6 2h4.8l2.6 12H3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 11 11.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11" r="1.3" fill="currentColor"/></svg><span class="kl">CLICK</span></button>
+      <button class="key" id="countin" title="Count-in: one bar of click before recording" data-learn="act:countIn"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9" r="5.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 1.5h3M8 9V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 9h2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="kl">COUNT</span></button>
+      <button class="key hide-s" id="takesbtn" title="Recording in a loop: TAKES on, each pass is a take of its own, to comp in the take lanes; off, the passes add up (overdub). Drum tracks always add up"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="9" height="3" rx="1" fill="currentColor"/><rect x="4" y="6.5" width="10" height="3" rx="1" fill="currentColor" opacity=".7"/><rect x="2" y="10.5" width="8" height="3" rx="1" fill="currentColor" opacity=".45"/></svg><span class="kl">TAKES</span></button>
       <button class="key hide-s" id="autobtn" title="Automation recording · READ: it plays · TOUCH: a knob, fader or send you hold while playing is recorded · LATCH: the same, and it keeps its last value after you let go">AUTO</button>
-      <button class="key" id="punch" title="Punch in / out: when on, recording only keeps what is played inside the red zone of the ruler (its middle band: drag its ends to move them)" data-learn="act:punch">PUNCH</button>
+      <button class="key" id="punch" title="Punch in / out: when on, recording only keeps what is played inside the red zone of the ruler (its middle band: drag its ends to move them)" data-learn="act:punch"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5H2.5v11H5M11 2.5h2.5v11H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg><span class="kl">PUNCH</span></button>
     </div>
+    <div class="spacer"></div>
     <div class="lcd">
       <span class="big" id="pos" title="The position (bar . beat . sixteenth)">001.1.1</span>
       <label class="cell" data-learn="bpm"><b>BPM</b><input id="bpm" inputmode="decimal" aria-label="Tempo"></label>
