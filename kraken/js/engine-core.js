@@ -144,6 +144,15 @@ export class Lufs {
 // ---------------------------------------------------------------- sampler ---
 // (sampler.js: keys, zones, slices, pads)
 
+// base64 to bytes, by hand: the audio thread (AudioWorkletGlobalScope) has no atob (a DX7 voice stopped the engine there)
+const B64 = Object.fromEntries([...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'].map((c, i) => [c, i]));
+export function fromBase64(s) {
+  s = String(s || '').replace(/[^A-Za-z0-9+/]/g, '');
+  const out = new Uint8Array(Math.floor(s.length * 3 / 4));
+  let acc = 0, bits = 0, k = 0;
+  for (const c of s) { acc = (acc << 6) | B64[c]; bits += 6; if (bits >= 8) { bits -= 8; out[k++] = (acc >> bits) & 255; } }
+  return out.subarray(0, k);
+}
 // ------------------------------------------------------------------- tracks ---
 // an engine's instance: SLOOP's and Clipper's export the whole interface; a community engine (packs.js) may leave out
 // what it has no use for (MIDI controllers, MPE, a DX7 voice, a kit, the tempo): those do nothing
@@ -542,7 +551,7 @@ export class KrakenEngine {
         tr.w.k_render(); tr.w.k_render();                         // (the preset's panic passes now, not on the next note)
         if (def.dx7?.data) {                                     // a DX7 voice on FM6
           for (let i = 0; i < 20; i++) tr.w.k_render();          // (the preset's patch lands first)
-          const bytes = Uint8Array.from(atob(def.dx7.data), (c) => c.charCodeAt(0));
+          const bytes = fromBase64(def.dx7.data);
           new Uint8Array(tr.w.memory.buffer, tr.w.k_buffer(), 128).set(bytes.subarray(0, 128));
           tr.w.k_fm6();
         }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "4ae0b2413026";
+const VERSION = "893784fb9045";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -109,7 +109,7 @@ const FILES = [
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts', PACKS = 'kraken-packs';
 const HASHES = {
-"./": "9b98ad1919ae3c35",
+"./": "d5acad26713ac6e2",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
 "assets/fonts/TwemojiCountryFlags-LICENSE.txt": "e42b16deeb80d8cc",
 "assets/fonts/TwemojiCountryFlags.woff2": "9f04f14429bb6a9f",
@@ -134,7 +134,7 @@ const HASHES = {
 "js/control.js": "41dad04e52674613",
 "js/dawproject.js": "a0d34f88063ae8a0",
 "js/edit.js": "68fd30c2cb6a142b",
-"js/engine-core.js": "324a3d3425adc72d",
+"js/engine-core.js": "78ed44a64cc06d99",
 "js/flac.js": "9265927064076ede",
 "js/fx.js": "3ebaf56086d6a61e",
 "js/gensounds.js": "153bcb24ffacd831",
@@ -144,7 +144,7 @@ const HASHES = {
 "js/hub.js": "ae16cb9d424d794a",
 "js/i18n.js": "5d26939e61333792",
 "js/i18n/fr-hub.js": "572a106d9ea51007",
-"js/i18n/fr.js": "4b344c898e4fd1b3",
+"js/i18n/fr.js": "8664369646c8bbb3",
 "js/input.js": "6380044ba9c51bc4",
 "js/io.js": "8dab5b01b2a1f361",
 "js/lab-dsp.js": "0595d240c21578c7",
@@ -179,7 +179,7 @@ const HASHES = {
 "js/ui/device.js": "8d519c1e0cb3a474",
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
-"js/ui/editor.js": "d6ffe47c6268058b",
+"js/ui/editor.js": "5be1ac8c21636f43",
 "js/ui/hub-style.js": "a87d1153c68b1630",
 "js/ui/hub.js": "4316ee9f65408c37",
 "js/ui/instruments.js": "ff60f41d86a6c41b",

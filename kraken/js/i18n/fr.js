@@ -779,6 +779,8 @@ export const dict = {
   'Drop an audio clip from the arrangement: select it, Ctrl+C, then click this slot and Ctrl+V.': 'Pour un clip audio de l’arrangement : sélectionnez-le, Ctrl+C, puis cliquez sur cette case et Ctrl+V.',
   'Add a track, then double-click a slot to write a clip, and click it to launch it.': 'Ajoutez une piste, puis double-cliquez sur une case pour écrire un clip, et cliquez dessus pour le lancer.',
   'NEW CLIP HERE': 'NOUVEAU CLIP ICI',
+  '+ NEW CLIP': '+ NOUVEAU CLIP',
+  'This track\'s SCALE (NOTE FX) is on: the roll lights its notes': 'La GAMME (NOTE FX) de cette piste est active : le piano roll éclaire ses notes',
   'LAUNCH': 'LANCER',
   'FOLLOW ACTION…': 'ACTION DE SUIVI…',
   'AFTER (TIMES IT PLAYS)': 'APRÈS (NOMBRE DE LECTURES)',
@@ -2088,6 +2090,7 @@ export const rules = [
   [/^(\d+) (engines?) · (\d+) sounds(.*)$/, (m) => `${m[1]} ${m[2] === 'engine' ? 'moteur' : 'moteurs'} · ${m[3]} sons${m[4].replace('MB', 'Mo').replace('KB', 'Ko').replace(/ · (\d+) tracks? here/, (x, n) => ` · ${n} ${n === '1' ? 'piste' : 'pistes'} ici`)}`],
   [/^(.+) by (.+?)(?: \((.+)\))?: its source$/, (m) => `${m[1]} par ${m[2]}${m[3] ? ` (${m[3]})` : ''} : sa source`],
   [/^Its source: (.+)$/, (m) => `Sa source : ${m[1]}`],
+  [/^SCALE ([A-G][#b]?) (.+)$/, (m, t) => `GAMME ${m[1]} ${t(m[2])}`],
   [/^Volume (.+) dB · drag · double-click: 0 dB$/, (m) => `Volume ${m[1]} dB · glisser · double-clic : 0 dB`],
   // ---- the short generic ones last (a name, a verb): after every sentence above
   // ---- MIDI control: target labels, the learn banner

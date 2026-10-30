@@ -7,6 +7,7 @@ import { barOf } from '../meter.js';
 import { SCALES } from '../notefx.js';
 import { unrollNotes } from '../edit.js';
 
+const NOTE_KINDS = ['synth', 'drum', 'lab', 'wam', 'external', 'sampler'];   // (the tracks a clip of notes plays on)
 const KEY_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const QZ_KEY = 'kraken.quantize';
 const loadQz = () => { try { return { strength: 1, swing: 0, ends: false, hTime: 10, hVel: 8, ...JSON.parse(localStorage.getItem(QZ_KEY) || '{}') }; } catch { return { strength: 1, swing: 0, ends: false, hTime: 10, hVel: 8 }; } };
@@ -45,8 +46,9 @@ export class Editor {
     this.root = root;
     this.bar = h('div', { class: 'ebar' });
     this.cv = h('canvas', { class: 'ecanvas', tabindex: 0, 'aria-label': 'Clip editor' });
+    this.newBtn = h('button', { class: 'add go', onclick: () => this.newClip() }, '+ NEW CLIP');
     this.empty = h('div', { class: 'empty' }, h('b', { text: 'NO CLIP' }),
-      h('p', { text: 'Double-click a lane in the arrangement to make a clip, or click a clip to edit it here. Play notes with your computer keyboard (A W S E D F T G Y H U J K) or a MIDI keyboard.' }));
+      h('p', { text: 'Double-click a lane in the arrangement to make a clip, or click a clip to edit it here. Play notes with your computer keyboard (A W S E D F T G Y H U J K) or a MIDI keyboard.' }), this.newBtn);
     root.append(this.bar, this.cv, this.empty);
     this.pr = { zoom: 0, top: 84, rowH: 12, sx: 0, len: 0.25 };
     this.sel = new Set();
@@ -72,8 +74,18 @@ export class Editor {
     const clip = t?.clips.find((c) => c.id === this.app.view.selClip) || t?.slots?.find((c) => c && c.id === this.app.view.selClip);
     return clip ? { t, clip } : null;
   }
+  // NO CLIP, on a track that plays notes: a one-bar clip where the playhead is (after the track's last clip if that bar
+  // is taken), open here at once
+  newClip() {
+    const app = this.app, t = app.store.track(app.view.selTrack);
+    if (!t || !NOTE_KINDS.includes(t.kind)) return;
+    const b = barOf(app.store.p, Math.max(0, app.pos)), end = Math.max(0, ...t.clips.map((c) => c.start + c.len));
+    const start = t.clips.some((c) => c.start < b.start + b.len && c.start + c.len > b.start) ? end : b.start;
+    app.arrange.createClip(t, start, barOf(app.store.p, start).len);
+  }
   refresh() {
     const c = this.ctx;
+    { const t = this.app.store.track(this.app.view.selTrack); this.newBtn.hidden = !t || !NOTE_KINDS.includes(t.kind); }
     this.empty.hidden = !!c;
     this.cv.hidden = !c;
     if (c && c.clip.id !== this.lastClip) { this.lastClip = c.clip.id; this.sel.clear(); this.fit(); }
@@ -209,6 +221,7 @@ export class Editor {
         h('select', { 'aria-label': 'Key', onchange: (e) => setKey(e.target.value === '' ? null : { root: +e.target.value, sc: key?.sc ?? 0 }) },
           h('option', { value: '' }, 'OFF'), KEY_NAMES.map((n, i) => h('option', { value: i, selected: key?.root === i ? true : null }, n))),
         key ? h('select', { 'aria-label': 'Scale', onchange: (e) => setKey({ root: key.root, sc: +e.target.value }) }, SCALES.map(([n], i) => h('option', { value: i, selected: key.sc === i ? true : null }, n))) : null),
+      ...(() => { const k = this.rollKey(); return k?.fx ? [h('span', { class: 'roll-scale', title: 'This track\'s SCALE (NOTE FX) is on: the roll lights its notes', text: `SCALE ${KEY_NAMES[k.root]} ${(SCALES[k.sc] || SCALES[0])[0]}` })] : []; })(),
       h('button', { class: 'add' + (this.fold ? ' on' : ''), title: 'FOLD: only the rows of the key (and the notes the clip plays)', 'aria-pressed': String(!!this.fold), onclick: () => { this.fold = !this.fold; this.updateFold(); this.fit(); this.renderBar(); this.canvas.redraw(); } }, 'FOLD'),
       others.length ? h('label', { title: 'Another track\'s notes, greyed behind these (write a bass under the chords)' }, 'GHOST',
         h('select', { 'aria-label': 'Ghost notes', onchange: (e) => { this.ghost = e.target.value || null; e.target.blur(); this.canvas.redraw(); } },
@@ -326,12 +339,17 @@ export class Editor {
     return drum ? { w, hh, gx: w < 600 ? 54 : 70, gh: hh, rowH: Math.max(10, Math.min(28, hh / lanes.length)), drum }
       : { w, hh, gx: KEYW, gh: hh - VELH, rowH: this.pr.rowH, drum };
   }
+  // the key the roll lights (and FOLD keeps): the track's own SCALE (NOTE FX) when it has one on, else the song's KEY
+  rollKey() {
+    const d = this.ctx?.t?.nfx?.find((x) => x.type === 'scale' && x.on !== false);
+    return d ? { root: (d.p.ro | 0) % 12, sc: d.p.sc | 0, fx: true } : this.app.store.p.key;
+  }
   tx(t) { return this.geomCache.gx + t * this.pr.zoom - this.pr.sx; }
   xt(x) { return (x - this.geomCache.gx + this.pr.sx) / this.pr.zoom; }
   // the roll's rows, top to bottom: every note, or (FOLD) the notes of the key and the ones the clip plays
   updateFold() {
     if (this.foldHold) return;                                   // (a drag: the rows stay as they were when it began)
-    const cx = this.ctx, key = this.app.store.p.key;
+    const cx = this.ctx, key = this.rollKey();
     if (!this.fold || !cx || !isRoll(cx.t)) { this.foldList = null; return; }
     const used = new Set(cx.clip.notes.map((n) => n.n)), list = [];
     for (let n = 127; n >= 0; n--) if ((key ? inKey(key, n) : false) || used.has(n) || (!key && n % 12 === 0)) list.push(n);
@@ -350,7 +368,10 @@ export class Editor {
   shiftNote(n, rows) { if (!this.foldList) return Math.max(0, Math.min(127, n + rows)); return this.noteAtRow(Math.round(this.rowOf(n)) - rows); }
   ny(n) { return (this.rowOf(n) - this.topRow()) * this.pr.rowH; }
   yn(y) { return this.noteAtRow(this.topRow() + Math.floor(y / this.pr.rowH)); }
-  snapT(t, floor) { const g = this.app.view.snap || 1 / 64; return (floor ? Math.floor(t / g) : Math.round(t / g)) * g; }
+  snapT(t, floor, g = this.app.view.snap || 1 / 64) { return (floor ? Math.floor(t / g) : Math.round(t / g)) * g; }
+  // where a drawn note goes: the grid, or the DRAW length's own when it is finer (1/32 notes on a 1/16 grid land in
+  // the half of the column clicked, two of them fill it)
+  drawGrid() { const s = this.app.view.snap || 1 / 64; return Math.min(s, this.pr.len || s); }
 
   // --------------------------------------------------------------- draw ---
   draw(c, w, hh) {
@@ -432,11 +453,13 @@ export class Editor {
     });
   }
   gridLines(c, g, loop, len, top, bottom) {
-    const sig = barOf(this.app.store.p, this.ctx?.clip?.start ?? 0).len, step = this.pr.zoom >= 60 ? 0.25 : this.pr.zoom >= 24 ? 0.5 : 1;
-    for (let t = 0; t <= len + 1e-9; t += step) {
+    const sig = barOf(this.app.store.p, this.ctx?.clip?.start ?? 0).len, fine = this.drawGrid();
+    let step = this.pr.zoom >= 60 ? 0.25 : this.pr.zoom >= 24 ? 0.5 : 1;
+    if (fine < step && fine * this.pr.zoom >= 8) step = fine;   // (drawing 1/32 notes: the half columns shown too)
+    for (let k = 0, t = 0; t <= len + 1e-9; t = ++k * step) {
       const x = Math.round(this.tx(t)) + 0.5;
       if (x < g.gx || x > g.w) continue;
-      c.fillStyle = t % sig === 0 ? '#353a40' : t % 1 === 0 ? '#22262a' : '#16191b';
+      c.fillStyle = t % sig === 0 ? '#353a40' : t % 1 === 0 ? '#22262a' : Math.abs(t * 4 - Math.round(t * 4)) < 1e-6 ? '#16191b' : '#111315';
       c.fillRect(x, top, 1, bottom - top);
     }
     const lx = this.tx(loop);
@@ -459,7 +482,7 @@ export class Editor {
   drawRoll(c, { t, clip }, g) {
     const loop = clip.loop || clip.len, len = clip.len, rh = this.pr.rowH;
     // rows (the song's key: its rows lit, its root marked)
-    const key = this.app.store.p.key, rows = this.foldList || [...Array(128)].map((_, i) => 127 - i);
+    const key = this.rollKey(), rows = this.foldList || [...Array(128)].map((_, i) => 127 - i);
     for (const n of rows) {
       const y = this.ny(n);
       if (y + rh < 0 || y > g.gh) continue;
@@ -900,7 +923,7 @@ export class Editor {
         });
         return;
       }
-      const nt = { t: Math.max(0, this.snapT(this.xt(x), true)), d: this.pr.len, n: this.yn(y), v: 100 };
+      const nt = { t: Math.max(0, this.snapT(this.xt(x), true, this.drawGrid())), d: this.pr.len, n: this.yn(y), v: 100 };
       if (nt.t >= (clip.loop || clip.len)) return;
       this.change((cl) => cl.notes.push(nt), tag);
       this.sel.clear(); this.sel.add(nt);
@@ -908,7 +931,7 @@ export class Editor {
       const t0 = nt.t;
       dragPointer(e, (m) => {
         const [mx] = local(m);
-        this.change(() => { nt.d = Math.max(this.app.view.snap || 1 / 32, this.snapT(this.xt(mx)) - t0); this.pr.len = nt.d; }, tag);
+        this.change(() => { const g = this.drawGrid(); nt.d = Math.max(g, this.snapT(this.xt(mx), false, g) - t0); this.pr.len = nt.d; }, tag);
       }, () => { this.app.noteOff(t.id, nt.n); this.app.store.endGesture(); this.renderBar(); });
       return;
     }
