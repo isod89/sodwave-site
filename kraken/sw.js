@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "893784fb9045";
+const VERSION = "21f5d16e15ca";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -73,6 +73,7 @@ const FILES = [
 "js/ui/diagnostic.js",
 "js/ui/drums.js",
 "js/ui/editor.js",
+"js/ui/groove.js",
 "js/ui/hub-style.js",
 "js/ui/hub.js",
 "js/ui/instruments.js",
@@ -105,11 +106,12 @@ const FILES = [
 "js/wav.js",
 "js/worklet.js",
 "js/xml.js",
-"manifest.webmanifest"
+"manifest.webmanifest",
+"privacy.html"
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts', PACKS = 'kraken-packs';
 const HASHES = {
-"./": "d5acad26713ac6e2",
+"./": "ce145f7a4c0933c8",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
 "assets/fonts/TwemojiCountryFlags-LICENSE.txt": "e42b16deeb80d8cc",
 "assets/fonts/TwemojiCountryFlags.woff2": "9f04f14429bb6a9f",
@@ -134,7 +136,7 @@ const HASHES = {
 "js/control.js": "41dad04e52674613",
 "js/dawproject.js": "a0d34f88063ae8a0",
 "js/edit.js": "68fd30c2cb6a142b",
-"js/engine-core.js": "78ed44a64cc06d99",
+"js/engine-core.js": "52cfd7b3f84a0b3d",
 "js/flac.js": "9265927064076ede",
 "js/fx.js": "3ebaf56086d6a61e",
 "js/gensounds.js": "153bcb24ffacd831",
@@ -144,28 +146,28 @@ const HASHES = {
 "js/hub.js": "ae16cb9d424d794a",
 "js/i18n.js": "5d26939e61333792",
 "js/i18n/fr-hub.js": "572a106d9ea51007",
-"js/i18n/fr.js": "8664369646c8bbb3",
+"js/i18n/fr.js": "9baaeb6bdb6cd8bb",
 "js/input.js": "6380044ba9c51bc4",
-"js/io.js": "8dab5b01b2a1f361",
+"js/io.js": "110e2597b4fd0b95",
 "js/lab-dsp.js": "0595d240c21578c7",
 "js/lab-modules.js": "3a34c940ad28abe2",
 "js/lab-presets.js": "bf8748f1a560c9ea",
 "js/launchpad.js": "62d81134fffdfba7",
 "js/levels.js": "bef2d9abe9e589f0",
-"js/main.js": "ea5e9feeaa22208d",
+"js/main.js": "6daa32412c0312be",
 "js/mc-worker.js": "880ea63a24ec78da",
 "js/meter.js": "6cf9580d1d704557",
 "js/mods.js": "8445d16b87bf54ba",
 "js/mp3-worker.js": "ed4ae9e5fcd36a0b",
 "js/mp3.js": "81a1d8e74cd1741a",
-"js/multicore-core.js": "859c4cf17f3f16fc",
+"js/multicore-core.js": "1bbebc68545cf9c9",
 "js/multicore.js": "71d64b0c05169671",
 "js/notefx.js": "dcb7f4536dc65cf9",
 "js/opus.js": "f80039368247154c",
 "js/packs.js": "0d48f38dc813add1",
 "js/patch.js": "aa95ddf8ae05a0c6",
 "js/presets.js": "0d5aa18dc1c00f2b",
-"js/project.js": "537aff8020ef8a6a",
+"js/project.js": "82b5c1df121d5792",
 "js/render-worker.js": "dc9447f816d1b065",
 "js/resample.js": "b69a5b0ce1845725",
 "js/sampler.js": "a91263950e2d49c4",
@@ -180,11 +182,12 @@ const HASHES = {
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
 "js/ui/editor.js": "5be1ac8c21636f43",
+"js/ui/groove.js": "fc15c8d49b9e466b",
 "js/ui/hub-style.js": "a87d1153c68b1630",
 "js/ui/hub.js": "4316ee9f65408c37",
 "js/ui/instruments.js": "ff60f41d86a6c41b",
 "js/ui/keys.js": "778e6068734f0ffd",
-"js/ui/kit.js": "d47103e4cd83f192",
+"js/ui/kit.js": "fd3b01ff40841cb6",
 "js/ui/lab.js": "58d8853fcd0767dd",
 "js/ui/library.js": "27f9cc3061de4b5d",
 "js/ui/macros.js": "f01c46916cde13c0",
@@ -212,7 +215,8 @@ const HASHES = {
 "js/wav.js": "36de3ed6a971da0c",
 "js/worklet.js": "f0bd6b893d31f3c1",
 "js/xml.js": "a4bd65e8f9c398bc",
-"manifest.webmanifest": "3474b89513641e72"
+"manifest.webmanifest": "3474b89513641e72",
+"privacy.html": "4ca97ee1e2285bcf"
 };                                                 // (filled at the build)
 // a file as this version has it: the first 16 hex digits of its SHA-256 (written at the build). A site is uploaded file
 // by file: a visit in the middle could get the new sw.js and an old page; a file that does not match is fetched again,

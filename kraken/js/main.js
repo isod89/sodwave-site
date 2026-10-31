@@ -36,6 +36,7 @@ import { Input, typing } from './input.js';
 import { Control } from './control.js';
 import { Controllers } from './ui/controllers.js';
 import { Session } from './ui/session.js';
+import { Groove } from './ui/groove.js';
 import { Palette } from './ui/palette.js';
 import { Keys } from './ui/keys.js';
 import { diagnose, diagnosisText } from './ui/diagnostic.js';
@@ -186,6 +187,7 @@ async function openUi(project) {
   app.session = new Session(app);
   app.palette = new Palette(app);
   app.keys = new Keys(app, $('v-keys'));
+  app.groove = new Groove(app);
   app.fileAction = fileAction;
   app.editor = new Editor(app, $('v-edit'));
   app.device = new Device(app, $('v-device'));
@@ -254,6 +256,10 @@ async function openUi(project) {
     try { history.replaceState(null, '', location.pathname + (q0.size ? `?${q0}` : '') + location.hash); } catch { /* */ }
     setTimeout(() => labStart(app), 120);
   }
+  // GROOVE first: /?groove (the Android app opens there), or as it was left
+  let grooveOn = q0.has('groove');
+  try { const was = localStorage.getItem('kraken.grooveOn'); grooveOn ||= was === '1' || (was == null && nativeApp()); } catch { /* */ }   // (the app: GROOVE first)
+  if (grooveOn && !hubLink && !labLink) app.groove.show(true);
   // the first visit: the welcome (not under automation: the test suites start from the demo song)
   if (!project && !welcomed && !hubLink && !labLink && !app.pendingFiles?.length && !navigator.webdriver) { welcome(app, { modal, first: true }); return; }
   if (hubLink || labLink) { if (app.pendingFiles?.length) openPending(); return; }
@@ -390,6 +396,7 @@ function onAudio(m) {
     if (app.view.tab === 'edit') app.editor.canvas.redraw();
     if (app.view.tab === 'mixer') app.mixer.meters(m);
     app.session.update(m.sess);
+    app.groove?.tick();
     showMeters(m);
     const lv = (x) => Math.min(1, Math.max(0, (20 * Math.log10(Math.max(1e-5, x)) + 48) / 48)).toFixed(3);
     const [a, b] = $('mmeter').children;
@@ -451,14 +458,16 @@ function recordSlotNote(trackId, slot, n) {
   app.store.change((p) => {
     const c = p.tracks.find((x) => x.id === trackId)?.slots[slot];
     if (!c) return;
-    const loop = c.loop || c.len;
-    c.notes.push({ t: n.t % loop, d: Math.min(n.d, loop), n: n.n, v: n.v });
+    const loop = c.loop || c.len, q = app.grooveRec && app.grooveQuant !== false ? 0.25 : 0;   // (GROOVE: on the 16ths)
+    const t = q ? (Math.round(n.t / q) * q) % loop : n.t % loop;
+    if (q && c.notes.some((x) => x.n === n.n && Math.abs(x.t - t) < 1e-6)) return;      // (a hit already there)
+    c.notes.push({ t, d: Math.min(q ? Math.max(q, Math.round(n.d / q) * q) : n.d, loop), n: n.n, v: n.v });
   }, 'rec');
 }
 // while recording, what the session launches is written into the arrangement
 const sessRec = new Map();                                       // track id -> { slot, at }
 function sessionToArrangement(ev) {
-  if (!app.recording) return;
+  if (!app.recording || app.grooveRec) return;                   // (GROOVE records into its patterns only)
   closeSessionTake(ev.track, ev.at);
   if (ev.slot >= 0) sessRec.set(ev.track, { slot: ev.slot, at: ev.at });
 }
@@ -1032,7 +1041,7 @@ Object.assign(app, {
     $('rec').classList.toggle('on', on);
     app.audio.send({ t: 'rec', on, lag: on ? app.audio.latency() : 0 });   // (what you play lands where you heard it: engine-core.js recPos)
     app.store.endGesture();
-    if (on) for (const [id, st] of Object.entries(app.session.state)) if (st.slot >= 0) sessRec.set(id, { slot: st.slot, at: app.pos });
+    if (on && !app.grooveRec) for (const [id, st] of Object.entries(app.session.state)) if (st.slot >= 0) sessRec.set(id, { slot: st.slot, at: app.pos });
     if (on && !app.playing) app.play(true, app.store.p.countIn);
   },
   // arm a track: audio tracks can be armed together (each records its own input); an instrument track alone
@@ -1306,10 +1315,12 @@ function bindTop() {
       const m = b.dataset.m;
       if (m === 'keys') app.showTab('keys');
       else if (m === 'bot') app.showTab(app.view.tab === 'keys' ? 'edit' : app.view.tab);
+      else if (m === 'groove') app.groove.show(true);
       else setMobile(m);
     };
   }
   $('play').onclick = () => app.play();
+  $('groovebtn').onclick = () => app.groove.show(true);
   $('rec').onclick = () => app.setRecord(!app.recording);
   $('home').onclick = () => app.seek(app.store.p.loop.on ? app.store.p.loop.a : 0);
   $('loop').onclick = () => app.store.change((p) => { p.loop.on = !p.loop.on; });
@@ -1799,6 +1810,12 @@ function bindKeys() {
     if (mod && k === 'o') { e.preventDefault(); fileAction('open'); return; }
     if (mod && k === 'l') { e.preventDefault(); app.control.setLearning(!app.control.learning); return; }
     if (mod && k === 'k') { e.preventDefault(); app.palette.open(); return; }
+    if (app.groove?.open) {                                        // (GROOVE over the DAW: only its own keys)
+      if (e.code === 'Space') { e.preventDefault(); app.groove.play(); setTimeout(() => app.groove.renderSoon(), 50); }
+      else if (k === 'escape') app.groove.show(false);
+      else if (k === 'r' && !e.repeat && !mod) app.groove.record();
+      return;
+    }
     const t = app.store.track(v.selTrack), clip = t?.clips.find((c) => c.id === v.selClip);
     if (mod && k === 'e' && app.lastArea !== 'bot') { e.preventDefault(); app.splitAt(); return; }
     if (mod && k === 'j') { e.preventDefault(); app.joinSelected(); return; }
@@ -1921,10 +1938,27 @@ function updateReady() {
 }
 // offline once loaded (sw.js precaches everything), installable on a computer or a phone
 let installEvent = null;
+// the Android app (app/: Capacitor): the back button closes what is open (a dialog, a menu, GROOVE's step editor),
+// then leaves GROOVE for the DAW, then puts the app in the background (never quits with a song playing)
+function nativeApp() { return !!window.Capacitor?.isNativePlatform?.(); }
+function setupNative() {
+  document.documentElement.classList.add('native');
+  $('install').hidden = true;
+  const App = window.Capacitor?.Plugins?.App;
+  App?.addListener?.('backButton', () => {
+    const bg = [...document.querySelectorAll('.modal-bg')].pop();
+    if (bg) { bg.querySelector('.row .add')?.click() ?? bg.remove(); return; }
+    const menu = document.querySelector('.menu-list:not([hidden])');
+    if (menu) { menu.hidden = true; return; }
+    if (app.groove?.open) { if (app.groove.g.sel.size) { app.groove.g.sel.clear(); app.groove.render(); } else app.groove.show(false); return; }
+    App.minimizeApp?.();
+  });
+}
 const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 function setupPwa() {
   const framed = window.top !== window.self;
-  if ('serviceWorker' in navigator && !framed && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  if (nativeApp()) setupNative();                                 // (the Android app: its files are its own, no service worker)
+  else if ('serviceWorker' in navigator && !framed && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     // a new version on the site: the service worker installs it in the background, then takes over; the page still
     // runs the old one, so it says so at once, with the way to switch (the project is kept: it is saved as it changes)
     const hadSw = !!navigator.serviceWorker.controller;

@@ -727,7 +727,7 @@ export const dict = {
   'SLICES': 'TRANCHES',
   'Slices': 'Tranches',
   'FILTER': 'FILTRE',
-  'LOW-PASS': 'PASSE-BAS',
+ 
   'C2 UP': 'C2 ET AU-DESSUS',
   'Remove this zone': 'Retirer cette zone',
   'ZONES': 'ZONES',
@@ -1363,6 +1363,41 @@ export const dict = {
   'Rolling hats, a gliding 808, a bell melody': 'Charleys en roulement, une 808 qui glisse, une mélodie de cloche',
   'A driving kick, an acid line, a dark pad': 'Un kick qui pousse, une ligne acid, une nappe sombre',
 
+  // ---------------------------------------------------------------- GROOVE (ui/groove.js) ---
+  'ALWAYS': 'TOUJOURS', 'NOT FILL': 'SANS FILL', 'NOT FIRST': 'PAS LE PREMIER', 'NOT PRE': 'PAS PRE',
+  'No instrument yet': 'Pas encore d’instrument',
+  'Back to the full DAW': 'Revenir au DAW complet', 'Back to the DAW': 'Revenir au DAW', 'Record what you play on the pads into the pattern': 'Enregistrer ce que vous jouez sur les pads dans le pattern',
+  'Tempo and swing': 'Tempo et swing', 'Menu': 'Menu', 'Patterns': 'Patterns', 'Add a pattern': 'Ajouter un pattern',
+  'Each pad plays a chord of the scale': 'Chaque pad joue un accord de la gamme', 'CHORDS': 'ACCORDS',
+  'Note repeat: a held pad repeats in time': 'Répétition : un pad tenu se répète en rythme', 'Note repeat': 'Répétition des notes',
+  'Every hit at full velocity (off: higher on the pad is louder)': 'Chaque frappe à pleine vélocité (sinon : plus haut sur le pad, plus fort)', 'FULL VEL': 'VÉL. MAX',
+  'Sample: tap a pad, record with the microphone, tap again to stop': 'Échantillonner : touchez un pad, enregistrez au micro, touchez encore pour arrêter',
+  'Tap a pad to record into it. Tap it again to stop.': 'Touchez un pad pour y enregistrer. Touchez-le encore pour arrêter.', 'TAP A PAD': 'TOUCHEZ UN PAD',
+  'Nothing was heard: try closer to the microphone.': 'Rien n’a été entendu : essayez plus près du micro.', 'Sampled onto the pad.': 'Échantillonné sur le pad.',
+  'SAMPLE FROM THE MICROPHONE': 'ÉCHANTILLONNER AU MICRO', 'Tap the pad to start, tap again to stop.': 'Touchez le pad pour commencer, encore pour arrêter.',
+  'LOAD A SOUND FILE…': 'CHARGER UN FICHIER SON…', 'BACK TO THE KIT SOUND': 'REVENIR AU SON DU KIT',
+  'NEW STEPS PLAY': 'LES NOUVEAUX PAS JOUENT', 'The pattern\'s length, in steps': 'La longueur du pattern, en pas',
+  'Copy the pattern after itself: twice as long': 'Copier le pattern à sa suite : deux fois plus long', 'Clear this pattern (or this sound\'s steps)': 'Vider ce pattern (ou les pas de ce son)',
+  'Parameter locks': 'Verrous de paramètres',
+  'Tap a step to add a hit, again to remove it. Hold a step to edit it: velocity, chance, conditions, and locks on any knob for that step alone.': 'Touchez un pas pour ajouter une frappe, encore pour l’enlever. Maintenez un pas pour le régler : vélocité, chance, conditions, et verrous sur n’importe quel bouton pour ce pas seul.',
+  'Tap a step to add the note shown above, again to remove it. Hold a step to edit it. Play a pad to choose the note.': 'Touchez un pas pour ajouter la note affichée au-dessus, encore pour l’enlever. Maintenez un pas pour le régler. Jouez un pad pour choisir la note.',
+  'NUDGE': 'DÉCALAGE', 'Trig condition: when this step plays': 'Condition : quand ce pas joue', 'CONDITION': 'CONDITION',
+  'tap other steps to edit them together': 'touchez d’autres pas pour les régler ensemble', 'Locks': 'Verrous', 'the sound\'s knobs, for these steps alone': 'les boutons du son, pour ces pas seuls',
+  'GROOVE: play the pads, write a beat in STEPS, ▶ plays the pattern. DAW takes you to the full studio.': 'GROOVE : jouez sur les pads, écrivez un rythme dans PAS, ▶ joue le pattern. DAW vous ramène au studio complet.',
+  'CLEAR LOCKS': 'EFFACER LES VERROUS', 'DONE': 'TERMINÉ', 'STOP ALL': 'TOUT ARRÊTER', 'Pattern length (steps)': 'Longueur du pattern (pas)', '+ PATTERN': '+ PATTERN',
+  'Tap a clip to launch it, hold it for more.': 'Touchez un clip pour le lancer, maintenez-le pour plus.', 'EDIT ITS STEPS': 'MODIFIER SES PAS',
+  'COPY TO THE NEXT PATTERN': 'COPIER DANS LE PATTERN SUIVANT', 'DOUBLE IT': 'LE DOUBLER', 'DELETE THE CLIP': 'SUPPRIMER LE CLIP', 'NEW PATTERN HERE': 'NOUVEAU PATTERN ICI',
+  'PLAY IT': 'LE JOUER', 'DUPLICATE IT': 'LE DUPLIQUER', 'DELETE IT': 'LE SUPPRIMER', 'Drum kit': 'Kit de batterie',
+  'Each pad\'s own tune, decay and level, and your own synthesised kits: in the full DAW (INSTRUMENT).': 'L’accord, la durée et le niveau de chaque pad, et vos propres kits synthétisés : dans le DAW complet (INSTRUMENT).',
+  'This instrument is edited in the full DAW (INSTRUMENT).': 'Cet instrument se règle dans le DAW complet (INSTRUMENT).', 'Browse the sounds': 'Parcourir les sons',
+  'Filter: left low-pass, right high-pass, up resonance': 'Filtre : à gauche passe-bas, à droite passe-haut, en haut résonance', 'LOW-PASS': 'PASSE-BAS', 'HIGH-PASS': 'PASSE-HAUT',
+  'TAPE STOP': 'ARRÊT BANDE', 'CRUSH': 'CRUSH', 'LATCH': 'MAINTIEN',
+  'Hold an effect, let go to come back. LATCH keeps them on until tapped again. FILL plays the steps set to FILL.': 'Maintenez un effet, lâchez pour revenir. MAINTIEN les garde actifs jusqu’à un nouveau toucher. FILL joue les pas réglés sur FILL.',
+  'QUANTIZE WHAT YOU RECORD (1/16)': 'QUANTIFIER L’ENREGISTREMENT (1/16)', 'What you record lands on the 16ths.': 'Ce que vous enregistrez se cale sur les 16es.',
+  'What you record lands where you played it.': 'Ce que vous enregistrez tombe là où vous l’avez joué.', 'ADD A TRACK…': 'AJOUTER UNE PISTE…', 'NEW PROJECT…': 'NOUVEAU PROJET…',
+  'SAVE A COPY…': 'ENREGISTRER UNE COPIE…', 'EXPORT AUDIO…': 'EXPORTER L’AUDIO…', 'PUBLISH TO THE HUB…': 'PUBLIER SUR LE HUB…', 'THE FULL DAW': 'LE DAW COMPLET', 'A SOUND FROM THE LIBRARY…': 'UN SON DE LA BIBLIOTHÈQUE…',
+  'UNMUTE': 'RÉACTIVER', 'RENAME…': 'RENOMMER…', 'MUTE': 'MUET',
+  'GROOVE: Kraken as a groovebox, pads, steps and patterns': 'GROOVE : Kraken en groovebox, pads, pas et patterns',
   // ---------------------------------------------------------------- master meters (ui/meters.js) ---
   'TRUE PEAK': 'TRUE PEAK',
   'True peak (dBTP, 4x oversampled, ITU-R BS.1770): the highest the wave goes between the samples, over the last moment': 'True peak (dBTP, suréchantillonné 4x, ITU-R BS.1770) : le plus haut que monte l’onde entre les échantillons, sur le dernier instant',
@@ -1764,6 +1799,8 @@ export const keep = [
   'LISTEN', 'ATK TIME', 'SUS TIME', 'STEREO', 'FINE', 'WINDOW', 'PREDELAY', 'RANGE ',
   'WHAT HAPPENED', 'THIS DEVICE', 'ERRORS', 'LAST ACTIONS',                                                                   // the report's text (for the developer)
   'It will be in the ☰ of every', ', in every project.',                                                                       // a sentence built with +: the whole is a rule
+  'CL HAT', 'OP HAT', 'LO TOM', 'MID TOM', 'HI TOM', 'TAMB', 'KICK', 'SNARE', 'CLAP', 'RIM', 'CRASH', 'RIDE', 'COWBELL', 'SHAKER', 'CONGA', 'CLAVE', 'DIST',   // GROOVE: drum pads, as on the machines
+  '!fill', '!first', '!pre', 'on rec', 'on m', 'on s', 'RIFF', 'WAVEfmt', 'DAW', 'GROOVE', '▦ GROOVE', 'Groove', 'FILL', 'PRE', 'CLIPS', 'PATTERN',
   'sodwavecontact@gmail.com', 'report.txt', 'project.kraken.json', 'kraken/project.json', 'project.xml', 'metadata.xml', 'stems+', 'worker', '(the first',
 ];
 // patterns that stay as they are (names built by the code and saved in the project, numbers with units)
@@ -1776,6 +1813,7 @@ export const keepRules = [
   /^.+ SLICES$/, /^TAKES \d+$/, /^MARKER \d+$/, /^SCENE \d+$/, /^\d+ ZONES$/, /^ZONE \d+$/, /^.+ (?:BOUNCE|BNC)$/, /^KIT .+$/, /^[LH]P -?\d+$/, /^GR -?[\d.]+$/,
   /^[\w-]+\/[\w\/-]+\.js$/, /^.+ MIDI$/, /^inset /, /^PLUGIN · .+$/,
   /^To: .+/s, /^mailto:/, /^Kraken \S+: .+$/, /^KRAKEN PROBLEM REPORT · .+$/,
+  /^Pad .+$/, /^PAD .+\.wav$/, /^STUTTER \S+$/, /^Pattern \w+$/, /^.+ · pattern [A-Z]\d*$/, /^[LR]\d+$/,
   /^MACRO \d+$/, /^STEP \d+$/, /^LAB .+$/, /^LAB · .*$/, /^MACRO \d+ · .*$/, /^EFFECT · .+$/, /^Note \d+$/,
 ];
 
@@ -1793,6 +1831,15 @@ const KIND = { synth: 'synthé', drum: 'de batterie', audio: 'audio', sampler: '
 
 // [regex, (match, t) => French]: t() translates a part (an error message, a label); names stay as typed
 export const rules = [
+  // GROOVE
+  [/^REPEAT (\S+)$/, (m) => `RÉPÉT. ${m[1]}`],
+  [/^(\d+) STEPS$/, (m) => `${m[1]} PAS`],
+  [/^([\d.]+) steps?(?: · (\d+) bars?)?$/, (m) => `${m[1]} pas${m[2] ? ` · ${m[2]} ${pl(m[2], 'mesure', 'mesures')}` : ''}`],
+  [/^Step (\d+)$/, (m) => `Pas ${m[1]}`],
+  [/^(\d) of every (\d)$/, (m) => `${m[1]} sur ${m[2]}`],
+  [/^Search (\d+) sounds$/, (m) => `Chercher parmi ${m[1]} sons`],
+  [/^The microphone is not available: (.+)\.$/, (m, t) => `Le micro n’est pas disponible : ${t(m[1])}.`],
+  [/^That recording could not be used \((.+)\)\.$/, (m) => `Cet enregistrement est inutilisable (${m[1]}).`],
   [/^(Its own map \(USER\), as edited on the keyboard|Its DEFAULT map) · keys on channel (\d+) · knobs (RELATIVE|ABSOLUTE)( · assumed: this browser gives no SysEx access, so Kraken cannot read the keyboard)?\. Mappings made with MIDI Learn come first\. KNOB BANK and FADER BANK switch to bank B\.$/,
     (m) => `${m[1].startsWith('Its own') ? 'Sa propre correspondance (USER), réglée sur le clavier' : 'Sa correspondance par défaut (DEFAULT)'} · touches sur le canal ${m[2]} · boutons en mode ${m[3] === 'RELATIVE' ? 'RELATIF' : 'ABSOLU'}${m[4] ? ' · supposée : ce navigateur ne donne pas accès au SysEx, Kraken ne peut pas lire le clavier' : ''}. Les correspondances faites avec MIDI Learn passent en premier. KNOB BANK et FADER BANK passent à la banque B.`],
   [/^MMC \(MMC (\d+)\)$/, (m) => `MMC (${m[1]})`],

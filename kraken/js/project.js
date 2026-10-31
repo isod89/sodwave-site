@@ -268,13 +268,17 @@ const devices = (list, table, prefix) => {
     return o;
   });
 };
+// a trig condition, as on Elektron boxes: A:B (the A-th turn of every B), fill / !fill (only while FILL is held / never
+// then), first / !first (the clip's first turn after its launch / the others), pre / !pre (as the trig before it went)
+export const TRIG_COND = /^(?:[1-8]:[2-8]|!?fill|!?first|!?pre)$/;
 function note(nt) {
   if (!obj(nt) || !Number.isFinite(nt.t) || !Number.isFinite(nt.d) || !(nt.d > 0) || !(nt.n >= 0 && nt.n <= 127)) return null;
   const o = { ...nt, t: Math.max(0, nt.t), d: Math.min(nt.d, 1e5), n: Math.round(nt.n), v: Math.round(clampN(nt.v, 1, 127, 100)) };
-  delete o.p; delete o.r; delete o.m; delete o.l;
+  delete o.p; delete o.r; delete o.m; delete o.l; delete o.q;
   if (Number.isFinite(nt.p) && nt.p < 1) o.p = Math.max(0, nt.p);           // chance
   if (Number.isFinite(nt.r) && nt.r > 1) o.r = Math.min(16, Math.round(nt.r));   // ratchet
   if (Number.isFinite(nt.m) && nt.m) o.m = Math.max(-1, Math.min(1, nt.m));  // nudge (beats)
+  if (typeof nt.q === 'string' && TRIG_COND.test(nt.q)) o.q = nt.q;          // a trig condition (engine-core.js condOk)
   const l = obj(nt.l);                                                       // parameter locks
   if (l) { const ll = {}; for (const k in l) if (/^\d+$/.test(k) && Number.isFinite(l[k])) ll[k] = l[k]; if (Object.keys(ll).length) o.l = ll; }
   return o;

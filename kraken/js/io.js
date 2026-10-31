@@ -16,6 +16,8 @@ export const hostedSave = async () => !!(await downloadsCap());
 
 // .wav and .mid are not accepted by the hosted save, so inside claude.ai they travel in a .zip
 export async function saveFile(filename, data, { zipWhenHosted = false } = {}) {
+  const native = globalThis.Capacitor?.isNativePlatform?.() && globalThis.Capacitor.Plugins?.Filesystem;
+  if (native) return saveNative(filename, data);
   const cap = await downloadsCap();
   if (cap) {
     let name = filename, payload = data;
@@ -30,6 +32,23 @@ export async function saveFile(filename, data, { zipWhenHosted = false } = {}) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   return filename;
+}
+
+// the Android app (app/): a WebView does not download, so the file goes into Documents/Kraken (or, where that is not
+// allowed, to the share sheet: Drive, Files, a message…)
+async function saveNative(filename, data) {
+  const { Filesystem, Share } = globalThis.Capacitor.Plugins;
+  const blob = data instanceof Blob ? data : new Blob([data]);
+  const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => no(r.error); r.readAsDataURL(blob); });
+  const name = filename.replace(/[\\/:*?"<>|]+/g, '_');
+  try {
+    await Filesystem.writeFile({ path: `Kraken/${name}`, data: b64, directory: 'DOCUMENTS', recursive: true });
+    globalThis.kraken?.toast?.(`Saved in Documents/Kraken: ${name}`);
+  } catch {
+    const r = await Filesystem.writeFile({ path: name, data: b64, directory: 'CACHE' });
+    await Share?.share({ title: name, files: [r.uri] }).catch(() => { /* (the sheet closed) */ });
+  }
+  return name;
 }
 
 // ------------------------------------------------------------------------- zip ---

@@ -46,7 +46,7 @@ const H = 0, SC = 1, RD = 2, S0 = 16;
 
 // The worklet's message classes. TIMELINE: every engine, at the same quantum. The rest reach the worklet alone, at
 // once (a parameter of a worker's track also goes to the workers, on the timeline: see McRouter.route).
-export const TIMELINE = new Set(['project', 'patch', 'play', 'stop', 'seek', 'launch', 'scene', 'stopAll', 'rec', 'capture', 'asset-drop', 'mc-part']);
+export const TIMELINE = new Set(['project', 'patch', 'play', 'stop', 'seek', 'launch', 'scene', 'stopAll', 'rec', 'capture', 'asset-drop', 'mc-part', 'fill']);
 
 export function makeShared(workers) {
   return {
@@ -177,6 +177,8 @@ export function engineMsg(e, m) {
     case 'seek': e.seek(m.beat); e.seekSeq = m.seq || 0; break;
     case 'rec': e.recording = m.on; if (m.on) { e.recPass = 0; e.recLag = Math.max(0, Math.min(1, +m.lag || 0)); } else e.flushRecording(); break;
     case 'click': e.click = m.on; break;
+    case 'fill': e.fill = !!m.on; break;
+    case 'perf': e.perf?.set(m); break;
     case 'note': e.liveCall = true; try { e.liveNote(m.track, m.n, m.v, m.on, !!m.silent, !!m.preview); } finally { e.liveCall = false; } break;
     case 'param': { const tr = e.tracks.get(m.track); if (tr?.w) { tr.w.k_param(m.id, m.v); tr.params[m.id] = m.v; } break; }
     case 'midi': e.liveCtl(m.track, m.st, m.d1, m.d2); break;

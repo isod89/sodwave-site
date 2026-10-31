@@ -55,8 +55,9 @@ export function clipEvents(clip, out, { start = clip.start, len = clip.len, swin
       const odd = Math.abs((nt.t % 0.5) - 0.25) < 0.01;            // an offbeat 16th: swung
       t += (odd ? swing * 0.125 : 0) + (nt.m || 0);
       const r = Math.max(1, nt.r || 1);
+      const turn = Math.round(base / loop);                       // (which turn of the loop: a trig condition's A:B)
       for (let k = 0; k < r; k++) {
-        out.push({ t: start + t + k * d / r, d: Math.max(0.01, (d / r) * (r > 1 ? 0.8 : 1)), n: nt.n, v: k ? Math.max(1, Math.round(nt.v * 0.82)) : nt.v, p: nt.p ?? 1, l: nt.l || null });
+        out.push({ t: start + t + k * d / r, d: Math.max(0.01, (d / r) * (r > 1 ? 0.8 : 1)), n: nt.n, v: k ? Math.max(1, Math.round(nt.v * 0.82)) : nt.v, p: nt.p ?? 1, l: nt.l || null, q: k ? null : nt.q || null, turn });
       }
     }
   }
@@ -152,6 +153,91 @@ export function fromBase64(s) {
   let acc = 0, bits = 0, k = 0;
   for (const c of s) { acc = (acc << 6) | B64[c]; bits += 6; if (bits >= 8) { bits -= 8; out[k++] = (acc >> bits) & 255; } }
   return out.subarray(0, k);
+}
+// ------------------------------------------------------------------- perf ---
+// Live performance effects on the master, for the groove mode's FX page (held, then let go): STUTTER repeats the slice
+// that follows the press (a quarter note to a 32nd), TAPE STOP slows the music to a halt, the FILTER
+// sweeps (x < 0: low-pass, x > 0: high-pass, y: resonance) and CRUSH takes bits and rate away. Its 8 s of memory are
+// taken the first time an effect is held (none in a helper thread, nor in a project never played with them).
+export class Perf {
+  constructor() {
+    this.n = RATE * 8; this.L = null; this.R = null; this.w = 0;
+    this.s = { stutter: 0, x: 0, y: 0, tape: false, crush: 0 };
+    this.rep = null; this.tape = null; this.wet = 0; this.tw = 0;
+    this.f = [{ s1: 0, s2: 0 }, { s1: 0, s2: 0 }]; this.fx = 0; this.fy = 0; this.hold = [0, 0]; this.hc = 0;
+  }
+  set(m) {
+    if (!this.L) { this.L = new Float32Array(this.n); this.R = new Float32Array(this.n); }
+    this.s = { stutter: Math.max(0, +m.stutter || 0), x: Math.max(-1, Math.min(1, +m.x || 0)), y: Math.max(0, Math.min(1, +m.y || 0)), tape: !!m.tape, crush: Math.max(0, Math.min(1, +m.crush || 0)) };
+  }
+  get on() { const s = this.s; return s.stutter > 0 || s.tape || Math.abs(s.x) > 0.02 || s.crush > 0.01 || this.rep || this.tape || this.wet > 1e-4 || Math.abs(this.fx) > 1e-3 || this.hc > 0; }
+  process(L, R, bpm) {
+    if (!this.L) return;
+    const n = this.n, s = this.s;
+    for (let i = 0; i < L.length; i++) { this.L[this.w] = L[i]; this.R[this.w] = R[i]; this.w = (this.w + 1) % n; }
+    if (!this.on) return;
+    const len = L.length, w0 = (this.w - len + n) % n;
+    // stutter: from the press, the slice is heard once, then again and again (a short crossfade at its seam)
+    if (s.stutter > 0 && !this.rep) this.rep = { at: w0, len: Math.max(256, Math.round(s.stutter * 60 / bpm * RATE)), i: 0 };
+    if (s.stutter <= 0 && this.rep) this.rep.end = true;
+    // tape stop: a read head behind the live audio, slowing down to nothing in about 0.7 s
+    if (s.tape && !this.tape) this.tape = { pos: w0, v: 1 };
+    if (!s.tape && this.tape) this.tape = null;
+    const want = this.rep && !this.rep.end ? 1 : 0;
+    for (let i = 0; i < len; i++) {
+      let l = L[i], r = R[i];
+      if (this.tape) {
+        const t = this.tape, p0 = Math.floor(t.pos), fr = t.pos - p0, a = p0 % n, b = (p0 + 1) % n;
+        l = this.L[a] + (this.L[b] - this.L[a]) * fr; r = this.R[a] + (this.R[b] - this.R[a]) * fr;
+        l *= t.v; r *= t.v;
+        t.pos = (t.pos + t.v) % n; t.v = Math.max(0, t.v - 1 / (RATE * 0.7));
+        this.tw = 1;
+      } else if (this.tw > 0) { this.tw = Math.max(0, this.tw - 1 / 1024); l *= 1 - this.tw; r *= 1 - this.tw; }   // (back in, faded)
+      if (this.rep) {
+        const rp = this.rep;
+        this.wet += ((want) - this.wet) * 0.004;
+        if (rp.i >= rp.len) {                                   // the slice is recorded: play it back, round and round
+          const k = rp.i % rp.len, j = (rp.at + k) % n, fade = Math.min(1, k / 64, (rp.len - k) / 64);
+          l = l * (1 - this.wet) + this.L[j] * fade * this.wet; r = r * (1 - this.wet) + this.R[j] * fade * this.wet;
+        }
+        rp.i++;
+        if (rp.end && this.wet < 1e-3) { this.rep = null; this.wet = 0; }
+      }
+      // filter: a state-variable filter, its cutoff following x (smoothed), resonance y
+      this.fx += (s.x - this.fx) * 0.002; this.fy += (s.y - this.fy) * 0.002;
+      if (Math.abs(this.fx) > 1e-3) {
+        const hp = this.fx > 0, m = Math.abs(this.fx), hz = hp ? 20 * Math.pow(400, m) : 20000 * Math.pow(1 / 160, m);
+        const g = Math.tan(Math.PI * Math.min(hz, RATE * 0.45) / RATE), k = 2 - 1.85 * this.fy, a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2;
+        const blend = Math.min(1, m * 8);
+        for (let c = 0; c < 2; c++) {
+          const st = this.f[c], x = c ? r : l;
+          const v3 = x - st.s2, v1 = a1 * st.s1 + a2 * v3, v2 = st.s2 + a2 * st.s1 + a3 * v3;
+          st.s1 = 2 * v1 - st.s1; st.s2 = 2 * v2 - st.s2;
+          const y = hp ? x - k * v1 - v2 : v2, out = x + (y - x) * blend;
+          if (c) r = out; else l = out;
+        }
+      }
+      // crush: fewer bits, a lower rate
+      if (s.crush > 0.01) {
+        const step = 1 + Math.floor(s.crush * 15), q = Math.pow(2, 15 - s.crush * 11);
+        if (this.hc <= 0) { this.hold[0] = Math.round(l * q) / q; this.hold[1] = Math.round(r * q) / q; this.hc = step; }
+        this.hc--; l = this.hold[0]; r = this.hold[1];
+      } else this.hc = 0;
+      L[i] = l; R[i] = r;
+    }
+  }
+}
+
+// a trig condition (project.js TRIG_COND): A:B plays on the A-th turn of every B turns of its clip; fill while FILL is held;
+// first on the first turn after the launch; pre as the last conditional trig before it went (! the opposite)
+export function condOk(q, turn, fill, pre) {
+  const not = q[0] === '!', w = not ? q.slice(1) : q;
+  let ok;
+  if (w === 'fill') ok = !!fill;
+  else if (w === 'first') ok = turn === 0;
+  else if (w === 'pre') ok = pre !== false;
+  else { const [a, b] = w.split(':').map(Number); return turn % b === a - 1; }
+  return not ? !ok : ok;
 }
 // ------------------------------------------------------------------- tracks ---
 // an engine's instance: SLOOP's and Clipper's export the whole interface; a community engine (packs.js) may leave out
@@ -260,9 +346,10 @@ class Track {
     return v;
   }
   // a note from the sequencer: its probability, its parameter locks, then the note
-  trigger(engine, e, at) {
+  trigger(engine, e, at, turn = e.turn || 0) {
     if (e.c) { this.control(engine, e.c); return; }
-    if (e.p < 1 && Math.random() >= e.p) return;
+    if (e.q) { const ok = condOk(e.q, turn, engine.fill, this.lastPre); if (!/pre/.test(e.q)) this.lastPre = ok; if (!ok) return; }
+    if (e.p < 1) { const ok = Math.random() < e.p; this.lastPre = ok; if (!ok) return; }
     if (e.l && this.w) {
       for (const id in e.l) { if (this.lockBase[id] === undefined) this.lockBase[id] = this.w.k_get(+id); this.w.k_param(+id, e.l[id]); }
       this.lockUntil = Math.max(this.lockUntil, at + e.d);
@@ -422,6 +509,8 @@ export class KrakenEngine {
     this.soloReturn = null;    // export of a return's stem: what the tracks send it, through it, nothing else
     this.returns = [];
     this.masterRack = new Rack();
+    this.perf = new Perf();                                      // (the groove mode's FX page, live only)
+    this.fill = false;                                           // FILL held: the fill trig conditions play
     this.mix = { L: new Float32Array(BLOCK), R: new Float32Array(BLOCK) };
     this.fxCtx = { bpm: 120, pos: 0, sidechain: (id) => { const t = this.tracks.get(id); return t ? t.pdc?.key || { L: t.bufL, R: t.bufR } : null; } };   // (a key waiting for plugins: heard before its wait)
     this.master = { env: 1, peakL: 0, peakR: 0 };
@@ -720,7 +809,7 @@ export class KrakenEngine {
     const k0 = Math.floor(Math.max(0, l0) / loop), k1 = Math.floor((l1 - 1e-9) / loop);
     for (let k = k0; k <= k1; k++) {
       const a = Math.max(0, l0) - k * loop, b = l1 - k * loop;
-      for (const e of ev) if (e.t >= a - 1e-9 && e.t < b) tr.trigger(this, e, s.at + k * loop + e.t);
+      for (const e of ev) if (e.t >= a - 1e-9 && e.t < b) tr.trigger(this, e, s.at + k * loop + e.t, k);
     }
   }
 
@@ -884,6 +973,7 @@ export class KrakenEngine {
         r.peak[0] = Math.max(r.peak[0], pl); r.peak[1] = Math.max(r.peak[1], pr);
       });
       this.masterRack.process(mL, mR, BLOCK, ctx);
+      if (!this.offline) this.perf.process(mL, mR, this.bpm);
     }
     // master: fader, glue limiter (fast attack, smooth release) to its ceiling (p.master.limit: on, -0.3 dB by
     // default); then the meters, then the click on top. Off, the mix passes as it is, overs and all, never a NaN.
