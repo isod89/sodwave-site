@@ -347,6 +347,8 @@ export function validate(p) {
   p.swing = clampN(p.swing, 0, 1, 0);
   p.launchQ = clampN(p.launchQ, 0, 64, 4);
   p.countIn = !!p.countIn;
+  // (a song SIREN wrote: its style and seed, to write another; siren/song.js)
+  if (p.siren) { const z = obj(p.siren); p.siren = z && typeof z.style === 'string' ? { style: str(z.style, '', 16), id: str(z.id, '', 16), seed: (Number(z.seed) >>> 0), code: str(z.code, '', 12), song: !!z.song } : undefined; if (!p.siren) delete p.siren; }
   p.recTakes = p.recTakes !== false;
   // project macros: 8 knobs, each one turning many parameters of many tracks at once ({ track, key, lo, hi })
   const ms = arr(p.macros).filter(obj);

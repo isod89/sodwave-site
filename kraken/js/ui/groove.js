@@ -617,6 +617,7 @@ export class Groove {
     app.sheet('Groove', [
       ['QUANTIZE WHAT YOU RECORD (1/16)', () => { this.g.quant = !this.g.quant; app.grooveQuant = this.g.quant; this.save(); app.toast(this.g.quant ? 'What you record lands on the 16ths.' : 'What you record lands where you played it.'); }, this.g.quant ? 'cur' : ''],
       ['ADD A TRACK…', () => this.addTrackSheet()],
+      ['START A SONG IN A STYLE…', () => app.fileAction('starter')],
       ['NEW PROJECT…', () => app.fileAction('new')],
       ['SAVE A COPY…', () => app.fileAction('saveas')],
       ['EXPORT AUDIO…', () => app.fileAction('export')],

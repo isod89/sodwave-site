@@ -12,22 +12,39 @@ const phone = () => matchMedia('(max-width: 700px), (max-height: 520px) and (poi
 
 export function welcome(app, { modal, first = false }) {
   const tour = h('input', { type: 'checkbox', id: 'wel-tour', checked: first ? true : null });
-  const go = (make) => () => {
+  const go = (make) => async () => {
     m.close();
-    const p = make();
+    let p;
+    try { p = await make(); } catch (e) { app.toast(`That song could not be written: ${e.message}`); return; }
     if (p) {
       app.load(p);
       const t = p.tracks.find((x) => x.clips.length);              // its first clip open in the editor: ready to change
-      if (t) { app.selectClip(t.clips[0].id, t.id); if (!phone()) app.showTab('edit'); }
+      if (t) { app.selectClip(t.clips[0].id, t.id); if (!phone() && !p.siren?.song) app.showTab('edit'); }
     }
     try { localStorage.setItem('kraken.welcomed', '1'); } catch { /* */ }
     if (tour.checked) setTimeout(() => startTour(app), 350);
+    else if (p?.siren?.song) {
+      const bars = Math.round(p.tracks.reduce((a, t) => Math.max(a, ...t.clips.map((c) => c.start + c.len)), 0) / 4);
+      app.toast(`Written by SIREN (${p.siren.code}): ${p.markers.length} sections, ${bars} bars.`);
+    }
     else if (p) app.toast(touch() ? 'Tap ▶ to hear it, then change anything while it plays.' : 'Press Space to hear it, then change anything while it plays.');
+  };
+  // a style's start: an 8-bar loop (Kraken's own, or SIREN's for its styles), or a whole song written by SIREN's brain
+  let mode = 'loop';
+  try { mode = localStorage.getItem('kraken.startMode') === 'song' ? 'song' : 'loop'; } catch { /* */ }
+  const siren = () => import('../siren/song.js');
+  const start = (s) => async () => {
+    if (mode === 'song') { const p = (await siren()).sirenSong(app.lib, s.id); p.siren.song = true; return p; }
+    if (s.siren === 'only') return (await siren()).sirenLoop(app.lib, s.id);
+    return starterProject(app.lib, s.id);
   };
   const card = (title, sub, make, cls = '') => h('button', { class: 'wel-card ' + cls, onclick: go(make) }, h('b', { text: title }), h('span', { text: sub }));
   const fam = (name) => h('h4', { class: 'wel-fam', text: name });
+  const styleCards = () => FAMILIES.flatMap((f, i) => [fam(f), ...STARTERS.filter((s) => s.fam === i).map((s) => card(s.name, mode === 'song' ? s.text : `${s.bpm} BPM · ${s.text}`, start(s), 'starter' + (mode === 'song' ? ' song' : '')))]);
+  const again = app.store.p?.siren && STARTERS.find((s) => s.id === app.store.p.siren.id);
   const cards = [
-    ...FAMILIES.flatMap((f, i) => [fam(f), ...STARTERS.filter((s) => s.fam === i).map((s) => card(s.name, `${s.bpm} BPM · ${s.text}`, () => starterProject(app.lib, s.id), 'starter'))]),
+    ...(again ? [fam('Again'), card(`Another ${again.name} song`, 'Written by SIREN, from a new seed', async () => { const p = (await siren()).sirenSong(app.lib, again.id); p.siren.song = true; return p; }, 'starter')] : []),
+    ...styleCards(),
     fam('Or start from'),
     card('The demo song', 'First Dive: hear what Kraken does', () => null, 'other'),
     card('Empty', 'A drum track and a synth, nothing written', () => {
@@ -36,8 +53,17 @@ export function welcome(app, { modal, first = false }) {
       return p;
     }, 'other'),
   ];
+  const modeBtn = (k, label, sub) => h('button', { class: 'wel-mode-b' + (mode === k ? ' on' : ''), role: 'radio', 'aria-checked': String(mode === k), onclick: () => {
+    mode = k; try { localStorage.setItem('kraken.startMode', k); } catch { /* */ }
+    for (const b of m.box.querySelectorAll('.wel-mode-b')) { const on = b.dataset.k === k; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
+    const grid = m.box.querySelector('.wel-grid'), mine = [...grid.querySelectorAll('.wel-card.mine')], head = mine.length ? [grid.querySelector('.wel-fam'), ...mine] : [];
+    grid.replaceChildren(...head, ...(again ? [fam('Again'), cards[1]] : []), ...styleCards(), ...cards.slice(cards.length - 3));
+  }, 'data-k': k }, h('b', { text: label }), h('span', { text: sub }));
   const m = modal(first ? 'Welcome to Kraken' : 'Start a song', [
     h('p', { class: 'hint', text: first ? 'The SLOOP and Clipper engines in a full studio, free. Pick a style: a song starts playing, ready for you to change it.' : 'A song in a style, ready to change. What you have now stays one Ctrl+Z away (and in PROJECT > Earlier versions).' }),
+    h('div', { class: 'wel-mode', role: 'radiogroup', 'aria-label': 'What to start with' },
+      modeBtn('loop', 'A loop', '8 bars, playing, ready to build on'),
+      modeBtn('song', 'A whole song', 'Intro to outro, written by SIREN\'s brain')),
     h('div', { class: 'wel-grid' }, cards),
     h('label', { class: 'rep-check', for: 'wel-tour' }, tour, h('span', { text: 'Show me around (one minute)' })),
     h('p', { class: 'hint', text: `Already have a song? ${touch() ? '☰' : 'PROJECT'} > Open…, or a SLOOP song (.sloopsong).` }),

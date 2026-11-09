@@ -73,6 +73,11 @@ export const STARTERS = [
   { id: 'trance', name: 'Trance', bpm: 138, fam: 0, text: 'Gated supersaws, a rolling bass, a pluck arpeggio' },
   { id: 'dubstep', name: 'Dubstep', bpm: 140, fam: 0, text: 'Half-time drums, a wobbling growl, a sub' },
   { id: 'dnb', name: 'Drum & bass', bpm: 174, fam: 0, text: 'Two-step breaks, a reese bass, an airy pad' },
+  // (SIREN's own styles: their songs and loops are written by SIREN's brain, siren/song.js)
+  { id: 'psy', name: 'Psytrance', bpm: 144, fam: 0, text: 'A rolling bass, acid lines, zaps', siren: 'only' },
+  { id: 'acid', name: 'Acid', bpm: 131, fam: 0, text: 'A 303 that never stops, its slides', siren: 'only' },
+  { id: 'rave', name: 'Rave', bpm: 145, fam: 0, text: 'Breakbeats, hoovers and stabs', siren: 'only' },
+  { id: 'hard', name: 'Hard techno', bpm: 155, fam: 0, text: 'A pounding kick and its gallop', siren: 'only' },
   { id: 'ukg', name: 'UK garage', bpm: 132, fam: 0, text: 'Shuffled 2-step, organ stabs, a wow bass' },
   { id: 'futurebass', name: 'Future bass', bpm: 150, fam: 0, text: 'Pumping supersaw chords, vocal chops' },
   { id: 'synthwave', name: 'Synthwave', bpm: 100, fam: 0, text: '80s drums, Juno pads, a soaring lead' },

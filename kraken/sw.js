@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kraken offline: every file of the app precached; fonts kept as they are first fetched.
-const VERSION = "21f5d16e15ca";
+const VERSION = "0f218f5a05b1";
 const FILES = [
 "./",
 "assets/apple-touch-icon.png",
@@ -62,6 +62,12 @@ const FILES = [
 "js/render-worker.js",
 "js/resample.js",
 "js/sampler.js",
+"js/siren/brain.js",
+"js/siren/data.js",
+"js/siren/levels.js",
+"js/siren/song.js",
+"js/siren/sounds.js",
+"js/siren/styles.js",
 "js/sloop-pro.js",
 "js/sloopsong.js",
 "js/templates.js",
@@ -111,7 +117,7 @@ const FILES = [
 ];
 const APP = 'kraken-' + VERSION, FONTS = 'kraken-fonts', PACKS = 'kraken-packs';
 const HASHES = {
-"./": "ce145f7a4c0933c8",
+"./": "73c796a2410fe26d",
 "assets/apple-touch-icon.png": "f17f300d7095555f",
 "assets/fonts/TwemojiCountryFlags-LICENSE.txt": "e42b16deeb80d8cc",
 "assets/fonts/TwemojiCountryFlags.woff2": "9f04f14429bb6a9f",
@@ -146,7 +152,7 @@ const HASHES = {
 "js/hub.js": "ae16cb9d424d794a",
 "js/i18n.js": "5d26939e61333792",
 "js/i18n/fr-hub.js": "572a106d9ea51007",
-"js/i18n/fr.js": "9baaeb6bdb6cd8bb",
+"js/i18n/fr.js": "6f0fb8be61f807c7",
 "js/input.js": "6380044ba9c51bc4",
 "js/io.js": "110e2597b4fd0b95",
 "js/lab-dsp.js": "0595d240c21578c7",
@@ -167,13 +173,19 @@ const HASHES = {
 "js/packs.js": "0d48f38dc813add1",
 "js/patch.js": "aa95ddf8ae05a0c6",
 "js/presets.js": "0d5aa18dc1c00f2b",
-"js/project.js": "82b5c1df121d5792",
+"js/project.js": "1791ecaac5c0996c",
 "js/render-worker.js": "dc9447f816d1b065",
 "js/resample.js": "b69a5b0ce1845725",
 "js/sampler.js": "a91263950e2d49c4",
+"js/siren/brain.js": "1a6e8f82f1d908a1",
+"js/siren/data.js": "d7aa7e21cff12247",
+"js/siren/levels.js": "31254ae6a3620808",
+"js/siren/song.js": "37f3c7a78731ee75",
+"js/siren/sounds.js": "b6d054830b060075",
+"js/siren/styles.js": "7b627c1ea4d66c88",
 "js/sloop-pro.js": "262bbc42a932bd51",
 "js/sloopsong.js": "fbb95974e5f385b7",
-"js/templates.js": "0c16d3a949ef166d",
+"js/templates.js": "3b7a10cbfcd8ad8b",
 "js/ui/arrange.js": "b8bf536df63e9c99",
 "js/ui/autorec.js": "1fed4390fecc57c7",
 "js/ui/collab.js": "d6b2a58b2b8b1e75",
@@ -182,7 +194,7 @@ const HASHES = {
 "js/ui/diagnostic.js": "21143415ef690999",
 "js/ui/drums.js": "5e0e3428bcd91b19",
 "js/ui/editor.js": "5be1ac8c21636f43",
-"js/ui/groove.js": "fc15c8d49b9e466b",
+"js/ui/groove.js": "d0adc05685ece818",
 "js/ui/hub-style.js": "a87d1153c68b1630",
 "js/ui/hub.js": "4316ee9f65408c37",
 "js/ui/instruments.js": "ff60f41d86a6c41b",
@@ -202,7 +214,7 @@ const HASHES = {
 "js/ui/samples.js": "63b1fffbc3a02aff",
 "js/ui/session.js": "df61420498bf69e3",
 "js/ui/wam.js": "11a6217a1fc0f50d",
-"js/ui/welcome.js": "62ba7ffd78e12b7d",
+"js/ui/welcome.js": "4c5d80f5bc92b4d4",
 "js/vault.js": "4e0620a7f22cdb52",
 "js/vendor/LAME-README.txt": "cd144ca132e3842b",
 "js/vendor/LGPL-3.0.txt": "e3a994d82e644b03",

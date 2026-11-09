@@ -1394,10 +1394,16 @@ export const dict = {
   'TAPE STOP': 'ARRÊT BANDE', 'CRUSH': 'CRUSH', 'LATCH': 'MAINTIEN',
   'Hold an effect, let go to come back. LATCH keeps them on until tapped again. FILL plays the steps set to FILL.': 'Maintenez un effet, lâchez pour revenir. MAINTIEN les garde actifs jusqu’à un nouveau toucher. FILL joue les pas réglés sur FILL.',
   'QUANTIZE WHAT YOU RECORD (1/16)': 'QUANTIFIER L’ENREGISTREMENT (1/16)', 'What you record lands on the 16ths.': 'Ce que vous enregistrez se cale sur les 16es.',
-  'What you record lands where you played it.': 'Ce que vous enregistrez tombe là où vous l’avez joué.', 'ADD A TRACK…': 'AJOUTER UNE PISTE…', 'NEW PROJECT…': 'NOUVEAU PROJET…',
+  'What you record lands where you played it.': 'Ce que vous enregistrez tombe là où vous l’avez joué.', 'ADD A TRACK…': 'AJOUTER UNE PISTE…', 'NEW PROJECT…': 'NOUVEAU PROJET…', 'START A SONG IN A STYLE…': 'COMMENCER UNE CHANSON DANS UN STYLE…',
   'SAVE A COPY…': 'ENREGISTRER UNE COPIE…', 'EXPORT AUDIO…': 'EXPORTER L’AUDIO…', 'PUBLISH TO THE HUB…': 'PUBLIER SUR LE HUB…', 'THE FULL DAW': 'LE DAW COMPLET', 'A SOUND FROM THE LIBRARY…': 'UN SON DE LA BIBLIOTHÈQUE…',
   'UNMUTE': 'RÉACTIVER', 'RENAME…': 'RENOMMER…', 'MUTE': 'MUET',
   'GROOVE: Kraken as a groovebox, pads, steps and patterns': 'GROOVE : Kraken en groovebox, pads, pas et patterns',
+  // ---------------------------------------------------------------- SIREN's songs (ui/welcome.js, siren/song.js) ---
+  'What to start with': 'Pour commencer', 'A loop': 'Une boucle', '8 bars, playing, ready to build on': '8 mesures qui jouent, prêtes à être développées',
+  'A whole song': 'Une chanson complète', 'Intro to outro, written by SIREN\'s brain': 'De l’intro à l’outro, écrite par le cerveau de SIREN',
+  'Again': 'Encore', 'Written by SIREN, from a new seed': 'Écrite par SIREN, d’une nouvelle graine',
+  'A rolling bass, acid lines, zaps': 'Une basse qui roule, des lignes acid, des zaps', 'A 303 that never stops, its slides': 'Une 303 qui ne s’arrête jamais, ses glissés',
+  'Breakbeats, hoovers and stabs': 'Des breakbeats, des hoovers et des stabs', 'A pounding kick and its gallop': 'Un kick qui martèle et son galop',
   // ---------------------------------------------------------------- master meters (ui/meters.js) ---
   'TRUE PEAK': 'TRUE PEAK',
   'True peak (dBTP, 4x oversampled, ITU-R BS.1770): the highest the wave goes between the samples, over the last moment': 'True peak (dBTP, suréchantillonné 4x, ITU-R BS.1770) : le plus haut que monte l’onde entre les échantillons, sur le dernier instant',
@@ -1801,6 +1807,7 @@ export const keep = [
   'It will be in the ☰ of every', ', in every project.',                                                                       // a sentence built with +: the whole is a rule
   'CL HAT', 'OP HAT', 'LO TOM', 'MID TOM', 'HI TOM', 'TAMB', 'KICK', 'SNARE', 'CLAP', 'RIM', 'CRASH', 'RIDE', 'COWBELL', 'SHAKER', 'CONGA', 'CLAVE', 'DIST',   // GROOVE: drum pads, as on the machines
   '!fill', '!first', '!pre', 'on rec', 'on m', 'on s', 'RIFF', 'WAVEfmt', 'DAW', 'GROOVE', '▦ GROOVE', 'Groove', 'FILL', 'PRE', 'CLIPS', 'PATTERN',
+  'SIREN', 'SUB', 'HOOK', 'PEAK', 'STABS', 'RISER', 'VINYL', 'Psytrance', 'Acid', 'Rave', 'Hard techno', 'HOUSE', 'TECHNO', 'TRANCE', 'DNB', 'PSY', 'ACID', 'RAVE', 'DUBSTEP', 'FUTUREBASS', 'UKG', 'DISCO', 'SYNTHWAVE', 'CHIPTUNE', 'HIPHOP', 'TRAP', 'DRILL', 'PHONK', 'RNB', 'LOFI', 'REGGAETON', 'AFROBEATS', 'AMAPIANO', 'POP', 'ROCK', 'CINEMATIC', 'AMBIENT', 'ANALOG:SUB BASS',   // (SIREN: names, styles)
   'sodwavecontact@gmail.com', 'report.txt', 'project.kraken.json', 'kraken/project.json', 'project.xml', 'metadata.xml', 'stems+', 'worker', '(the first',
 ];
 // patterns that stay as they are (names built by the code and saved in the project, numbers with units)
@@ -1813,7 +1820,7 @@ export const keepRules = [
   /^.+ SLICES$/, /^TAKES \d+$/, /^MARKER \d+$/, /^SCENE \d+$/, /^\d+ ZONES$/, /^ZONE \d+$/, /^.+ (?:BOUNCE|BNC)$/, /^KIT .+$/, /^[LH]P -?\d+$/, /^GR -?[\d.]+$/,
   /^[\w-]+\/[\w\/-]+\.js$/, /^.+ MIDI$/, /^inset /, /^PLUGIN · .+$/,
   /^To: .+/s, /^mailto:/, /^Kraken \S+: .+$/, /^KRAKEN PROBLEM REPORT · .+$/,
-  /^Pad .+$/, /^PAD .+\.wav$/, /^STUTTER \S+$/, /^Pattern \w+$/, /^.+ · pattern [A-Z]\d*$/, /^[LR]\d+$/,
+  /^DRUMS\|.+$/,   /^Pad .+$/, /^PAD .+\.wav$/, /^STUTTER \S+$/, /^Pattern \w+$/, /^.+ · pattern [A-Z]\d*$/, /^[LR]\d+$/,
   /^MACRO \d+$/, /^STEP \d+$/, /^LAB .+$/, /^LAB · .*$/, /^MACRO \d+ · .*$/, /^EFFECT · .+$/, /^Note \d+$/,
 ];
 
@@ -1831,6 +1838,12 @@ const KIND = { synth: 'synthé', drum: 'de batterie', audio: 'audio', sampler: '
 
 // [regex, (match, t) => French]: t() translates a part (an error message, a label); names stay as typed
 export const rules = [
+  // SIREN's songs
+  [/^Written by SIREN \(([^)]+)\): (\d+) sections, (\d+) bars\.$/, (m) => `Écrite par SIREN (${m[1]}) : ${m[2]} sections, ${m[3]} mesures.`],
+  [/^Saved in Documents\/Kraken: (.+)$/, (m) => `Enregistré dans Documents/Kraken : ${m[1]}`],
+  [/^Another (.+) song$/, (m) => `Une autre chanson ${m[1]}`],
+  [/^That song could not be written: (.+)$/, (m) => `Cette chanson n’a pas pu être écrite : ${m[1]}`],
+  [/^SIREN has no style (.+)$/, (m) => `SIREN n’a pas le style ${m[1]}`],
   // GROOVE
   [/^REPEAT (\S+)$/, (m) => `RÉPÉT. ${m[1]}`],
   [/^(\d+) STEPS$/, (m) => `${m[1]} PAS`],
