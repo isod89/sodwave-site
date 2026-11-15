@@ -3,143 +3,95 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clipper — a deep synthesizer for the M-VAVE FM-1 · Sodwave</title>
-<meta name="description" content="Clipper is free, open-source firmware for the M-VAVE FM-1: a deep synthesizer with 23 engines and 407 sounds — virtual analog, FM, wavetable, vector, physical models, and HYBRID, a voice editable in the browser.">
-<meta name="theme-color" content="#07080a">
+<title>Clipper: one instrument, played deep · Sodwave</title>
+<meta name="description" content="One instrument, played deep. SLOOP is a groovebox; Clipper is a synthesizer. It keeps SLOOP&#x27;s engines, effects, arpeggiator, step sequencer, USB audio and MIDI, and adds engines of its own, four macros on every sound and HYBRID, a voice you can edit entirely from the browser.">
+<meta name="theme-color" content="#E7E9EC">
+<link rel="canonical" href="https://www.sodwave.com/clipper/">
+<link rel="icon" href="/assets/v4/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sodwave">
-<meta property="og:title" content="Clipper — a deep synthesizer for the M-VAVE FM-1">
-<meta property="og:description" content="Free open-source firmware. 23 engines, 407 sounds, plus HYBRID — a voice of three oscillators, two filters and a modulation matrix, editable in the browser.">
+<meta property="og:title" content="Clipper: one instrument, played deep · Sodwave">
+<meta property="og:description" content="One instrument, played deep. SLOOP is a groovebox; Clipper is a synthesizer. It keeps SLOOP&#x27;s engines, effects, arpeggiator, step sequencer, USB audio and MIDI, and adds engines of its own, four macros on every sound and HYBRID, a voice you can edit entirely from the browser.">
 <meta property="og:url" content="https://www.sodwave.com/clipper/">
+<meta property="og:image" content="https://www.sodwave.com/assets/v4/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/site-v3.css?v=20261028">
-<style>:root{--a:var(--o)}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap">
+<link rel="stylesheet" href="/assets/site-v4.css?v=20261114">
 </head>
 <body class="lang-en">
-
-<header class="nav">
-  <div class="wrap bar">
-    <a class="brand" href="/" aria-label="Sodwave, home">
-      <svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#12151a" stroke="#2a2f37"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg>
-      <span><b>SODWAVE</b><small>by Sam</small></span>
-    </a>
-    <nav class="links" id="links">
-      <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a>
-      <a href="/sloop/">SLOOP</a>
-      <a href="/sloop-pro/">SLOOP Pro</a>
-      <a href="/clipper/" class="cur" aria-current="page">Clipper</a>
-      <a href="/clipper-pro/">Clipper Pro</a>
-      <a href="/hub/">Hub</a>
-      <a href="/lab/">LAB</a>
-      <a href="/#about"><span class="en">About</span><span class="fr">À propos</span></a>
-      <a href="/#contact">Contact</a>
-      <button class="langtog" id="langtog" type="button">EN / FR</button>
-    </nav>
-    <a class="btn go sm navcta" href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a>
-    <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-controls="links" aria-expanded="false">☰</button>
+<a class="skip" href="#main"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span></a>
+<div class="brandbar"></div>
+<header class="hd">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Sodwave, home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#16181B" stroke="#3A3F47"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><b>Sodwave</b></a>
+    <nav class="nav" id="nav" aria-label="Main"><a href="/#instruments" aria-current="page"><span class="en">Instruments</span><span class="fr">Instruments</span></a><a href="/#software"><span class="en">Software</span><span class="fr">Logiciels</span></a><a href="/#community"><span class="en">Community</span><span class="fr">Communauté</span></a><a href="/#about"><span class="en">About</span><span class="fr">À propos</span></a><a href="/#contact">Contact</a><button class="lang" id="lang" type="button">EN / FR</button></nav>
+    <a class="btn pri sm" href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a>
+    <button class="menu" id="menu" type="button" aria-label="Menu" aria-controls="nav" aria-expanded="false"><span></span><span></span></button>
   </div>
 </header>
 
-<main>
-<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a> / Clipper</div>
+<main id="main" style="--a:var(--o)">
+<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#instruments"><span class="en">Instruments</span><span class="fr">Instruments</span></a> / Clipper</div>
 
-<section class="phero">
+<section class="ph">
   <div class="wrap">
-<div class="rv">
-    <div class="hlogo"><img src="/assets/clipper-logo-v2.svg" alt="Clipper"></div>
-    <div class="tag"><span class="en">Deep synthesizer firmware · M-VAVE FM-1</span><span class="fr">Firmware de synthé profond · M-VAVE FM-1</span></div>
-    <h1>
-      <span class="en">A deep synthesizer. <span class="a">23 engines, 407 sounds</span>.</span>
-      <span class="fr">Un synthé profond. <span class="a">23 moteurs, 407 sons</span>.</span>
-    </h1>
-    <p class="lead">
-      <span class="en">Clipper takes the synth side of the FM-1 all the way: virtual analog, FM, wavetable, vector and wave sequencing, physical models — plus HYBRID, a voice of three oscillators, two filters and a modulation matrix, editable in the browser. Free, open-source, and grown out of SLOOP.</span>
-      <span class="fr">Clipper pousse le versant synthé du FM-1 à fond : analogique virtuel, FM, wavetable, vectoriel et wave sequencing, modèles physiques — et HYBRID, une voix à trois oscillateurs, deux filtres et une matrice de modulation, éditable dans le navigateur. Libre, open-source, et né de SLOOP.</span>
-    </p>
-    <div class="cta">
-      <a class="btn pri" href="https://isod89.github.io/clipper-fm1/webapp/installer/"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a>
-      <a class="btn" href="https://isod89.github.io/clipper-fm1/webapp/editor/"><span class="en">Open the editor</span><span class="fr">Ouvrir l'éditeur</span></a>
-      <a class="btn" href="https://github.com/isod89/clipper-fm1">GitHub</a>
+    <div>
+      <p class="kind"><span class="en">Synthesizer firmware for the M-VAVE FM-1</span><span class="fr">Firmware de synthé pour le M-VAVE FM-1</span></p>
+      <h1>Clipper</h1>
+      <p class="tag"><span class="en">One instrument, played deep.</span><span class="fr">Un seul instrument, joué en profondeur.</span></p>
+      <p class="lead"><span class="en">SLOOP is a groovebox; Clipper is a synthesizer. It keeps SLOOP's engines, effects, arpeggiator, step sequencer, USB audio and MIDI, and adds engines of its own, four macros on every sound and HYBRID, a voice you can edit entirely from the browser.</span><span class="fr">SLOOP est un groovebox ; Clipper est un synthé. Il garde les moteurs, effets, arpégiateur, séquenceur, audio USB et MIDI de SLOOP, et ajoute ses propres moteurs, quatre macros sur chaque son et HYBRID, une voix entièrement éditable depuis le navigateur.</span></p>
+      <div class="btns"><a class="btn pri" href="https://isod89.github.io/clipper-fm1/webapp/installer/" target="_blank" rel="noopener"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a><a class="btn" href="https://github.com/isod89/clipper-fm1/blob/HEAD/QUICKSTART.md" target="_blank" rel="noopener"><span class="en">Quick start</span><span class="fr">Démarrage rapide</span></a><a class="btn" href="https://isod89.github.io/clipper-fm1/webapp/editor/" target="_blank" rel="noopener"><span class="en">Editor</span><span class="fr">Éditeur</span></a></div>
+      <dl class="specs"><div><dt><span class="en">Version</span><span class="fr">Version</span></dt><dd>1.3.1</dd></div><div><dt><span class="en">Status</span><span class="fr">Statut</span></dt><dd><span class="st rel"><span class="en">Released</span><span class="fr">Disponible</span></span></dd></div><div><dt><span class="en">Runs on</span><span class="fr">Tourne sur</span></dt><dd><span class="en">M-VAVE FM-1</span><span class="fr">M-VAVE FM-1</span></dd></div><div><dt><span class="en">Installs</span><span class="fr">Installation</span></dt><dd><span class="en">From Chrome or Edge, over USB</span><span class="fr">Depuis Chrome ou Edge, en USB</span></dd></div></dl>
     </div>
-    <div class="stats">
-      <div class="stat"><b>23</b><span><span class="en">engines</span><span class="fr">moteurs</span></span></div>
-      <div class="stat"><b>407</b><span><span class="en">sounds</span><span class="fr">sons</span></span></div>
-      <div class="stat"><b>HYBRID</b><span><span class="en">deep voice</span><span class="fr">voix profonde</span></span></div>
-      <div class="stat"><b>GPL-3.0</b><span><span class="en">open source</span><span class="fr">open source</span></span></div>
-    </div>
-</div>
-<div class="part rv"><img src="/assets/v3/fm1-clipper.webp" alt="The M-VAVE FM-1 running Clipper: its synth on the screen" width="1624" height="990"></div>
+    <div class="ph-media"><img src="/assets/v3/fm1-clipper.webp" alt="The M-VAVE FM-1 running Clipper" width="1624" height="990" fetchpriority="high"></div>
   </div>
 </section>
 
-<section class="psec">
+<section class="sec" style="padding-top:24px">
   <div class="wrap">
-    <div class="sec-h rv"><span class="no">01</span><h2><span class="en">What it does</span><span class="fr">Ce que ça fait</span></h2></div>
-    <div class="feat">
-      <div class="f rv"><h3><span class="en">23 synthesis engines</span><span class="fr">23 moteurs de synthèse</span></h3><p><span class="en">Virtual analog, FM, wavetable, vector and wave sequencing, physical models — a full catalogue of synthesis in one keyboard.</span><span class="fr">Analogique virtuel, FM, wavetable, vectoriel et wave sequencing, modèles physiques — tout un catalogue de synthèse dans un clavier.</span></p></div>
-      <div class="f rv"><h3><span class="en">407 sounds</span><span class="fr">407 sons</span></h3><p><span class="en">A deep library across all the engines, level-matched and ready to play out of the box.</span><span class="fr">Une bibliothèque profonde sur tous les moteurs, calibrée et prête à jouer d'entrée.</span></p></div>
-      <div class="f rv"><h3>HYBRID</h3><p><span class="en">A voice of three oscillators, two filters and a modulation matrix — the deep end, for building your own sounds.</span><span class="fr">Une voix à trois oscillateurs, deux filtres et une matrice de modulation — le grand bain, pour créer tes propres sons.</span></p></div>
-      <div class="f rv"><h3><span class="en">Browser editor</span><span class="fr">Éditeur navigateur</span></h3><p><span class="en">Design and tweak HYBRID and every engine from the browser over WebMIDI — no app to install.</span><span class="fr">Conçois et ajuste HYBRID et chaque moteur depuis le navigateur via WebMIDI — aucune app à installer.</span></p></div>
-      <div class="f rv"><h3><span class="en">Grown from SLOOP</span><span class="fr">Né de SLOOP</span></h3><p><span class="en">The same codebase and hardware, pushed toward depth of sound instead of live sequencing.</span><span class="fr">La même base de code et le même matériel, poussés vers la profondeur sonore plutôt que le séquençage live.</span></p></div>
-      <div class="f rv"><h3><span class="en">Free &amp; open-source</span><span class="fr">Libre &amp; open-source</span></h3><p><span class="en">GPL-3.0, installed from the browser in a minute — yours to study, change and share.</span><span class="fr">GPL-3.0, installé depuis le navigateur en une minute — à étudier, modifier et partager.</span></p></div>
+    <div class="sh one"><h2><span class="en">What it does</span><span class="fr">Ce que ça fait</span></h2></div>
+    <ul class="feat"><li><h3><span class="en">23 engines, 407 sounds</span><span class="fr">23 moteurs, 407 sons</span></h3><p><span class="en">HYBRID, FMX, FM6, WAVE, VECTOR, JUNO, ACID, MACRO and more, every sound level-matched through the same output chain.</span><span class="fr">HYBRID, FMX, FM6, WAVE, VECTOR, JUNO, ACID, MACRO et plus, chaque son calibré dans la même chaîne de sortie.</span></p></li><li><h3><span class="en">HYBRID</span><span class="fr">HYBRID</span></h3><p><span class="en">Three oscillators (supersaw, FM, hard sync, wavefolder, noise…), two filters in series or parallel including a ladder, and a modulation matrix.</span><span class="fr">Trois oscillateurs (supersaw, FM, hard sync, wavefolder, bruit…), deux filtres en série ou en parallèle dont un ladder, et une matrice de modulation.</span></p></li><li><h3><span class="en">Four macros on every sound</span><span class="fr">Quatre macros sur chaque son</span></h3><p><span class="en">BRITE, TIMBR, MOTN and SPACE move the right parameters of whatever sound is loaded.</span><span class="fr">BRITE, TIMBR, MOTN et SPACE bougent les bons paramètres du son chargé, quel qu'il soit.</span></p></li><li><h3><span class="en">MULTI</span><span class="fr">MULTI</span></h3><p><span class="en">Two instruments at once, split or layered across the keyboard.</span><span class="fr">Deux instruments à la fois, séparés ou superposés sur le clavier.</span></p></li><li><h3><span class="en">Arpeggiator and sequencer</span><span class="fr">Arpégiateur et séquenceur</span></h3><p><span class="en">Plus microtuning, MPE, USB audio and MIDI in and out.</span><span class="fr">Avec micro-accordage, MPE, audio USB et MIDI en entrée et en sortie.</span></p></li><li><h3><span class="en">The whole patch in the browser</span><span class="fr">Tout le patch dans le navigateur</span></h3><p><span class="en">The editor shows and edits every parameter of HYBRID over USB, and backs up your sounds.</span><span class="fr">L'éditeur montre et modifie chaque paramètre de HYBRID en USB, et sauvegarde tes sons.</span></p></li></ul>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap"><div class="gal"><figure><img src="/assets/v3/clipper-engines.webp" alt="Clipper&#x27;s engines" width="1200" height="675" loading="lazy"><figcaption><span class="en">Some of the engines.</span><span class="fr">Quelques-uns des moteurs.</span></figcaption></figure></div></div>
+</section>
+<section class="sec">
+  <div class="wrap">
+    <div class="notes">
+      <div><h2><span class="en">Before you install</span><span class="fr">Avant d'installer</span></h2></div>
+      <div><ul><li><span class="en">Clipper is unofficial firmware: not made or supported by M-VAVE. Keep a backup made with the editor.</span><span class="fr">Clipper est un firmware non officiel : ni fait ni pris en charge par M-VAVE. Garde une sauvegarde faite avec l'éditeur.</span></li><li><span class="en">You can go back to the official firmware (V16 or V15) from the installer, or to SLOOP with its own installer.</span><span class="fr">Tu peux revenir au firmware officiel (V16 ou V15) depuis l'installateur, ou à SLOOP avec son propre installateur.</span></li><li><span class="en">1.3.1 supports the newer flash chip of FM-1 units sold since late 2026.</span><span class="fr">La 1.3.1 prend en charge la nouvelle puce flash des FM-1 vendus depuis fin 2026.</span></li></ul><div class="lnk"><a class="btn sm" href="https://github.com/isod89/clipper-fm1" target="_blank" rel="noopener">GitHub</a><a class="btn sm" href="https://github.com/isod89/clipper-fm1/releases" target="_blank" rel="noopener"><span class="en">Releases</span><span class="fr">Versions</span></a><a class="btn sm" href="https://github.com/isod89/clipper-fm1/blob/HEAD/DEMARRAGE-RAPIDE-FR.md" target="_blank" rel="noopener"><span class="en">Quick start in French</span><span class="fr">Démarrage rapide en français</span></a><a class="btn sm" href="https://github.com/isod89/clipper-fm1/issues" target="_blank" rel="noopener"><span class="en">Report a bug</span><span class="fr">Signaler un bug</span></a></div><p class="based"><span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span> <span class="en">Free and open source, GPL-3.0.</span><span class="fr">Libre et open source, GPL-3.0.</span></p></div>
     </div>
   </div>
 </section>
 
-<section class="psec">
+<section class="sec">
   <div class="wrap">
-    <div class="sec-h rv"><span class="no">02</span><h2><span class="en">Get it running</span><span class="fr">Le mettre en route</span></h2></div>
-    <p class="lead2 rv"><span class="en">Same hardware as SLOOP — an M-VAVE FM-1 and a Chrome-based browser.</span><span class="fr">Le même matériel que SLOOP — un M-VAVE FM-1 et un navigateur basé sur Chrome.</span></p>
-    <div class="steps">
-      <div class="step rv"><div class="n">1</div><div><h3><span class="en">Get an M-VAVE FM-1</span><span class="fr">Procure-toi un M-VAVE FM-1</span></h3><p><span class="en">The affordable MIDI keyboard Clipper runs on.</span><span class="fr">Le clavier MIDI abordable sur lequel tourne Clipper.</span></p></div></div>
-      <div class="step rv"><div class="n">2</div><div><h3><span class="en">Open the installer</span><span class="fr">Ouvre l'installateur</span></h3><p><span class="en">Plug the keyboard in and open the browser installer — no app, no account.</span><span class="fr">Branche le clavier et ouvre l'installateur web — aucune app, aucun compte.</span></p></div></div>
-      <div class="step rv"><div class="n">3</div><div><h3><span class="en">Flash, then shape sounds</span><span class="fr">Flashe, puis sculpte tes sons</span></h3><p><span class="en">Install in one click, then open the editor to dig into HYBRID and the engines.</span><span class="fr">Installe en un clic, puis ouvre l'éditeur pour creuser HYBRID et les moteurs.</span></p></div></div>
-    </div>
-  </div>
-</section>
-
-<section class="psec">
-  <div class="wrap">
-    <div class="sec-h rv"><span class="no">03</span><h2><span class="en">Links</span><span class="fr">Liens</span></h2></div>
-    <div class="links-row">
-      <a class="pri" href="https://isod89.github.io/clipper-fm1/webapp/installer/"><span class="en">Install</span><span class="fr">Installer</span></a>
-      <a href="https://isod89.github.io/clipper-fm1/webapp/editor/"><span class="en">Editor</span><span class="fr">Éditeur</span></a>
-      <a href="https://github.com/isod89/clipper-fm1">GitHub</a>
-      <a href="https://ko-fi.com/sodwave">Ko-fi</a>
-      <a href="/sloop/"><span class="en">See SLOOP →</span><span class="fr">Voir SLOOP →</span></a>
-      <a href="/kraken/"><span class="en">Open Kraken →</span><span class="fr">Ouvrir Kraken →</span></a>
-    </div>
-    <p class="based"><span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span></p>
-  </div>
-</section>
-<section class="psec">
-  <div class="wrap">
-    <div class="sec-h rv"><span class="no">+</span><h2><span class="en">More from Sodwave</span><span class="fr">Aussi chez Sodwave</span></h2></div>
-    <div class="more rv"><a href="/sloop/" style="--c:var(--g)"><img src="/assets/sloop-logo-v2.png" alt="" width="120" height="40"><span>SLOOP<small><span class="en">Groovebox · FM-1</span><span class="fr">Groovebox · FM-1</span></small></span></a><a href="/sloop-pro/" style="--c:var(--b)"><img src="/assets/sloop-logo-v2.png" alt="" width="120" height="40"><span>SLOOP Pro<small><span class="en">Groovebox · SMK-37</span><span class="fr">Groovebox · SMK-37</span></small></span></a><a href="/clipper-pro/" style="--c:var(--o)"><img src="/assets/clipper-logo-v2.svg" alt="" width="120" height="40"><span>Clipper Pro<small><span class="en">Deep synth · SMK-37</span><span class="fr">Synthé profond · SMK-37</span></small></span></a><a href="/kraken/" style="--c:var(--y)"><img src="/assets/kraken-logo-v2.svg" alt="" width="120" height="40"><span>Kraken<small><span class="en">DAW in the browser</span><span class="fr">DAW dans le navigateur</span></small></span></a></div>
+    <div class="sh one"><h2><span class="en">Also from Sodwave</span><span class="fr">Aussi chez Sodwave</span></h2></div>
+    <ul class="more"><li><a href="/clipper-pro/"><img src="/assets/v4/scr-smk37-clipper.webp" alt="" width="64" height="64" loading="lazy"><span><b>Clipper Pro</b><span class="en">Synthesizer</span><span class="fr">Synthé</span></span></a></li><li><a href="/sloop/"><img src="/assets/v4/scr-sloop.webp" alt="" width="64" height="64" loading="lazy"><span><b>SLOOP</b><span class="en">Groovebox</span><span class="fr">Groovebox</span></span></a></li><li><a href="/siren/"><img src="/assets/v4/scr-siren.webp" alt="" width="64" height="64" loading="lazy"><span><b>SIREN</b><span class="en">Self-writing rave</span><span class="fr">Rave qui s'écrit seule</span></span></a></li></ul>
   </div>
 </section>
 </main>
-
-<footer>
+<footer class="ft">
   <div class="wrap">
-    <div class="fgrid">
+    <div class="ft-grid">
       <div>
-        <a class="brand" href="/" aria-label="Sodwave"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#12151a" stroke="#2a2f37"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><span><b>SODWAVE</b><small>by Sam</small></span></a>
-        <p><span class="en">Firmware, tools and instruments. Built in the open — free &amp; open source (GPL-3.0).</span><span class="fr">Firmware, outils et instruments. Construit à ciel ouvert — libre &amp; open source (GPL-3.0).</span></p>
+        <a class="brand" href="/" aria-label="Sodwave, home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#16181B" stroke="#3A3F47"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><b>Sodwave</b></a>
+        <p><span class="en">Free and open-source instruments, firmware and studios, made by Sam. Everything is GPL-3.0.</span><span class="fr">Des instruments, firmwares et studios libres et gratuits, faits par Sam. Tout est sous GPL-3.0.</span></p>
       </div>
-      <div><h4><span class="en">Instruments</span><span class="fr">Instruments</span></h4><a href="/sloop/">SLOOP</a><a href="/sloop-pro/">SLOOP Pro</a><a href="/clipper/">Clipper</a><a href="/clipper-pro/">Clipper Pro</a></div>
-      <div><h4>Kraken</h4><a href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a><a href="/hub/"><span class="en">The hub</span><span class="fr">Le hub</span></a><a href="/lab/">LAB</a></div>
-      <div><h4><span class="en">Elsewhere</span><span class="fr">Ailleurs</span></h4><a href="https://github.com/isod89">GitHub</a><a href="https://www.youtube.com/@isod89">YouTube</a><a href="https://ko-fi.com/sodwave">Ko-fi</a></div>
+      <div><h4>Firmware</h4><a href="/sloop/">SLOOP</a><a href="/clipper/">Clipper</a><a href="/siren/">SIREN</a><a href="/critical/">CRITICAL</a><a href="/sloop-pro/">SLOOP Pro</a><a href="/clipper-pro/">Clipper Pro</a><a href="/openpocket/">OpenPocket</a></div>
+      <div><h4><span class="en">Software</span><span class="fr">Logiciels</span></h4><a href="/kraken/">Kraken</a><a href="/hub/"><span class="en">Kraken hub</span><span class="fr">Le hub Kraken</span></a><a href="/lab/">Kraken LAB</a><a href="/leviathan/">LEVIATHAN</a></div>
+      <div><h4><span class="en">Elsewhere</span><span class="fr">Ailleurs</span></h4><a href="https://github.com/isod89" target="_blank" rel="noopener">GitHub</a><a href="https://www.youtube.com/@isod89" target="_blank" rel="noopener">YouTube</a><a href="https://ko-fi.com/sodwave" target="_blank" rel="noopener">Ko-fi</a><a href="mailto:sodwavecontact@gmail.com"><span class="en">Email</span><span class="fr">Courriel</span></a></div>
     </div>
-    <div class="fbot">
-      <span>© <span id="yr">2026</span> Sodwave · Sam</span>
-      <span><span class="en">Firmware built on</span><span class="fr">Firmware bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a></span>
+    <div class="ft-bot">
+      <span>© <span id="yr">2026</span> Sodwave</span>
+      <span><span class="en">SLOOP, Clipper and SIREN are built on</span><span class="fr">SLOOP, Clipper et SIREN sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments. Not affiliated with M-VAVE or Donner.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments. Sans lien avec M-VAVE ni Donner.</span></span>
     </div>
   </div>
 </footer>
-
-<script src="/assets/site-v3.js?v=20261028"></script>
+<script src="/assets/site-v4.js?v=20261114"></script>
 </body>
 </html>

@@ -3,154 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SLOOP Pro — the SLOOP groovebox on the M-VAVE SMK-37 · Sodwave</title>
-<meta name="description" content="SLOOP Pro is the free, open-source SLOOP groovebox firmware on the M-VAVE SMK-37: 37 velocity keys, 16 RGB pads, 4 faders with 5 banks, 8 knobs, wheels, a sustain pedal and a DAW mode. Beta, installed from the browser.">
-<meta name="theme-color" content="#07080a">
+<title>SLOOP Pro: the SLOOP groovebox, on a real keyboard · Sodwave</title>
+<meta name="description" content="The SLOOP groovebox, on a real keyboard. Everything SLOOP does, with what the bigger keyboard brings: velocity on every key, the drum kit or the steps on the pads in the screen&#x27;s track colours, four faders over five banks, wheels, a sustain pedal and MIDI out on a TRS jack.">
+<meta name="theme-color" content="#E7E9EC">
+<link rel="canonical" href="https://www.sodwave.com/sloop-pro/">
+<link rel="icon" href="/assets/v4/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sodwave">
-<meta property="og:title" content="SLOOP Pro — the SLOOP groovebox on the M-VAVE SMK-37">
-<meta property="og:description" content="Free open-source firmware (beta). SLOOP's four-track groovebox with pads, faders, 37 keys, wheels, a pedal and a DAW mode — installed from the browser.">
+<meta property="og:title" content="SLOOP Pro: the SLOOP groovebox, on a real keyboard · Sodwave">
+<meta property="og:description" content="The SLOOP groovebox, on a real keyboard. Everything SLOOP does, with what the bigger keyboard brings: velocity on every key, the drum kit or the steps on the pads in the screen&#x27;s track colours, four faders over five banks, wheels, a sustain pedal and MIDI out on a TRS jack.">
 <meta property="og:url" content="https://www.sodwave.com/sloop-pro/">
+<meta property="og:image" content="https://www.sodwave.com/assets/v4/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/site-v3.css?v=20261028">
-<style>:root{--a:var(--b)}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap">
+<link rel="stylesheet" href="/assets/site-v4.css?v=20261114">
 </head>
 <body class="lang-en">
-
-<header class="nav">
-  <div class="wrap bar">
-    <a class="brand" href="/" aria-label="Sodwave, home">
-      <svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#12151a" stroke="#2a2f37"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg>
-      <span><b>SODWAVE</b><small>by Sam</small></span>
-    </a>
-    <nav class="links" id="links">
-      <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a>
-      <a href="/sloop/">SLOOP</a>
-      <a href="/sloop-pro/" class="cur" aria-current="page">SLOOP Pro</a>
-      <a href="/clipper/">Clipper</a>
-      <a href="/clipper-pro/">Clipper Pro</a>
-      <a href="/hub/">Hub</a>
-      <a href="/lab/">LAB</a>
-      <a href="/#about"><span class="en">About</span><span class="fr">À propos</span></a>
-      <a href="/#contact">Contact</a>
-      <button class="langtog" id="langtog" type="button">EN / FR</button>
-    </nav>
-    <a class="btn go sm navcta" href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a>
-    <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-controls="links" aria-expanded="false">☰</button>
+<a class="skip" href="#main"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span></a>
+<div class="brandbar"></div>
+<header class="hd">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Sodwave, home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#16181B" stroke="#3A3F47"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><b>Sodwave</b></a>
+    <nav class="nav" id="nav" aria-label="Main"><a href="/#instruments" aria-current="page"><span class="en">Instruments</span><span class="fr">Instruments</span></a><a href="/#software"><span class="en">Software</span><span class="fr">Logiciels</span></a><a href="/#community"><span class="en">Community</span><span class="fr">Communauté</span></a><a href="/#about"><span class="en">About</span><span class="fr">À propos</span></a><a href="/#contact">Contact</a><button class="lang" id="lang" type="button">EN / FR</button></nav>
+    <a class="btn pri sm" href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a>
+    <button class="menu" id="menu" type="button" aria-label="Menu" aria-controls="nav" aria-expanded="false"><span></span><span></span></button>
   </div>
 </header>
 
-<main>
-<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a> / SLOOP Pro</div>
+<main id="main" style="--a:var(--g)">
+<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#instruments"><span class="en">Instruments</span><span class="fr">Instruments</span></a> / SLOOP Pro</div>
 
-<section class="phero">
+<section class="ph">
   <div class="wrap">
-<div class="rv">
-    <div class="hlogo"><img src="/assets/sloop-logo-v2.png" alt="SLOOP"><span class="pro">PRO</span></div>
-    <div class="tag"><span class="en">Groovebox firmware · M-VAVE SMK-37 · beta</span><span class="fr">Firmware de groovebox · M-VAVE SMK-37 · bêta</span></div>
-    <h1>
-      <span class="en">SLOOP, with <span class="a">pads, faders and 37 keys</span>.</span>
-      <span class="fr">SLOOP, avec <span class="a">des pads, des faders et 37 touches</span>.</span>
-    </h1>
-    <p class="lead">
-      <span class="en">SLOOP Pro is the SLOOP groovebox firmware on the M-VAVE SMK-37: the same four-track groovebox — three synths and a drum machine, twelve engines, 153 sounds, 37 drum kits, song mode, 27 punch-in effects and the piano-roll editor — with everything the bigger keyboard brings. Free and open source.</span>
-      <span class="fr">SLOOP Pro, c'est le firmware de groovebox SLOOP sur le M-VAVE SMK-37 : le même groovebox quatre pistes — trois synthés et une boîte à rythmes, douze moteurs, 153 sons, 37 kits de batterie, le mode song, 27 effets punch-in et l'éditeur piano-roll — avec tout ce que le clavier plus grand apporte. Libre et open source.</span>
-    </p>
-    <div class="cta">
-      <a class="btn pri" href="https://isod89.github.io/sloop-pro/"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a>
-      <a class="btn" href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md"><span class="en">Controls &amp; install guide</span><span class="fr">Commandes et installation</span></a>
-      <a class="btn" href="https://github.com/isod89/sloop-pro">GitHub</a>
+    <div>
+      <p class="kind"><span class="en">Groovebox firmware for the M-VAVE SMK-37</span><span class="fr">Firmware de groovebox pour le M-VAVE SMK-37</span></p>
+      <h1>SLOOP Pro</h1>
+      <p class="tag"><span class="en">The SLOOP groovebox, on a real keyboard.</span><span class="fr">Le groovebox SLOOP, sur un vrai clavier.</span></p>
+      <p class="lead"><span class="en">Everything SLOOP does, with what the bigger keyboard brings: velocity on every key, the drum kit or the steps on the pads in the screen's track colours, four faders over five banks, wheels, a sustain pedal and MIDI out on a TRS jack.</span><span class="fr">Tout ce que fait SLOOP, avec ce qu'apporte le grand clavier : la vélocité sur chaque touche, le kit ou les pas sur les pads aux couleurs des pistes, quatre faders sur cinq banques, des molettes, une pédale de sustain et la sortie MIDI sur jack TRS.</span></p>
+      <div class="btns"><a class="btn pri" href="https://isod89.github.io/sloop-pro/" target="_blank" rel="noopener"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a><a class="btn" href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md" target="_blank" rel="noopener"><span class="en">Controls and menu</span><span class="fr">Commandes et menu</span></a></div>
+      <dl class="specs"><div><dt><span class="en">Version</span><span class="fr">Version</span></dt><dd>2.8.4</dd></div><div><dt><span class="en">Status</span><span class="fr">Statut</span></dt><dd><span class="st beta"><span class="en">Beta</span><span class="fr">Bêta</span></span></dd></div><div><dt><span class="en">Runs on</span><span class="fr">Tourne sur</span></dt><dd><span class="en">SMK-37 Pro, SMK-37 Elite, MKE-P37, Starrykey 37 Play</span><span class="fr">SMK-37 Pro, SMK-37 Elite, MKE-P37, Starrykey 37 Play</span></dd></div><div><dt><span class="en">Installs</span><span class="fr">Installation</span></dt><dd><span class="en">From Chrome or Edge; the installer picks your model</span><span class="fr">Depuis Chrome ou Edge ; l'installateur choisit ton modèle</span></dd></div></dl>
     </div>
-    <div class="note">
-      <b><span class="en">Beta</span><span class="fr">Bêta</span></b>
-      <span class="en">SLOOP Pro 2.8.3 is a beta built on SLOOP 2.8.3. Back up the keyboard's flash first and read the <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">safety notes</a>. Your unit's calibration is never written, and M-VAVE's own updater takes you back to the original firmware at any time.</span>
-      <span class="fr">SLOOP Pro 2.8.3 est une bêta bâtie sur SLOOP 2.8.3. Sauvegarde d'abord la flash du clavier et lis les <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">consignes de sécurité</a>. La calibration de ton clavier n'est jamais réécrite, et l'outil de mise à jour de M-VAVE te ramène au firmware d'origine à tout moment.</span>
-    </div>
-    <div class="stats">
-      <div class="stat"><b>37</b><span><span class="en">velocity keys</span><span class="fr">touches dynamiques</span></span></div>
-      <div class="stat"><b>16</b><span><span class="en">RGB pads</span><span class="fr">pads RGB</span></span></div>
-      <div class="stat"><b>4 × 5</b><span><span class="en">fader banks</span><span class="fr">banques de faders</span></span></div>
-      <div class="stat"><b>8</b><span><span class="en">knobs</span><span class="fr">knobs</span></span></div>
-      <div class="stat"><b>GPL-3.0</b><span><span class="en">open source</span><span class="fr">open source</span></span></div>
-    </div>
-</div>
-<div class="part rv"><img src="/assets/v3/smk37.webp" alt="The M-VAVE SMK-37 running SLOOP Pro" width="1600" height="648"></div>
+    <div class="ph-media"><img src="/assets/v3/smk37.webp" alt="The M-VAVE SMK-37 running SLOOP Pro, its pads lit in the track colours" width="1600" height="648" fetchpriority="high"></div>
   </div>
 </section>
 
-<section class="psec">
+<section class="sec" style="padding-top:24px">
   <div class="wrap">
-    <div class="sec-h rv"><span class="no">01</span><h2><span class="en">What the SMK-37 adds</span><span class="fr">Ce que le SMK-37 ajoute</span></h2></div>
-    <p class="lead2 rv"><span class="en">Everything SLOOP does on the FM-1, plus the hands-on controls of a bigger keyboard.</span><span class="fr">Tout ce que SLOOP fait sur le FM-1, plus les commandes physiques d'un clavier plus grand.</span></p>
-    <div class="feat">
-      <div class="f rv"><h3><span class="en">37 velocity keys</span><span class="fr">37 touches dynamiques</span></h3><p><span class="en">The 27 middle keys play as on SLOOP, with velocity from your unit's factory curves; the outer 10 play notes, or drums on the drum track.</span><span class="fr">Les 27 touches du milieu jouent comme sur SLOOP, avec la vélocité des courbes d'usine de ton clavier ; les 10 autres jouent des notes, ou la batterie sur la piste batterie.</span></p></div>
-      <div class="f rv"><h3><span class="en">16 RGB pads</span><span class="fr">16 pads RGB</span></h3><p><span class="en">The drum kit, the selected track's sound or its 16 steps, lit in the screen's track colours.</span><span class="fr">Le kit de batterie, le son de la piste choisie ou ses 16 pas, éclairés aux couleurs des pistes à l'écran.</span></p></div>
-      <div class="f rv"><h3><span class="en">4 faders, 5 banks</span><span class="fr">4 faders, 5 banques</span></h3><p><span class="en">Level, filter, reverb and delay of the four tracks, and the selected synth's envelope.</span><span class="fr">Le niveau, le filtre, la réverbe et le délai des quatre pistes, et l'enveloppe du synthé choisi.</span></p></div>
-      <div class="f rv"><h3><span class="en">8 knobs</span><span class="fr">8 knobs</span></h3><p><span class="en">Master, select, track, sound and the four dials, laid out as on the screen.</span><span class="fr">Master, sélection, piste, son et les quatre potentiomètres, disposés comme à l'écran.</span></p></div>
-      <div class="f rv"><h3><span class="en">Wheels and pedal</span><span class="fr">Molettes et pédale</span></h3><p><span class="en">Pitch bend, vibrato and a sustain pedal on the PEDAL jack.</span><span class="fr">Pitch bend, vibrato et une pédale de sustain sur la prise PEDAL.</span></p></div>
-      <div class="f rv"><h3><span class="en">MIDI and DAW mode</span><span class="fr">MIDI et mode DAW</span></h3><p><span class="en">USB MIDI, the TRS MIDI OUT jack, and a full DAW mode with your own CC map — set in the SLOOP web editor.</span><span class="fr">MIDI USB, la prise TRS MIDI OUT, et un vrai mode DAW avec ta propre table de CC — réglée dans l'éditeur web SLOOP.</span></p></div>
+    <div class="sh one"><h2><span class="en">What it does</span><span class="fr">Ce que ça fait</span></h2></div>
+    <ul class="feat"><li><h3><span class="en">37 velocity keys</span><span class="fr">37 touches dynamiques</span></h3><p><span class="en">The middle 27 play as SLOOP's, velocity from your unit's own factory curves; the outer ten play notes, or drums on the drum track.</span><span class="fr">Les 27 du milieu jouent comme celles de SLOOP, la vélocité selon les courbes d'usine de ton clavier ; les dix autres jouent des notes, ou la batterie sur la piste batterie.</span></p></li><li><h3><span class="en">16 RGB pads</span><span class="fr">16 pads RGB</span></h3><p><span class="en">The drum kit, the selected track's sound or its 16 steps, in the screen's track colours.</span><span class="fr">Le kit, le son de la piste choisie ou ses 16 pas, aux couleurs des pistes à l'écran.</span></p></li><li><h3><span class="en">4 faders, 5 banks</span><span class="fr">4 faders, 5 banques</span></h3><p><span class="en">Level, filter, reverb and delay of the four tracks, plus the envelope of the selected synth track.</span><span class="fr">Niveau, filtre, reverb et delay des quatre pistes, et l'enveloppe de la piste de synthé choisie.</span></p></li><li><h3><span class="en">Wheels and pedal</span><span class="fr">Molettes et pédale</span></h3><p><span class="en">Pitch bend, vibrato and a sustain pedal on the PEDAL jack.</span><span class="fr">Pitch bend, vibrato et une pédale de sustain sur la prise PEDAL.</span></p></li><li><h3><span class="en">DAW mode</span><span class="fr">Mode DAW</span></h3><p><span class="en">USB MIDI and the TRS MIDI OUT jack, with your own CC map. In Kraken, it is recognised and mapped by itself.</span><span class="fr">MIDI USB et la prise MIDI OUT TRS, avec ta propre table de CC. Dans Kraken, il est reconnu et assigné tout seul.</span></p></li><li><h3><span class="en">All of SLOOP</span><span class="fr">Tout SLOOP</span></h3><p><span class="en">Twelve engines, 153 sounds, 37 kits, 27 punch-in effects, a piano-roll note editor, parameter locks and fills.</span><span class="fr">Douze moteurs, 153 sons, 37 kits, 27 effets punch-in, un éditeur de notes piano-roll, verrous de paramètres et fills.</span></p></li></ul>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="notes">
+      <div><h2><span class="en">Before you install</span><span class="fr">Avant d'installer</span></h2></div>
+      <div><ul><li><span class="en">SLOOP Pro 2.8.4 is a beta built on SLOOP 2.8.4. Report what you find on the SMK-37 in the issues.</span><span class="fr">SLOOP Pro 2.8.4 est une bêta bâtie sur SLOOP 2.8.4. Signale ce que tu trouves sur le SMK-37 dans les issues.</span></li><li><span class="en">Unofficial firmware, installed at your own risk; the installer explains how to go back.</span><span class="fr">Firmware non officiel, installé à tes risques ; l'installateur explique comment revenir en arrière.</span></li><li><span class="en">The SMK-37 board layer is by genkigenki (fm1-to-smk37).</span><span class="fr">La couche carte du SMK-37 est de genkigenki (fm1-to-smk37).</span></li></ul><div class="lnk"><a class="btn sm" href="https://github.com/isod89/sloop-pro" target="_blank" rel="noopener">GitHub</a><a class="btn sm" href="https://github.com/isod89/sloop-pro/blob/HEAD/DEMARRAGE-RAPIDE-PRO-FR.md" target="_blank" rel="noopener"><span class="en">Quick start in French</span><span class="fr">Démarrage rapide en français</span></a><a class="btn sm" href="https://github.com/isod89/sloop-pro/blob/HEAD/CREDITS.md" target="_blank" rel="noopener"><span class="en">Credits</span><span class="fr">Crédits</span></a><a class="btn sm" href="https://github.com/isod89/sloop-pro/issues" target="_blank" rel="noopener"><span class="en">Report a bug</span><span class="fr">Signaler un bug</span></a></div><p class="based"><span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span> <span class="en">Free and open source, GPL-3.0.</span><span class="fr">Libre et open source, GPL-3.0.</span></p></div>
     </div>
   </div>
 </section>
 
-<section class="psec">
+<section class="sec">
   <div class="wrap">
-    <div class="sec-h rv"><span class="no">02</span><h2><span class="en">Get it running</span><span class="fr">Le mettre en route</span></h2></div>
-    <p class="lead2 rv"><span class="en">One package per model — the installer reads yours and picks it: SMK-37 Pro (and Starrykey 37 Play), SMK-37 Elite, MKE-P37.</span><span class="fr">Un paquet par modèle — l'installateur lit le tien et le choisit : SMK-37 Pro (et Starrykey 37 Play), SMK-37 Elite, MKE-P37.</span></p>
-    <div class="steps">
-      <div class="step rv"><div class="n">1</div><div><h3><span class="en">Back up the keyboard once</span><span class="fr">Sauvegarde le clavier une fois</span></h3><p><span class="en">Save its flash first, as the <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">safety notes</a> explain.</span><span class="fr">Sauvegarde d'abord sa flash, comme l'expliquent les <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md#safety">consignes de sécurité</a>.</span></p></div></div>
-      <div class="step rv"><div class="n">2</div><div><h3><span class="en">Update it to M-VAVE's V016</span><span class="fr">Mets-le à jour en V016 de M-VAVE</span></h3><p><span class="en">The keyboard must run M-VAVE's V016 firmware first — update an older one with M-VAVE's own updater.</span><span class="fr">Le clavier doit d'abord tourner sur le firmware V016 de M-VAVE — mets un ancien à jour avec l'outil de M-VAVE.</span></p></div></div>
-      <div class="step rv"><div class="n">3</div><div><h3><span class="en">Install from the browser</span><span class="fr">Installe depuis le navigateur</span></h3><p><span class="en">Open the installer in Chrome or Edge, connect the SMK-37 straight to the computer with a USB data cable, close other MIDI apps and press Install SLOOP Pro.</span><span class="fr">Ouvre l'installateur dans Chrome ou Edge, branche le SMK-37 directement à l'ordinateur avec un câble USB de données, ferme les autres apps MIDI et appuie sur Install SLOOP Pro.</span></p></div></div>
-    </div>
-  </div>
-</section>
-
-<section class="psec">
-  <div class="wrap">
-    <div class="sec-h rv"><span class="no">03</span><h2><span class="en">Links</span><span class="fr">Liens</span></h2></div>
-    <div class="links-row">
-      <a class="pri" href="https://isod89.github.io/sloop-pro/"><span class="en">Install</span><span class="fr">Installer</span></a>
-      <a href="https://github.com/isod89/sloop-pro/blob/HEAD/SLOOP-PRO.md"><span class="en">SLOOP Pro guide</span><span class="fr">Guide SLOOP Pro</span></a>
-      <a href="https://github.com/isod89/sloop-pro/blob/HEAD/DEMARRAGE-RAPIDE-PRO-FR.md"><span class="en">Quick start (French)</span><span class="fr">Démarrage rapide</span></a>
-      <a href="https://github.com/isod89/sloop-pro">GitHub</a>
-      <a href="https://github.com/isod89/sloop-pro/issues"><span class="en">Report a bug</span><span class="fr">Signaler un bug</span></a>
-      <a href="https://ko-fi.com/sodwave">Ko-fi</a>
-      <a href="/sloop/"><span class="en">SLOOP on the FM-1 →</span><span class="fr">SLOOP sur le FM-1 →</span></a>
-    </div>
-    <p class="based">
-      <span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments; the SMK-37 board layer by</span><span class="fr">de Leo Kuroshita / Hügelton Instruments ; la couche matérielle SMK-37 par</span> <a href="https://github.com/genkigenki/fm1-to-smk37">genkigenki</a>. <span class="en">Everyone who made it possible:</span><span class="fr">Tous ceux qui l'ont rendu possible :</span> <a href="https://github.com/isod89/sloop-pro/blob/HEAD/CREDITS.md">CREDITS</a>.<br>
-      <span class="en">M-VAVE, SMK-37, MKE-P37 and Starrykey are trademarks of their respective owners; SLOOP Pro is not affiliated with them.</span><span class="fr">M-VAVE, SMK-37, MKE-P37 et Starrykey sont des marques de leurs propriétaires respectifs ; SLOOP Pro n'y est pas affilié.</span>
-    </p>
-  </div>
-</section>
-<section class="psec">
-  <div class="wrap">
-    <div class="sec-h rv"><span class="no">+</span><h2><span class="en">More from Sodwave</span><span class="fr">Aussi chez Sodwave</span></h2></div>
-    <div class="more rv"><a href="/sloop/" style="--c:var(--g)"><img src="/assets/sloop-logo-v2.png" alt="" width="120" height="40"><span>SLOOP<small><span class="en">Groovebox · FM-1</span><span class="fr">Groovebox · FM-1</span></small></span></a><a href="/clipper/" style="--c:var(--o)"><img src="/assets/clipper-logo-v2.svg" alt="" width="120" height="40"><span>Clipper<small><span class="en">Deep synth · FM-1</span><span class="fr">Synthé profond · FM-1</span></small></span></a><a href="/kraken/" style="--c:var(--y)"><img src="/assets/kraken-logo-v2.svg" alt="" width="120" height="40"><span>Kraken<small><span class="en">DAW in the browser</span><span class="fr">DAW dans le navigateur</span></small></span></a></div>
+    <div class="sh one"><h2><span class="en">Also from Sodwave</span><span class="fr">Aussi chez Sodwave</span></h2></div>
+    <ul class="more"><li><a href="/sloop/"><img src="/assets/v4/scr-sloop.webp" alt="" width="64" height="64" loading="lazy"><span><b>SLOOP</b><span class="en">Groovebox</span><span class="fr">Groovebox</span></span></a></li><li><a href="/clipper-pro/"><img src="/assets/v4/scr-smk37-clipper.webp" alt="" width="64" height="64" loading="lazy"><span><b>Clipper Pro</b><span class="en">Synthesizer</span><span class="fr">Synthé</span></span></a></li><li><a href="/#software"><img src="/assets/v4/scr-kraken.webp" alt="" width="64" height="64" loading="lazy"><span><b>Kraken</b><span class="en">DAW in the browser</span><span class="fr">DAW dans le navigateur</span></span></a></li></ul>
   </div>
 </section>
 </main>
-
-<footer>
+<footer class="ft">
   <div class="wrap">
-    <div class="fgrid">
+    <div class="ft-grid">
       <div>
-        <a class="brand" href="/" aria-label="Sodwave"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#12151a" stroke="#2a2f37"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><span><b>SODWAVE</b><small>by Sam</small></span></a>
-        <p><span class="en">Firmware, tools and instruments. Built in the open — free &amp; open source (GPL-3.0).</span><span class="fr">Firmware, outils et instruments. Construit à ciel ouvert — libre &amp; open source (GPL-3.0).</span></p>
+        <a class="brand" href="/" aria-label="Sodwave, home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#16181B" stroke="#3A3F47"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><b>Sodwave</b></a>
+        <p><span class="en">Free and open-source instruments, firmware and studios, made by Sam. Everything is GPL-3.0.</span><span class="fr">Des instruments, firmwares et studios libres et gratuits, faits par Sam. Tout est sous GPL-3.0.</span></p>
       </div>
-      <div><h4><span class="en">Instruments</span><span class="fr">Instruments</span></h4><a href="/sloop/">SLOOP</a><a href="/sloop-pro/">SLOOP Pro</a><a href="/clipper/">Clipper</a><a href="/clipper-pro/">Clipper Pro</a></div>
-      <div><h4>Kraken</h4><a href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a><a href="/hub/"><span class="en">The hub</span><span class="fr">Le hub</span></a><a href="/lab/">LAB</a></div>
-      <div><h4><span class="en">Elsewhere</span><span class="fr">Ailleurs</span></h4><a href="https://github.com/isod89">GitHub</a><a href="https://www.youtube.com/@isod89">YouTube</a><a href="https://ko-fi.com/sodwave">Ko-fi</a></div>
+      <div><h4>Firmware</h4><a href="/sloop/">SLOOP</a><a href="/clipper/">Clipper</a><a href="/siren/">SIREN</a><a href="/critical/">CRITICAL</a><a href="/sloop-pro/">SLOOP Pro</a><a href="/clipper-pro/">Clipper Pro</a><a href="/openpocket/">OpenPocket</a></div>
+      <div><h4><span class="en">Software</span><span class="fr">Logiciels</span></h4><a href="/kraken/">Kraken</a><a href="/hub/"><span class="en">Kraken hub</span><span class="fr">Le hub Kraken</span></a><a href="/lab/">Kraken LAB</a><a href="/leviathan/">LEVIATHAN</a></div>
+      <div><h4><span class="en">Elsewhere</span><span class="fr">Ailleurs</span></h4><a href="https://github.com/isod89" target="_blank" rel="noopener">GitHub</a><a href="https://www.youtube.com/@isod89" target="_blank" rel="noopener">YouTube</a><a href="https://ko-fi.com/sodwave" target="_blank" rel="noopener">Ko-fi</a><a href="mailto:sodwavecontact@gmail.com"><span class="en">Email</span><span class="fr">Courriel</span></a></div>
     </div>
-    <div class="fbot">
-      <span>© <span id="yr">2026</span> Sodwave · Sam</span>
-      <span><span class="en">Firmware built on</span><span class="fr">Firmware bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a></span>
+    <div class="ft-bot">
+      <span>© <span id="yr">2026</span> Sodwave</span>
+      <span><span class="en">SLOOP, Clipper and SIREN are built on</span><span class="fr">SLOOP, Clipper et SIREN sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments. Not affiliated with M-VAVE or Donner.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments. Sans lien avec M-VAVE ni Donner.</span></span>
     </div>
   </div>
 </footer>
-
-<script src="/assets/site-v3.js?v=20261028"></script>
+<script src="/assets/site-v4.js?v=20261114"></script>
 </body>
 </html>

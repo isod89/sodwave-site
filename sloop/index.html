@@ -3,144 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SLOOP — a four-track groovebox for the M-VAVE FM-1 · Sodwave</title>
-<meta name="description" content="SLOOP is free, open-source firmware that turns the $60 M-VAVE FM-1 MIDI keyboard into a four-track groovebox: three synths, a drum machine, twelve engines, a step sequencer and a full web editor.">
-<meta name="theme-color" content="#07080a">
+<title>SLOOP: a four-track groovebox you play with your hands · Sodwave</title>
+<meta name="description" content="A four-track groovebox you play with your hands. SLOOP turns the FM-1 into a complete standalone instrument for any style: house, techno, hip-hop, trap, drum &amp; bass, amapiano, lo-fi, ambient or chiptune. No factory patterns and nothing to load: everything you hear, you play.">
+<meta name="theme-color" content="#E7E9EC">
+<link rel="canonical" href="https://www.sodwave.com/sloop/">
+<link rel="icon" href="/assets/v4/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sodwave">
-<meta property="og:title" content="SLOOP — a four-track groovebox for the M-VAVE FM-1">
-<meta property="og:description" content="Free open-source firmware. Three synths, a drum machine, twelve engines, a step sequencer and a full web editor — installed from the browser in a minute.">
+<meta property="og:title" content="SLOOP: a four-track groovebox you play with your hands · Sodwave">
+<meta property="og:description" content="A four-track groovebox you play with your hands. SLOOP turns the FM-1 into a complete standalone instrument for any style: house, techno, hip-hop, trap, drum &amp; bass, amapiano, lo-fi, ambient or chiptune. No factory patterns and nothing to load: everything you hear, you play.">
 <meta property="og:url" content="https://www.sodwave.com/sloop/">
+<meta property="og:image" content="https://www.sodwave.com/assets/v4/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/site-v3.css?v=20261028">
-<style>:root{--a:var(--g)}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap">
+<link rel="stylesheet" href="/assets/site-v4.css?v=20261114">
 </head>
 <body class="lang-en">
-
-<header class="nav">
-  <div class="wrap bar">
-    <a class="brand" href="/" aria-label="Sodwave, home">
-      <svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#12151a" stroke="#2a2f37"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg>
-      <span><b>SODWAVE</b><small>by Sam</small></span>
-    </a>
-    <nav class="links" id="links">
-      <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a>
-      <a href="/sloop/" class="cur" aria-current="page">SLOOP</a>
-      <a href="/sloop-pro/">SLOOP Pro</a>
-      <a href="/clipper/">Clipper</a>
-      <a href="/clipper-pro/">Clipper Pro</a>
-      <a href="/hub/">Hub</a>
-      <a href="/lab/">LAB</a>
-      <a href="/#about"><span class="en">About</span><span class="fr">À propos</span></a>
-      <a href="/#contact">Contact</a>
-      <button class="langtog" id="langtog" type="button">EN / FR</button>
-    </nav>
-    <a class="btn go sm navcta" href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a>
-    <button class="menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-controls="links" aria-expanded="false">☰</button>
+<a class="skip" href="#main"><span class="en">Skip to content</span><span class="fr">Aller au contenu</span></a>
+<div class="brandbar"></div>
+<header class="hd">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Sodwave, home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#16181B" stroke="#3A3F47"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><b>Sodwave</b></a>
+    <nav class="nav" id="nav" aria-label="Main"><a href="/#instruments" aria-current="page"><span class="en">Instruments</span><span class="fr">Instruments</span></a><a href="/#software"><span class="en">Software</span><span class="fr">Logiciels</span></a><a href="/#community"><span class="en">Community</span><span class="fr">Communauté</span></a><a href="/#about"><span class="en">About</span><span class="fr">À propos</span></a><a href="/#contact">Contact</a><button class="lang" id="lang" type="button">EN / FR</button></nav>
+    <a class="btn pri sm" href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a>
+    <button class="menu" id="menu" type="button" aria-label="Menu" aria-controls="nav" aria-expanded="false"><span></span><span></span></button>
   </div>
 </header>
 
-<main>
-<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#projects"><span class="en">Projects</span><span class="fr">Projets</span></a> / SLOOP</div>
+<main id="main" style="--a:var(--g)">
+<div class="wrap crumb"><a href="/">Sodwave</a> / <a href="/#instruments"><span class="en">Instruments</span><span class="fr">Instruments</span></a> / SLOOP</div>
 
-<section class="phero">
+<section class="ph">
   <div class="wrap">
-<div class="rv">
-    <div class="hlogo"><img src="/assets/sloop-logo-v2.png" alt="SLOOP"></div>
-    <div class="tag"><span class="en">Live groovebox firmware · M-VAVE FM-1</span><span class="fr">Firmware de groovebox live · M-VAVE FM-1</span></div>
-    <h1>
-      <span class="en">A four-track groovebox you play with <span class="a">your hands</span>.</span>
-      <span class="fr">Un groovebox quatre pistes qui se joue <span class="a">aux mains</span>.</span>
-    </h1>
-    <p class="lead">
-      <span class="en">SLOOP is free, open-source firmware that turns a $60 M-VAVE FM-1 MIDI keyboard into a complete standalone instrument — three synths, a drum machine, twelve sound engines, a step sequencer and a song mode. No computer needed to perform.</span>
-      <span class="fr">SLOOP est un firmware libre et open-source qui transforme un clavier MIDI M-VAVE FM-1 à 60&nbsp;$ en instrument autonome complet — trois synthés, une boîte à rythmes, douze moteurs de son, un séquenceur et un mode song. Aucun ordinateur pour jouer.</span>
-    </p>
-    <div class="cta">
-      <a class="btn pri" href="https://isod89.github.io/sloop-fm1/"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a>
-      <a class="btn" href="https://github.com/isod89/sloop-fm1/blob/HEAD/GUIDE.md"><span class="en">Read the guide</span><span class="fr">Lire le guide</span></a>
-      <a class="btn" href="https://github.com/isod89/sloop-fm1">GitHub</a>
+    <div>
+      <p class="kind"><span class="en">Groovebox firmware for the M-VAVE FM-1</span><span class="fr">Firmware de groovebox pour le M-VAVE FM-1</span></p>
+      <h1>SLOOP</h1>
+      <p class="tag"><span class="en">A four-track groovebox you play with your hands.</span><span class="fr">Un groovebox quatre pistes qui se joue aux mains.</span></p>
+      <p class="lead"><span class="en">SLOOP turns the FM-1 into a complete standalone instrument for any style: house, techno, hip-hop, trap, drum & bass, amapiano, lo-fi, ambient or chiptune. No factory patterns and nothing to load: everything you hear, you play.</span><span class="fr">SLOOP transforme le FM-1 en instrument autonome complet, pour tous les styles : house, techno, hip-hop, trap, drum & bass, amapiano, lo-fi, ambient ou chiptune. Aucun pattern d'usine, rien à charger : tout ce que tu entends, tu le joues.</span></p>
+      <div class="btns"><a class="btn pri" href="https://isod89.github.io/sloop-fm1/" target="_blank" rel="noopener"><span class="en">Install from the browser</span><span class="fr">Installer depuis le navigateur</span></a><a class="btn" href="https://github.com/isod89/sloop-fm1/blob/HEAD/GUIDE.md" target="_blank" rel="noopener"><span class="en">Read the guide</span><span class="fr">Lire le guide</span></a><a class="btn" href="https://isod89.github.io/sloop-fm1/webapp/editor/" target="_blank" rel="noopener"><span class="en">Web editor</span><span class="fr">Éditeur web</span></a></div>
+      <dl class="specs"><div><dt><span class="en">Version</span><span class="fr">Version</span></dt><dd>2.8.5</dd></div><div><dt><span class="en">Status</span><span class="fr">Statut</span></dt><dd><span class="st rel"><span class="en">Released</span><span class="fr">Disponible</span></span></dd></div><div><dt><span class="en">Runs on</span><span class="fr">Tourne sur</span></dt><dd><span class="en">M-VAVE FM-1</span><span class="fr">M-VAVE FM-1</span></dd></div><div><dt><span class="en">Installs</span><span class="fr">Installation</span></dt><dd><span class="en">From Chrome or Edge, over USB</span><span class="fr">Depuis Chrome ou Edge, en USB</span></dd></div></dl>
     </div>
-    <div class="stats">
-      <div class="stat"><b>3,000+</b><span><span class="en">followers</span><span class="fr">abonnés</span></span></div>
-      <div class="stat"><b>12</b><span><span class="en">engines</span><span class="fr">moteurs</span></span></div>
-      <div class="stat"><b>4</b><span><span class="en">tracks</span><span class="fr">pistes</span></span></div>
-      <div class="stat"><b>GPL-3.0</b><span><span class="en">open source</span><span class="fr">open source</span></span></div>
-    </div>
-</div>
-<div class="part rv"><img src="/assets/v3/fm1-sloop.webp" alt="The M-VAVE FM-1 running SLOOP: its four tracks on the screen" width="1624" height="990"></div>
+    <div class="ph-media"><img src="/assets/v3/fm1-sloop.webp" alt="The M-VAVE FM-1 running SLOOP: its four tracks on the screen" width="1624" height="990" fetchpriority="high"></div>
   </div>
 </section>
 
-<section class="psec">
+<section class="sec" style="padding-top:24px">
   <div class="wrap">
-    <div class="sec-h rv"><span class="no">01</span><h2><span class="en">What it does</span><span class="fr">Ce que ça fait</span></h2></div>
-    <div class="feat">
-      <div class="f rv"><h3><span class="en">Three synths + drums</span><span class="fr">Trois synthés + batterie</span></h3><p><span class="en">Four tracks: three synth voices and a drum machine, each with its own engine and sound.</span><span class="fr">Quatre pistes : trois voix de synthé et une boîte à rythmes, chacune avec son moteur et son son.</span></p></div>
-      <div class="f rv"><h3><span class="en">Twelve engines</span><span class="fr">Douze moteurs</span></h3><p><span class="en">From punchy virtual-analog to FM and more — a palette designed and level-matched release after release.</span><span class="fr">De l'analogique virtuel percutant au FM et plus — une palette conçue et calibrée version après version.</span></p></div>
-      <div class="f rv"><h3><span class="en">Step sequencer</span><span class="fr">Séquenceur pas à pas</span></h3><p><span class="en">Build patterns per track, chain them in song mode, and perform the whole thing live.</span><span class="fr">Construis des patterns par piste, enchaîne-les en mode song, et joue le tout en live.</span></p></div>
-      <div class="f rv"><h3><span class="en">Played by hand</span><span class="fr">Joué à la main</span></h3><p><span class="en">Everything is on the keys and pads — no screen, no computer, no menus to get lost in on stage.</span><span class="fr">Tout est sur les touches et les pads — pas d'écran, pas d'ordinateur, pas de menus où se perdre sur scène.</span></p></div>
-      <div class="f rv"><h3><span class="en">Full web editor</span><span class="fr">Éditeur web complet</span></h3><p><span class="en">Tweak sounds and settings from the browser over WebMIDI when you want to go deeper.</span><span class="fr">Ajuste sons et réglages depuis le navigateur via WebMIDI quand tu veux aller plus loin.</span></p></div>
-      <div class="f rv"><h3><span class="en">Shaped with its community</span><span class="fr">Façonné avec sa communauté</span></h3><p><span class="en">3,000+ players, release after release — features and fixes driven by how people actually use it.</span><span class="fr">Plus de 3&nbsp;000 joueurs, version après version — fonctions et correctifs guidés par l'usage réel.</span></p></div>
+    <div class="sh one"><h2><span class="en">What it does</span><span class="fr">Ce que ça fait</span></h2></div>
+    <ul class="feat"><li><h3><span class="en">Three synths and drums</span><span class="fr">Trois synthés et une batterie</span></h3><p><span class="en">Four tracks: three synth voices and a drum machine with 16 sounds on the white keys.</span><span class="fr">Quatre pistes : trois voix de synthé et une boîte à rythmes avec 16 sons sur les touches blanches.</span></p></li><li><h3><span class="en">Twelve engines, 153 sounds</span><span class="fr">Douze moteurs, 153 sons</span></h3><p><span class="en">Virtual analog, FM with DX7 patches, physical models (guitars, sitar, bells, hand drums), noise, samples and more, all level-matched.</span><span class="fr">Analogique virtuel, FM avec patchs DX7, modèles physiques (guitares, sitar, cloches, percussions), bruit, samples et plus, tous calibrés.</span></p></li><li><h3><span class="en">37 drum kits and your samples</span><span class="fr">37 kits et tes samples</span></h3><p><span class="en">Load your own sounds onto the keyboard with the web editor, chop them and play them on any track.</span><span class="fr">Charge tes propres sons dans le clavier avec l'éditeur web, découpe-les et joue-les sur n'importe quelle piste.</span></p></li><li><h3><span class="en">A sequencer made for live</span><span class="fr">Un séquenceur fait pour le live</span></h3><p><span class="en">Parameter locks, micro timing, fills, a quick chain of sections and a song mode you play with your hands.</span><span class="fr">Verrous de paramètres, micro-timing, fills, une chaîne rapide de sections et un mode song qui se joue aux mains.</span></p></li><li><h3><span class="en">USB audio and MIDI</span><span class="fr">Audio USB et MIDI</span></h3><p><span class="en">Record straight into your computer over USB, MIDI in on the jack, MIDI clock, and the sequencer out to MIDI.</span><span class="fr">Enregistre directement dans l'ordinateur en USB, entrée MIDI sur le jack, horloge MIDI et le séquenceur vers la sortie MIDI.</span></p></li><li><h3><span class="en">Shaped by its players</span><span class="fr">Façonné par ses joueurs</span></h3><p><span class="en">Over 3,000 players and dozens of releases: features and fixes come from how people actually use it.</span><span class="fr">Plus de 3 000 joueurs et des dizaines de versions : les fonctions et correctifs viennent de l'usage réel.</span></p></li></ul>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="notes">
+      <div><h2><span class="en">Before you install</span><span class="fr">Avant d'installer</span></h2></div>
+      <div><ul><li><span class="en">SLOOP is unofficial firmware: not made or supported by M-VAVE. Back up your keyboard with the editor before you install.</span><span class="fr">SLOOP est un firmware non officiel : ni fait ni pris en charge par M-VAVE. Sauvegarde ton clavier avec l'éditeur avant d'installer.</span></li><li><span class="en">You can go back to the official firmware (V16 or V15) from the installer page at any time.</span><span class="fr">Tu peux revenir au firmware officiel (V16 ou V15) depuis la page d'installation à tout moment.</span></li><li><span class="en">FM-1 units sold since late 2026 carry a newer flash chip: install 2.8.5 or later on them.</span><span class="fr">Les FM-1 vendus depuis fin 2026 ont une nouvelle puce flash : installe la 2.8.5 ou plus récente.</span></li></ul><div class="lnk"><a class="btn sm" href="https://github.com/isod89/sloop-fm1" target="_blank" rel="noopener">GitHub</a><a class="btn sm" href="https://github.com/isod89/sloop-fm1/releases" target="_blank" rel="noopener"><span class="en">Releases</span><span class="fr">Versions</span></a><a class="btn sm" href="https://github.com/isod89/sloop-fm1/blob/HEAD/DEMARRAGE-RAPIDE-FR.md" target="_blank" rel="noopener"><span class="en">Quick start in French</span><span class="fr">Démarrage rapide en français</span></a><a class="btn sm" href="https://github.com/isod89/sloop-fm1/issues" target="_blank" rel="noopener"><span class="en">Report a bug</span><span class="fr">Signaler un bug</span></a></div><p class="based"><span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span> <span class="en">Free and open source, GPL-3.0.</span><span class="fr">Libre et open source, GPL-3.0.</span></p></div>
     </div>
   </div>
 </section>
 
-<section class="psec">
+<section class="sec">
   <div class="wrap">
-    <div class="sec-h rv"><span class="no">02</span><h2><span class="en">Get it running</span><span class="fr">Le mettre en route</span></h2></div>
-    <p class="lead2 rv"><span class="en">A $60 keyboard and a Chrome-based browser — that's the whole shopping list.</span><span class="fr">Un clavier à 60&nbsp;$ et un navigateur basé sur Chrome — c'est toute la liste.</span></p>
-    <div class="steps">
-      <div class="step rv"><div class="n">1</div><div><h3><span class="en">Get an M-VAVE FM-1</span><span class="fr">Procure-toi un M-VAVE FM-1</span></h3><p><span class="en">The affordable MIDI keyboard SLOOP runs on.</span><span class="fr">Le clavier MIDI abordable sur lequel tourne SLOOP.</span></p></div></div>
-      <div class="step rv"><div class="n">2</div><div><h3><span class="en">Open the installer</span><span class="fr">Ouvre l'installateur</span></h3><p><span class="en">Plug the keyboard into your computer and open the browser installer — no app, no account.</span><span class="fr">Branche le clavier à ton ordinateur et ouvre l'installateur web — aucune app, aucun compte.</span></p></div></div>
-      <div class="step rv"><div class="n">3</div><div><h3><span class="en">Flash and play</span><span class="fr">Flashe et joue</span></h3><p><span class="en">One click installs SLOOP. Unplug and the instrument stands on its own.</span><span class="fr">Un clic installe SLOOP. Débranche et l'instrument tient tout seul.</span></p></div></div>
-    </div>
-  </div>
-</section>
-
-<section class="psec">
-  <div class="wrap">
-    <div class="sec-h rv"><span class="no">03</span><h2><span class="en">Links</span><span class="fr">Liens</span></h2></div>
-    <div class="links-row">
-      <a class="pri" href="https://isod89.github.io/sloop-fm1/"><span class="en">Install</span><span class="fr">Installer</span></a>
-      <a href="https://github.com/isod89/sloop-fm1/blob/HEAD/GUIDE.md"><span class="en">Guide</span><span class="fr">Guide</span></a>
-      <a href="https://github.com/isod89/sloop-fm1">GitHub</a>
-      <a href="https://ko-fi.com/sodwave">Ko-fi</a>
-      <a href="/sloop-pro/"><span class="en">On the SMK-37: SLOOP Pro →</span><span class="fr">Sur le SMK-37 : SLOOP Pro →</span></a>
-      <a href="/clipper/"><span class="en">See Clipper →</span><span class="fr">Voir Clipper →</span></a>
-      <a href="/kraken/"><span class="en">Open Kraken →</span><span class="fr">Ouvrir Kraken →</span></a>
-    </div>
-    <p class="based"><span class="en">Built on</span><span class="fr">Bâti sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments.</span></p>
-  </div>
-</section>
-<section class="psec">
-  <div class="wrap">
-    <div class="sec-h rv"><span class="no">+</span><h2><span class="en">More from Sodwave</span><span class="fr">Aussi chez Sodwave</span></h2></div>
-    <div class="more rv"><a href="/sloop-pro/" style="--c:var(--b)"><img src="/assets/sloop-logo-v2.png" alt="" width="120" height="40"><span>SLOOP Pro<small><span class="en">Groovebox · SMK-37</span><span class="fr">Groovebox · SMK-37</span></small></span></a><a href="/clipper/" style="--c:var(--o)"><img src="/assets/clipper-logo-v2.svg" alt="" width="120" height="40"><span>Clipper<small><span class="en">Deep synth · FM-1</span><span class="fr">Synthé profond · FM-1</span></small></span></a><a href="/kraken/" style="--c:var(--y)"><img src="/assets/kraken-logo-v2.svg" alt="" width="120" height="40"><span>Kraken<small><span class="en">DAW in the browser</span><span class="fr">DAW dans le navigateur</span></small></span></a></div>
+    <div class="sh one"><h2><span class="en">Also from Sodwave</span><span class="fr">Aussi chez Sodwave</span></h2></div>
+    <ul class="more"><li><a href="/sloop-pro/"><img src="/assets/v4/scr-smk37.webp" alt="" width="64" height="64" loading="lazy"><span><b>SLOOP Pro</b><span class="en">Groovebox</span><span class="fr">Groovebox</span></span></a></li><li><a href="/clipper/"><img src="/assets/v4/scr-clipper.webp" alt="" width="64" height="64" loading="lazy"><span><b>Clipper</b><span class="en">Synthesizer</span><span class="fr">Synthé</span></span></a></li><li><a href="/#software"><img src="/assets/v4/scr-kraken.webp" alt="" width="64" height="64" loading="lazy"><span><b>Kraken</b><span class="en">DAW in the browser</span><span class="fr">DAW dans le navigateur</span></span></a></li></ul>
   </div>
 </section>
 </main>
-
-<footer>
+<footer class="ft">
   <div class="wrap">
-    <div class="fgrid">
+    <div class="ft-grid">
       <div>
-        <a class="brand" href="/" aria-label="Sodwave"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#12151a" stroke="#2a2f37"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><span><b>SODWAVE</b><small>by Sam</small></span></a>
-        <p><span class="en">Firmware, tools and instruments. Built in the open — free &amp; open source (GPL-3.0).</span><span class="fr">Firmware, outils et instruments. Construit à ciel ouvert — libre &amp; open source (GPL-3.0).</span></p>
+        <a class="brand" href="/" aria-label="Sodwave, home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x=".5" y=".5" width="39" height="39" rx="11" fill="#16181B" stroke="#3A3F47"/><g fill="none" stroke-width="2.6" stroke-linecap="round"><path d="M8 12.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FF621A"/><path d="M8 17.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#FFC618"/><path d="M8 22.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#1ECC70"/><path d="M8 27.5c3.5-4 7 4 12 0s8.5 4 12 0" stroke="#2E82FF"/></g></svg><b>Sodwave</b></a>
+        <p><span class="en">Free and open-source instruments, firmware and studios, made by Sam. Everything is GPL-3.0.</span><span class="fr">Des instruments, firmwares et studios libres et gratuits, faits par Sam. Tout est sous GPL-3.0.</span></p>
       </div>
-      <div><h4><span class="en">Instruments</span><span class="fr">Instruments</span></h4><a href="/sloop/">SLOOP</a><a href="/sloop-pro/">SLOOP Pro</a><a href="/clipper/">Clipper</a><a href="/clipper-pro/">Clipper Pro</a></div>
-      <div><h4>Kraken</h4><a href="/kraken/"><span class="en">Open Kraken</span><span class="fr">Ouvrir Kraken</span></a><a href="/hub/"><span class="en">The hub</span><span class="fr">Le hub</span></a><a href="/lab/">LAB</a></div>
-      <div><h4><span class="en">Elsewhere</span><span class="fr">Ailleurs</span></h4><a href="https://github.com/isod89">GitHub</a><a href="https://www.youtube.com/@isod89">YouTube</a><a href="https://ko-fi.com/sodwave">Ko-fi</a></div>
+      <div><h4>Firmware</h4><a href="/sloop/">SLOOP</a><a href="/clipper/">Clipper</a><a href="/siren/">SIREN</a><a href="/critical/">CRITICAL</a><a href="/sloop-pro/">SLOOP Pro</a><a href="/clipper-pro/">Clipper Pro</a><a href="/openpocket/">OpenPocket</a></div>
+      <div><h4><span class="en">Software</span><span class="fr">Logiciels</span></h4><a href="/kraken/">Kraken</a><a href="/hub/"><span class="en">Kraken hub</span><span class="fr">Le hub Kraken</span></a><a href="/lab/">Kraken LAB</a><a href="/leviathan/">LEVIATHAN</a></div>
+      <div><h4><span class="en">Elsewhere</span><span class="fr">Ailleurs</span></h4><a href="https://github.com/isod89" target="_blank" rel="noopener">GitHub</a><a href="https://www.youtube.com/@isod89" target="_blank" rel="noopener">YouTube</a><a href="https://ko-fi.com/sodwave" target="_blank" rel="noopener">Ko-fi</a><a href="mailto:sodwavecontact@gmail.com"><span class="en">Email</span><span class="fr">Courriel</span></a></div>
     </div>
-    <div class="fbot">
-      <span>© <span id="yr">2026</span> Sodwave · Sam</span>
-      <span><span class="en">Firmware built on</span><span class="fr">Firmware bâtis sur</span> <a href="https://github.com/hugelton/Felucca">Felucca</a></span>
+    <div class="ft-bot">
+      <span>© <span id="yr">2026</span> Sodwave</span>
+      <span><span class="en">SLOOP, Clipper and SIREN are built on</span><span class="fr">SLOOP, Clipper et SIREN sont bâtis sur</span> <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener">Felucca</a> <span class="en">by Leo Kuroshita / Hügelton Instruments. Not affiliated with M-VAVE or Donner.</span><span class="fr">de Leo Kuroshita / Hügelton Instruments. Sans lien avec M-VAVE ni Donner.</span></span>
     </div>
   </div>
 </footer>
-
-<script src="/assets/site-v3.js?v=20261028"></script>
+<script src="/assets/site-v4.js?v=20261114"></script>
 </body>
 </html>
